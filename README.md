@@ -1,1 +1,76 @@
-# Mikromaxxing
+# Mikromaxxing 🥩💊💧
+
+Persönlicher Nährstoff-Tracker für **Makros, Mikros, Vitamine, Supplemente und Wasser** –
+mit Fokus auf unverarbeitete Lebensmittel. Läuft als installierbare Web-App (PWA)
+direkt am Handy, komplett offline, kostenlos über GitHub Pages. Keine Anmeldung, kein Server.
+
+## Features
+
+- **Kalorien- & Makro-Ring** (Protein / Carbs / Fett) mit personalisierten Zielen
+- **Komplettes Vitamin- & Mineralstoff-Panel** (A, C, D, E, K, alle B-Vitamine, Calcium, Eisen, Magnesium, Zink, Kalium, u.v.m.)
+- **Wasser-Tracker** mit Schnell-Buttons
+- **Supplement-Checkliste** (Creatin, D3, K2, Magnesium, Ashwagandha, Shilajit – anpassbar)
+- **Eigene Lebensmittel-Bibliothek** mit ~38 unverarbeiteten Basics als Startset; eigene Lebensmittel mit vollem Nährstoffprofil anlegbar
+- **Trends** über 14 Tage (Kalorien, Protein, Wasser, Gewichtsverlauf)
+- **Gewichts-Tracking** pro Tag
+- **Kalorien-/Makro-Rechner** (Mifflin-St Jeor) auf Basis deiner Körperdaten
+- **Backup**: Export/Import als JSON
+- **Offline-fähig** & zum Homescreen hinzufügbar (fühlt sich wie eine native App an)
+
+## Deine voreingestellten Ziele
+
+Berechnet für: 26 J, m, 181 cm, 93 kg, 5× Training/Woche, Ziel *Recomp* (Fett ↓ / Muskel ↑).
+
+| Wert | Ziel |
+|------|------|
+| Kalorien | 2400 kcal |
+| Protein | 190 g |
+| Kohlenhydrate | 230 g |
+| Fett | 80 g |
+| Ballaststoffe | 35 g |
+| Wasser | 3,5 L |
+
+Vitamine & Mineralstoffe nach DGE/DACH-Referenzwerten. **Alles im Tab „Profil" jederzeit editierbar.**
+
+## Am Handy nutzen (GitHub Pages aktivieren)
+
+1. Push in dieses Repo (ist schon passiert, wenn du das liest).
+2. Auf GitHub: **Settings → Pages**.
+3. Bei *Source* **„Deploy from a branch"** wählen.
+4. Branch auf **`main`** (oder den aktuellen Branch) und Ordner **`/ (root)`** stellen, **Save**.
+5. Nach ~1 Min ist die App erreichbar unter:
+   `https://<dein-github-name>.github.io/Mikromaxxing/`
+6. Diese URL am Handy im Browser öffnen → Menü → **„Zum Home-Bildschirm"**.
+
+> Läuft der Code auf einem Feature-Branch statt `main`? Dann in den Pages-Einstellungen den
+> entsprechenden Branch wählen, oder den Branch vorher in `main` mergen.
+
+## Wichtig: Daten & Backup
+
+Deine Eingaben werden **nur lokal im Browser deines Handys** gespeichert (localStorage).
+Das ist privat und kostenlos, hat aber eine Kehrseite:
+
+- Löschst du die Browser-Daten / deinstallierst die App → **Daten weg**.
+- Daten synchronisieren **nicht** automatisch auf andere Geräte.
+
+➡️ Mach daher regelmäßig ein **Backup** über *Profil → Export*. Über *Import* spielst du es
+zurück (auch auf einem neuen Gerät).
+
+## Technik
+
+- Reines HTML/CSS/Vanilla-JS (ES-Module), **kein Build-Schritt** → GitHub-Pages-tauglich
+- PWA mit Service Worker (Offline-Cache) und Web-Manifest
+- Nährwerte pro 100 g, Quelle: USDA / DGE-nahe Richtwerte
+
+## Projektstruktur
+
+```
+index.html              App-Grundgerüst + Bottom-Navigation
+manifest.webmanifest    PWA-Manifest
+sw.js                   Service Worker (Offline)
+css/styles.css          Styles (mobile-first, dark)
+js/data.js              Nährstoff-Katalog, Zielwerte, Start-Lebensmittel
+js/store.js             State-Verwaltung (localStorage), Berechnungen, Backup
+js/app.js               UI, Views, Charts
+icons/                  App-Icons
+```
