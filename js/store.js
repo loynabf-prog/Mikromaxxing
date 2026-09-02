@@ -55,6 +55,7 @@ export function load() {
     if (raw) {
       const parsed = JSON.parse(raw);
       state = migrate(parsed);
+      save(); // Migration (Normalisierung/Bereinigung) sofort persistieren
     } else {
       state = freshState();
       save();
@@ -77,6 +78,23 @@ function migrate(parsed) {
   if (!merged.log) merged.log = {};
   // Normalisierung: jedes Lebensmittel hat ein whole-Flag (Standard: unverarbeitet).
   for (const f of merged.foods) if (typeof f.whole !== 'boolean') f.whole = true;
+  // Einmalige Bereinigung: verarbeitete Start-Lebensmittel entfernen (nur Obst/Gemüse
+  // bleiben im Startset). Bereits geloggte Einträge werden geschont.
+  if (!merged._seedTrimV1) {
+    const REMOVED = new Set([
+      'chicken_breast', 'egg', 'salmon', 'mackerel', 'sardines', 'tuna_can', 'cod',
+      'beef_lean', 'beef_liver', 'chicken_thigh', 'greek_yogurt', 'cottage_cheese',
+      'milk', 'kefir', 'oats', 'brown_rice', 'quinoa', 'ww_bread', 'lentils',
+      'kidney_beans', 'almonds', 'walnuts', 'pumpkin_seeds', 'chia', 'peanut_butter',
+      'olive_oil',
+    ]);
+    const usedIds = new Set();
+    for (const key of Object.keys(merged.log)) {
+      for (const e of (merged.log[key].entries || [])) usedIds.add(e.foodId);
+    }
+    merged.foods = merged.foods.filter(f => !(REMOVED.has(f.id) && !usedIds.has(f.id)));
+    merged._seedTrimV1 = true;
+  }
   return merged;
 }
 
@@ -274,7 +292,7 @@ export function getQuickPicks(limit = 8, now = Date.now()) {
 
   if (scored.length === 0) {
     // Erststart: sinnvolle Standard-Vorschläge
-    const seeds = ['chicken_breast', 'egg', 'oats', 'greek_yogurt', 'banana', 'salmon'];
+    const seeds = ['banana', 'apple', 'kiwi', 'bell_pepper', 'carrot', 'spinach'];
     return seeds.map(id => s.foods.find(f => f.id === id)).filter(Boolean)
       .map(food => ({ food, grams: servingGrams(food), score: 0 }));
   }

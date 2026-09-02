@@ -15,7 +15,7 @@ direkt am Handy, komplett offline, kostenlos über GitHub Pages. Keine Anmeldung
 - **Wasser-Tracker** mit Schnell-Buttons
 - **Supplement-Checkliste** (Creatin, D3, K2, Magnesium, Ashwagandha, Shilajit – anpassbar)
 - **Stück-Erfassung** – Obst/Gemüse werden in Stück getrackt (1 Paprika, 2 Kiwi, 3 Eier …) mit − / + Stepper und sinnvollen Standardmengen. Der Coach rechnet zum Lückenfüllen auch auf 2–3 Stück hoch (gedeckelt). Gewogene Lebensmittel (Reis, Fleisch, Nüsse) bleiben in Gramm.
-- **Eigene Lebensmittel-Bibliothek** mit ~40 unverarbeiteten Basics als Startset; eigene Lebensmittel mit vollem Nährstoffprofil + optionaler Stück-Größe anlegbar. Fertige Bowls/Mahlzeiten als eigenes Item (Flag „Mahlzeit" → zählt nicht als 100%-Empfehlung).
+- **Eigene Lebensmittel-Bibliothek** – Startset enthält bewusst nur **Obst & Gemüse** (14 Sorten); alles andere (Protein, Fisch, Getreide, Milch, Nüsse, Öl …) legst du selbst mit vollem Nährstoffprofil + optionaler Stück-Größe an. Fertige Bowls/Mahlzeiten als eigenes Item (Flag „Mahlzeit" → zählt nicht als 100%-Empfehlung).
 - **Trends** über 14 Tage (Kalorien, Protein, Wasser, Gewichtsverlauf)
 - **Gewichts-Tracking** pro Tag
 - **Kalorien-/Makro-Rechner** (Mifflin-St Jeor) auf Basis deiner Körperdaten
