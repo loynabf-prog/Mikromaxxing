@@ -263,6 +263,16 @@ select { appearance: none; -webkit-appearance: none; }
 .gram-row .btn-primary { width: auto; flex-shrink: 0; }
 .sel-preview { display: flex; gap: 14px; margin-top: 12px; color: var(--text-dim); font-size: 13px; font-weight: 600; flex-wrap: wrap; }
 
+/* Stück-Stepper */
+.stepper { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 8px; }
+.step-btn { width: 54px; height: 54px; border-radius: 14px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); font-size: 28px; font-weight: 300; cursor: pointer; line-height: 1; }
+.step-btn:active { background: var(--accent); color: #06210f; }
+.step-count { text-align: center; min-width: 90px; }
+.step-count span { font-size: 34px; font-weight: 800; letter-spacing: -1px; }
+.step-count em { display: block; color: var(--text-dim); font-style: normal; font-size: 13px; font-weight: 600; margin-top: -2px; }
+.gram-note { text-align: center; color: var(--text-faint); font-size: 12px; margin-bottom: 4px; }
+.sel-panel > .btn-primary { width: 100%; margin-top: 12px; }
+
 /* --- Editor --- */
 .editor-scroll { overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; padding-right: 2px; }
 .edit-section { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--accent); margin: 16px 2px 8px; font-weight: 700; }

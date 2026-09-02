@@ -28,6 +28,14 @@ function esc(s) {
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
 }
+// Zeigt Stück-Lebensmittel als "3× Ei", andere als "150 g".
+function amountLabel(food, grams) {
+  if (food.piece && food.piece.g) {
+    const count = Math.max(1, Math.round(grams / food.piece.g));
+    return `${count}× ${food.piece.name}`;
+  }
+  return `${Math.round(grams)} g`;
+}
 
 // ============================================================================
 // Navigation
@@ -86,7 +94,7 @@ function renderToday() {
         ${quickPicks.map(q => `
           <button class="quick-chip" data-quick="${q.food.id}" data-grams="${q.grams}">
             <span class="quick-name">${esc(q.food.name)}</span>
-            <span class="quick-meta">${q.grams} g · ${Math.round(q.food.per100.kcal * q.grams/100)} kcal</span>
+            <span class="quick-meta">${esc(amountLabel(q.food, q.grams))} · ${Math.round(q.food.per100.kcal * q.grams/100)} kcal</span>
           </button>`).join('')}
       </div>
     </div>
@@ -233,7 +241,7 @@ function coachCard(rec) {
       <div class="coach-top-label">💡 Bester nächster Happen</div>
       <button class="coach-top-card" data-rec="${top.food.id}" data-grams="${top.grams}">
         <div class="coach-top-main">
-          <div class="coach-top-name">${esc(top.food.name)} <em>${top.grams} g</em></div>
+          <div class="coach-top-name">${esc(top.food.name)} <em>${esc(amountLabel(top.food, top.grams))}</em></div>
           <div class="coach-top-contribs">${contribLine(top.contribs)}</div>
         </div>
         <div class="coach-top-add">
@@ -243,7 +251,7 @@ function coachCard(rec) {
       </button>
       ${rec.topTips.slice(1, 4).map(t => `
         <button class="coach-alt" data-rec="${t.food.id}" data-grams="${t.grams}">
-          <span>${esc(t.food.name)} <em>${t.grams} g</em></span>
+          <span>${esc(t.food.name)} <em>${esc(amountLabel(t.food, t.grams))}</em></span>
           <span class="coach-alt-meta">${contribLine(t.contribs, 1)} · ${Math.round(t.kcal)} kcal ＋</span>
         </button>`).join('')}
     </div>` : '';
@@ -257,7 +265,7 @@ function coachCard(rec) {
         <button class="coach-gap" data-rec="${g.best.food.id}" data-grams="${g.best.grams}">
           <div class="coach-gap-info">
             <div class="coach-gap-nut">${esc(nt.label)} <span class="coach-gap-pct">${g.currentPct}%</span></div>
-            <div class="coach-gap-food">→ ${esc(g.best.food.name)} <em>${g.best.grams} g</em></div>
+            <div class="coach-gap-food">→ ${esc(g.best.food.name)} <em>${esc(amountLabel(g.best.food, g.best.grams))}</em></div>
           </div>
           <div class="coach-gap-add">
             <div class="coach-gap-plus">+${Math.min(999, g.best.addedPct)}%</div>
@@ -341,7 +349,7 @@ function entryRow(entry, index) {
     <div class="entry-row">
       <div class="entry-main">
         <div class="entry-name">${esc(name)}</div>
-        <div class="entry-sub">${entry.grams} g · ${kcal} kcal · ${prot} g P</div>
+        <div class="entry-sub">${food ? esc(amountLabel(food, entry.grams)) : entry.grams + ' g'} · ${kcal} kcal · ${prot} g P</div>
       </div>
       <button class="entry-del" data-entry="${index}" aria-label="Entfernen">✕</button>
     </div>`;
@@ -409,14 +417,37 @@ function openAddFoodSheet() {
           ${picks.map(q => `
             <button class="quick-chip" data-qadd="${q.food.id}" data-grams="${q.grams}">
               <span class="quick-name">${esc(q.food.name)}</span>
-              <span class="quick-meta">${q.grams} g · ${Math.round(q.food.per100.kcal * q.grams/100)} kcal</span>
+              <span class="quick-meta">${esc(amountLabel(q.food, q.grams))} · ${Math.round(q.food.per100.kcal * q.grams/100)} kcal</span>
             </button>`).join('')}
         </div>
       </div>`;
   }
 
+  function defaultGrams(food) {
+    if (food.piece) return food.piece.g * (food.piece.def || 1);
+    return (food.servings && food.servings[0]) ? food.servings[0].grams : 100;
+  }
+
   function selectedPanel(food) {
-    const defGrams = (food.servings && food.servings[0]) ? food.servings[0].grams : 100;
+    const defGrams = defaultGrams(food);
+    // Stück-Lebensmittel: Anzahl-Stepper
+    if (food.piece) {
+      const count = Math.max(1, Math.round(defGrams / food.piece.g));
+      return `
+        <div class="sel-panel">
+          <div class="sel-name">${esc(food.name)}</div>
+          <div class="stepper">
+            <button class="step-btn" id="step-minus" aria-label="weniger">−</button>
+            <div class="step-count"><span id="step-num">${count}</span><em>× ${esc(food.piece.name)}</em></div>
+            <button class="step-btn" id="step-plus" aria-label="mehr">＋</button>
+          </div>
+          <input type="hidden" id="gram-input" value="${count * food.piece.g}">
+          <div class="gram-note" id="gram-note"></div>
+          <div class="sel-preview" id="sel-preview"></div>
+          <button class="btn-primary" id="confirm-add">Hinzufügen</button>
+        </div>`;
+    }
+    // Gramm-Lebensmittel: Gramm-Eingabe + Portionschips
     return `
       <div class="sel-panel">
         <div class="sel-name">${esc(food.name)}</div>
@@ -436,20 +467,36 @@ function openAddFoodSheet() {
   function wireSelectedPanel(food) {
     const gramInput = $('#gram-input');
     const preview = $('#sel-preview');
+    const note = $('#gram-note');
     const updatePreview = () => {
       const g = Number(gramInput.value) || 0;
       const f = g / 100;
+      if (note) note.textContent = `= ${Math.round(g)} g`;
       preview.innerHTML = `
         <span>${Math.round(food.per100.kcal*f)} kcal</span>
         <span>${(food.per100.protein*f).toFixed(1)} g P</span>
         <span>${(food.per100.carbs*f).toFixed(1)} g C</span>
         <span>${(food.per100.fat*f).toFixed(1)} g F</span>`;
     };
-    gramInput.oninput = updatePreview;
+
+    if (food.piece) {
+      const stepNum = $('#step-num');
+      const setCount = (c) => {
+        c = Math.max(1, Math.min(20, c));
+        stepNum.textContent = c;
+        gramInput.value = c * food.piece.g;
+        updatePreview();
+      };
+      $('#step-minus').onclick = () => setCount(Number(stepNum.textContent) - 1);
+      $('#step-plus').onclick = () => setCount(Number(stepNum.textContent) + 1);
+    } else {
+      gramInput.oninput = updatePreview;
+      modalRoot.querySelectorAll('[data-serv]').forEach(b => b.onclick = () => {
+        gramInput.value = b.dataset.serv; updatePreview();
+      });
+    }
     updatePreview();
-    modalRoot.querySelectorAll('[data-serv]').forEach(b => b.onclick = () => {
-      gramInput.value = b.dataset.serv; updatePreview();
-    });
+
     $('#confirm-add').onclick = () => {
       const g = Number(gramInput.value) || 0;
       if (g > 0) { store.addEntry(currentDate, food.id, g); closeSheet(); renderToday(); }
@@ -524,6 +571,16 @@ function openFoodEditor(foodId) {
             <input type="checkbox" id="ef-whole" ${food.whole ? 'checked' : ''}>
             <span>Unverarbeitetes Einzelprodukt <em>(darf als 100%-Empfehlung vorgeschlagen werden). Ausschalten für fertige Bowls/Mahlzeiten.</em></span>
           </label>
+          <div class="edit-section">Stück-Größe (optional)</div>
+          <p class="hint" style="margin:0 2px 8px">Wenn ausgefüllt, wird in Stück getrackt (z.B. 1 Paprika) statt in Gramm.</p>
+          <div class="edit-grid">
+            <label class="edit-field"><span>Name (Einzahl)</span>
+              <input type="text" id="ef-piece-name" value="${esc(food.piece?.name || '')}" placeholder="z.B. Ei"></label>
+            <label class="edit-field"><span>Gramm je Stück</span>
+              <input type="number" inputmode="decimal" id="ef-piece-g" value="${food.piece?.g || ''}" placeholder="z.B. 50"></label>
+            <label class="edit-field"><span>Standard-Anzahl</span>
+              <input type="number" inputmode="numeric" id="ef-piece-def" value="${food.piece?.def || ''}" placeholder="z.B. 3"></label>
+          </div>
           <div class="edit-section">Energie & Makros (pro 100 g)</div>
           <div class="edit-grid">${NUTRIENTS.filter(nt=>nt.group==='macro').map(fieldRow).join('')}</div>
           <div class="edit-section">Vitamine</div>
@@ -545,6 +602,16 @@ function openFoodEditor(foodId) {
     food.name = $('#ef-name').value.trim();
     food.cat = $('#ef-cat').value.trim() || 'Sonstige';
     food.whole = $('#ef-whole').checked;
+    const pG = Number($('#ef-piece-g').value) || 0;
+    if (pG > 0) {
+      food.piece = {
+        g: pG,
+        def: Math.max(1, Number($('#ef-piece-def').value) || 1),
+        name: $('#ef-piece-name').value.trim() || 'Stück',
+      };
+    } else {
+      delete food.piece;
+    }
     if (!food.name) { alert('Bitte einen Namen eingeben.'); return; }
     modalRoot.querySelectorAll('[data-nut]').forEach(inp => {
       food.per100[inp.dataset.nut] = Number(inp.value) || 0;

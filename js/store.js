@@ -267,7 +267,7 @@ export function getQuickPicks(limit = 8, now = Date.now()) {
       if (ageH < 24) rec = 3; else if (ageH < 72) rec = 2; else if (ageH < 168) rec = 1;
     }
     const score = st.hourHits * 2 + st.count + rec;
-    const grams = st.lastGrams || (food.servings && food.servings[0] ? food.servings[0].grams : 100);
+    const grams = st.lastGrams || servingGrams(food);
     scored.push({ food, grams, score });
   }
   scored.sort((a, b) => b.score - a.score);
@@ -276,7 +276,7 @@ export function getQuickPicks(limit = 8, now = Date.now()) {
     // Erststart: sinnvolle Standard-Vorschläge
     const seeds = ['chicken_breast', 'egg', 'oats', 'greek_yogurt', 'banana', 'salmon'];
     return seeds.map(id => s.foods.find(f => f.id === id)).filter(Boolean)
-      .map(food => ({ food, grams: (food.servings && food.servings[0]) ? food.servings[0].grams : 100, score: 0 }));
+      .map(food => ({ food, grams: servingGrams(food), score: 0 }));
   }
   return scored.slice(0, limit);
 }
@@ -294,8 +294,11 @@ export const GAP_KEYS = [
 ];
 
 function servingGrams(food) {
+  if (food.piece) return food.piece.g * (food.piece.def || 1);
   return (food.servings && food.servings[0]) ? food.servings[0].grams : 100;
 }
+
+const MAX_PIECE_SCALE = 3; // Coach schlägt max. so viele Stück vor (damit's gesund/realistisch bleibt)
 
 // Bewertet ein Lebensmittel: wie viel der offenen Tages-Lücken schließt es
 // (Summe der geschlossenen Zielanteile) und was kostet es an kcal.
@@ -345,7 +348,7 @@ export function getRecommendations(key) {
     const target = targets[nutKey];
     const current = totals[nutKey] || 0;
     const currentPct = Math.round((current / target) * 100);
-    // Bestes unverarbeitetes Lebensmittel für genau diesen Nährstoff
+    // Bestes unverarbeitetes Lebensmittel für genau diesen Nährstoff (dichteste Quelle)
     let best = null;
     for (const food of wholeFoods) {
       const g = servingGrams(food);
@@ -354,6 +357,25 @@ export function getRecommendations(key) {
       const addedPct = Math.round((contrib / target) * 100);
       const kcal = Math.round((food.per100.kcal || 0) * (g / 100));
       if (!best || addedPct > best.addedPct) best = { food, grams: g, addedPct, kcal };
+    }
+    // Stück-Lebensmittel zum Lückenfüllen hochrechnen (z.B. 2 Paprika), gedeckelt.
+    if (best && best.food.piece) {
+      const p = best.food.piece;
+      const perPieceContrib = (best.food.per100[nutKey] || 0) / 100 * p.g;
+      const perPieceKcal = (best.food.per100.kcal || 0) / 100 * p.g;
+      const gapAbs = target - current;
+      let count = p.def || 1;
+      while (count < MAX_PIECE_SCALE
+             && perPieceContrib * count < gapAbs
+             && (remainingKcal <= 0 || perPieceKcal * (count + 1) <= remainingKcal)) {
+        count++;
+      }
+      const g = p.g * count;
+      best = {
+        food: best.food, grams: g,
+        addedPct: Math.round((best.food.per100[nutKey] || 0) / 100 * g / target * 100),
+        kcal: Math.round((best.food.per100.kcal || 0) / 100 * g),
+      };
     }
     return { nutKey, current, target, currentPct, best };
   }).filter(x => x.best) // nur Nährstoffe, für die es einen Lieferanten gibt

@@ -110,7 +110,7 @@ export const SEED_FOODS = [
     per100: n({ kcal:165, protein:31, carbs:0, fat:3.6, satfat:1, sodium:74, potassium:256, phosphorus:210, selenium:24, vitB3:13.7, vitB6:0.6, zinc:1, magnesium:29 }) },
 
   { id: 'egg', name: 'Ei (ganz)', cat: 'Protein',
-    servings: [{ label: '1 Ei (50 g)', grams: 50 }],
+    piece: { g: 50, def: 3, name: 'Ei' },
     per100: n({ kcal:143, protein:13, carbs:0.7, fat:10, satfat:3.1, vitA:160, vitD:2, vitB12:0.9, vitB2:0.5, vitB5:1.5, selenium:30, vitB9:47, phosphorus:198, iron:1.8, zinc:1.3, iodine:24 }) },
 
   { id: 'salmon', name: 'Lachs (gegart)', cat: 'Fisch',
@@ -169,10 +169,11 @@ export const SEED_FOODS = [
     per100: n({ kcal:247, protein:13, carbs:41, fat:3.4, fiber:7, magnesium:76, iron:2.5, vitB3:4, manganese:2, selenium:28, vitB9:42, zinc:1.8, sodium:450 }) },
 
   { id: 'sweet_potato', name: 'Süßkartoffel (gegart)', cat: 'Gemüse',
-    servings: [{ label: 'Knolle (150 g)', grams: 150 }],
+    piece: { g: 150, def: 1, name: 'Süßkartoffel' },
     per100: n({ kcal:90, protein:2, carbs:21, fat:0.1, fiber:3.3, vitA:960, vitC:20, potassium:475, manganese:0.5, vitB6:0.3 }) },
 
   { id: 'potato', name: 'Kartoffel (gegart)', cat: 'Gemüse',
+    piece: { g: 150, def: 1, name: 'Kartoffel' },
     per100: n({ kcal:87, protein:2, carbs:20, fat:0.1, fiber:1.8, vitC:13, potassium:379, vitB6:0.3, magnesium:22 }) },
 
   { id: 'broccoli', name: 'Brokkoli (gegart)', cat: 'Gemüse',
@@ -182,29 +183,39 @@ export const SEED_FOODS = [
     per100: n({ kcal:23, protein:2.9, carbs:3.6, fat:0.4, fiber:2.2, vitK:483, vitA:469, vitB9:194, iron:2.7, magnesium:79, vitC:28, potassium:558, calcium:99, manganese:0.9 }) },
 
   { id: 'carrot', name: 'Karotte', cat: 'Gemüse',
+    piece: { g: 65, def: 1, name: 'Karotte' },
     per100: n({ kcal:41, protein:0.9, carbs:10, fat:0.2, fiber:2.8, vitA:835, vitK:13, potassium:320, vitC:5.9 }) },
 
   { id: 'bell_pepper', name: 'Paprika (rot)', cat: 'Gemüse',
+    piece: { g: 120, def: 1, name: 'Paprika' },
     per100: n({ kcal:31, protein:1, carbs:6, fat:0.3, fiber:2.1, vitC:128, vitA:157, vitB6:0.3, vitB9:46, vitE:1.6 }) },
 
   { id: 'tomato', name: 'Tomate', cat: 'Gemüse',
+    piece: { g: 120, def: 1, name: 'Tomate' },
     per100: n({ kcal:18, protein:0.9, carbs:3.9, fat:0.2, fiber:1.2, vitC:14, vitA:42, potassium:237, vitK:7.9, vitB9:15 }) },
 
   { id: 'onion', name: 'Zwiebel', cat: 'Gemüse',
+    piece: { g: 110, def: 1, name: 'Zwiebel' },
     per100: n({ kcal:40, protein:1.1, carbs:9, fat:0.1, fiber:1.7, vitC:7.4, vitB6:0.12, vitB9:19 }) },
 
   { id: 'banana', name: 'Banane', cat: 'Obst',
-    servings: [{ label: '1 Banane (120 g)', grams: 120 }],
+    piece: { g: 120, def: 1, name: 'Banane' },
     per100: n({ kcal:89, protein:1.1, carbs:23, fat:0.3, fiber:2.6, sugar:12, potassium:358, vitB6:0.4, vitC:8.7, magnesium:27 }) },
 
   { id: 'apple', name: 'Apfel', cat: 'Obst',
-    servings: [{ label: '1 Apfel (180 g)', grams: 180 }],
+    piece: { g: 180, def: 1, name: 'Apfel' },
     per100: n({ kcal:52, protein:0.3, carbs:14, fat:0.2, fiber:2.4, sugar:10, vitC:4.6, potassium:107 }) },
 
+  { id: 'kiwi', name: 'Kiwi', cat: 'Obst',
+    piece: { g: 75, def: 2, name: 'Kiwi' },
+    per100: n({ kcal:61, protein:1.1, carbs:15, fat:0.5, fiber:3, sugar:9, vitC:93, vitK:40, vitE:1.5, potassium:312, vitB9:25, calcium:34, magnesium:17 }) },
+
   { id: 'blueberries', name: 'Heidelbeeren', cat: 'Obst',
+    servings: [{ label: 'Portion (100 g)', grams: 100 }],
     per100: n({ kcal:57, protein:0.7, carbs:14, fat:0.3, fiber:2.4, sugar:10, vitC:9.7, vitK:19, manganese:0.3 }) },
 
   { id: 'orange', name: 'Orange', cat: 'Obst',
+    piece: { g: 130, def: 1, name: 'Orange' },
     per100: n({ kcal:47, protein:0.9, carbs:12, fat:0.1, fiber:2.4, sugar:9, vitC:53, vitB9:30, potassium:181, calcium:40, vitB1:0.09 }) },
 
   { id: 'avocado', name: 'Avocado', cat: 'Obst',
