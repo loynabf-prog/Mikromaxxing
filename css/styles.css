@@ -300,6 +300,71 @@ select { appearance: none; -webkit-appearance: none; }
 .backup-btns .btn-secondary { flex: 1; }
 .danger-card { border-color: rgba(248,113,113,0.2); }
 
+/* --- Schnellzugriff --- */
+.quick-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+.quick-row::-webkit-scrollbar { display: none; }
+.quick-chip {
+  flex: 0 0 auto; background: var(--card-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 12px; padding: 10px 13px; cursor: pointer; text-align: left;
+  display: flex; flex-direction: column; gap: 3px; min-width: 108px; max-width: 160px;
+}
+.quick-chip:active { background: var(--line); border-color: var(--accent-dim); }
+.quick-name { font-weight: 600; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.quick-meta { color: var(--text-dim); font-size: 11px; }
+.quick-sheet { margin-bottom: 12px; }
+.quick-sheet-label { font-size: 12px; color: var(--text-dim); font-weight: 700; margin-bottom: 8px; }
+
+/* --- Coach --- */
+.coach-card { border-color: rgba(74,222,128,0.28); background: linear-gradient(180deg, rgba(74,222,128,0.06), var(--card) 60%); }
+.coach-card.done { text-align: center; padding: 22px 16px; }
+.coach-done { font-size: 17px; font-weight: 800; }
+.coach-done-sub { color: var(--text-dim); font-size: 13px; margin-top: 4px; }
+.over { color: var(--danger); }
+
+.coach-top { margin-bottom: 14px; }
+.coach-top-label { font-size: 12px; color: var(--text-dim); font-weight: 700; margin-bottom: 7px; }
+.coach-top-card {
+  width: 100%; display: flex; align-items: center; gap: 10px; text-align: left;
+  background: var(--card-2); border: 1px solid var(--accent-dim); border-radius: 13px;
+  padding: 12px 14px; cursor: pointer; color: var(--text); margin-bottom: 8px;
+}
+.coach-top-card:active { background: var(--line); }
+.coach-top-main { flex: 1; min-width: 0; }
+.coach-top-name { font-weight: 700; font-size: 15px; }
+.coach-top-name em { color: var(--text-dim); font-style: normal; font-weight: 400; font-size: 13px; }
+.coach-top-contribs { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.cbadge { background: rgba(74,222,128,0.15); color: var(--accent); font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 6px; white-space: nowrap; }
+.coach-top-add { display: flex; flex-direction: column; align-items: center; gap: 4px; flex-shrink: 0; }
+.coach-top-kcal { font-size: 12px; color: var(--text-dim); white-space: nowrap; }
+.coach-add-btn { width: 32px; height: 32px; border-radius: 50%; background: var(--accent); color: #06210f; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 300; }
+
+.coach-alt { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+  background: none; border: none; border-top: 1px solid var(--line); padding: 9px 2px; cursor: pointer; color: var(--text); text-align: left; }
+.coach-alt span:first-child { font-size: 13px; font-weight: 600; }
+.coach-alt em { color: var(--text-faint); font-style: normal; font-weight: 400; }
+.coach-alt-meta { color: var(--text-dim); font-size: 12px; white-space: nowrap; flex-shrink: 0; }
+
+.coach-gaps-label { font-size: 12px; color: var(--text-dim); font-weight: 700; margin: 4px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); }
+.coach-gap { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  background: var(--card-2); border: 1px solid var(--line); border-radius: 11px; padding: 10px 12px; margin-bottom: 7px; cursor: pointer; color: var(--text); text-align: left; }
+.coach-gap:active { background: var(--line); }
+.coach-gap-info { min-width: 0; flex: 1; }
+.coach-gap-nut { font-weight: 600; font-size: 14px; }
+.coach-gap-pct { color: var(--danger); font-size: 12px; font-weight: 700; margin-left: 4px; }
+.coach-gap-food { color: var(--text-dim); font-size: 12px; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.coach-gap-food em { color: var(--text-faint); font-style: normal; }
+.coach-gap-add { text-align: right; flex-shrink: 0; }
+.coach-gap-plus { color: var(--accent); font-weight: 800; font-size: 14px; }
+.coach-gap-kcal { color: var(--text-dim); font-size: 11px; }
+.coach-more { width: 100%; background: none; border: 1px dashed var(--line); color: var(--text-dim); border-radius: 10px; padding: 9px; font-size: 13px; font-weight: 600; cursor: pointer; margin-top: 4px; }
+
+/* --- Toggle-Feld & Tags --- */
+.toggle-field { display: flex; align-items: flex-start; gap: 10px; background: var(--card-2); border: 1px solid var(--line); border-radius: 10px; padding: 11px 12px; margin-top: 10px; cursor: pointer; }
+.toggle-field input { width: 20px; height: 20px; flex-shrink: 0; margin-top: 1px; accent-color: var(--accent); }
+.toggle-field span { font-size: 13px; }
+.toggle-field em { display: block; color: var(--text-faint); font-style: normal; font-size: 11px; margin-top: 2px; }
+.meal-tag { background: var(--card-2); color: var(--fat); font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 5px; margin-left: 6px; vertical-align: middle; }
+
 /* --- Toast --- */
 #toast {
   position: fixed; bottom: calc(var(--nav-h) + 24px + var(--safe-b)); left: 50%;
@@ -309,6 +374,9 @@ select { appearance: none; -webkit-appearance: none; }
   max-width: 90%; text-align: center; box-shadow: 0 6px 20px rgba(0,0,0,0.3);
 }
 #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast { display: flex; align-items: center; gap: 12px; pointer-events: none; }
+.toast-msg { pointer-events: none; }
+.toast-action { pointer-events: auto; background: rgba(0,0,0,0.18); border: none; color: #06210f; font-weight: 800; font-size: 13px; padding: 6px 10px; border-radius: 8px; cursor: pointer; }
 
 @media (min-width: 500px) {
   .edit-grid { grid-template-columns: 1fr 1fr 1fr; }

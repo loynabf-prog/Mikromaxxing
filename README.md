@@ -6,11 +6,15 @@ direkt am Handy, komplett offline, kostenlos über GitHub Pages. Keine Anmeldung
 
 ## Features
 
+- **⚡ Schnellzugriff (Smart-Mix)** – deine Standard-Sachen mit einem Tap loggen. Sortiert automatisch nach Uhrzeit (was isst du sonst um diese Zeit?), zuletzt gegessen und Häufigkeit. Mit „Rückgängig".
+- **🎯 100%-Coach** – schaut, was dir heute noch fehlt, und empfiehlt unverarbeitete Produkte, um deine Lücken zu schließen, **ohne dein Kalorienlimit zu sprengen**:
+  - *Bester nächster Happen*: das Lebensmittel, das die meisten Lücken auf einmal füllt (z.B. „Lachs → +330% Omega-3, +83% Vit. D · 309 kcal")
+  - *Was dir noch fehlt*: pro Nährstoff der beste Lieferant, sortiert nach größtem Defizit (z.B. „Vitamin C 0% → Paprika +116%, 31 kcal") – ein Tap fügt hinzu
 - **Kalorien- & Makro-Ring** (Protein / Carbs / Fett) mit personalisierten Zielen
 - **Komplettes Vitamin- & Mineralstoff-Panel** (A, C, D, E, K, alle B-Vitamine, Calcium, Eisen, Magnesium, Zink, Kalium, u.v.m.)
 - **Wasser-Tracker** mit Schnell-Buttons
 - **Supplement-Checkliste** (Creatin, D3, K2, Magnesium, Ashwagandha, Shilajit – anpassbar)
-- **Eigene Lebensmittel-Bibliothek** mit ~38 unverarbeiteten Basics als Startset; eigene Lebensmittel mit vollem Nährstoffprofil anlegbar
+- **Eigene Lebensmittel-Bibliothek** mit ~38 unverarbeiteten Basics als Startset; eigene Lebensmittel mit vollem Nährstoffprofil anlegbar. Fertige Bowls/Mahlzeiten als eigenes Item (Flag „Mahlzeit" → zählt nicht als 100%-Empfehlung).
 - **Trends** über 14 Tage (Kalorien, Protein, Wasser, Gewichtsverlauf)
 - **Gewichts-Tracking** pro Tag
 - **Kalorien-/Makro-Rechner** (Mifflin-St Jeor) auf Basis deiner Körperdaten

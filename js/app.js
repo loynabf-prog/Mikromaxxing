@@ -61,6 +61,9 @@ function renderToday() {
   const macroKeys = ['protein', 'carbs', 'fat'];
   const macroColors = { protein: 'var(--protein)', carbs: 'var(--carbs)', fat: 'var(--fat)' };
 
+  const quickPicks = store.getQuickPicks(8);
+  const rec = store.getRecommendations(currentDate);
+
   app.innerHTML = `
     <div class="date-bar">
       <button class="date-nav" id="prev-day" aria-label="Vorheriger Tag">‹</button>
@@ -75,6 +78,21 @@ function renderToday() {
         ${macroKeys.map(k => macroBar(k, totals[k], targets[k], macroColors[k])).join('')}
       </div>
     </div>
+
+    <!-- Schnellzugriff -->
+    <div class="card">
+      <div class="card-head"><span>⚡ Schnellzugriff</span></div>
+      <div class="quick-row">
+        ${quickPicks.map(q => `
+          <button class="quick-chip" data-quick="${q.food.id}" data-grams="${q.grams}">
+            <span class="quick-name">${esc(q.food.name)}</span>
+            <span class="quick-meta">${q.grams} g · ${Math.round(q.food.per100.kcal * q.grams/100)} kcal</span>
+          </button>`).join('')}
+      </div>
+    </div>
+
+    <!-- 100%-Coach -->
+    ${coachCard(rec)}
 
     <!-- Wasser -->
     <div class="card">
@@ -170,6 +188,100 @@ function renderToday() {
   const wInput = $('#weight-input');
   wInput.onchange = () => store.setWeight(currentDate, wInput.value);
   $('#add-food-btn').onclick = openAddFoodSheet;
+
+  // Schnellzugriff & Coach: One-Tap-Logging
+  app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
+    quickLog(b.dataset.quick, Number(b.dataset.grams)));
+  app.querySelectorAll('[data-rec]').forEach(b => b.onclick = () =>
+    quickLog(b.dataset.rec, Number(b.dataset.grams)));
+  const coachToggle = $('#coach-toggle');
+  if (coachToggle) coachToggle.onclick = () => {
+    coachExpanded = !coachExpanded; renderToday();
+  };
+}
+
+// One-Tap-Logging mit Undo
+function quickLog(foodId, grams) {
+  const food = store.foodById(foodId);
+  if (!food) return;
+  const index = store.addEntry(currentDate, foodId, grams);
+  renderToday();
+  toast(`${food.name} (${grams} g) hinzugefügt`, 'Rückgängig', () => {
+    store.removeEntry(currentDate, index); renderToday();
+  });
+}
+
+// --- Coach-Karte -------------------------------------------------------------
+let coachExpanded = false;
+
+function coachCard(rec) {
+  if (rec.allDone) {
+    return `
+      <div class="card coach-card done">
+        <div class="coach-done">🎉 Alle Tagesziele erreicht!</div>
+        <div class="coach-done-sub">Makros & Mikros sind auf 100%. Stark.</div>
+      </div>`;
+  }
+
+  const kcalLine = rec.remainingKcal > 0
+    ? `noch <strong>${Math.round(rec.remainingKcal)} kcal</strong> übrig`
+    : `<strong class="over">Kalorienlimit erreicht</strong> – Tipps sind kalorienarm`;
+
+  const top = rec.topTips[0];
+  const topHtml = top ? `
+    <div class="coach-top">
+      <div class="coach-top-label">💡 Bester nächster Happen</div>
+      <button class="coach-top-card" data-rec="${top.food.id}" data-grams="${top.grams}">
+        <div class="coach-top-main">
+          <div class="coach-top-name">${esc(top.food.name)} <em>${top.grams} g</em></div>
+          <div class="coach-top-contribs">${contribLine(top.contribs)}</div>
+        </div>
+        <div class="coach-top-add">
+          <div class="coach-top-kcal">${Math.round(top.kcal)} kcal</div>
+          <div class="coach-add-btn">＋</div>
+        </div>
+      </button>
+      ${rec.topTips.slice(1, 4).map(t => `
+        <button class="coach-alt" data-rec="${t.food.id}" data-grams="${t.grams}">
+          <span>${esc(t.food.name)} <em>${t.grams} g</em></span>
+          <span class="coach-alt-meta">${contribLine(t.contribs, 1)} · ${Math.round(t.kcal)} kcal ＋</span>
+        </button>`).join('')}
+    </div>` : '';
+
+  const shown = coachExpanded ? rec.perNutrient : rec.perNutrient.slice(0, 5);
+  const listHtml = `
+    <div class="coach-gaps-label">Was dir noch fehlt (${rec.perNutrient.length})</div>
+    ${shown.map(g => {
+      const nt = NUTRIENT_BY_KEY[g.nutKey];
+      return `
+        <button class="coach-gap" data-rec="${g.best.food.id}" data-grams="${g.best.grams}">
+          <div class="coach-gap-info">
+            <div class="coach-gap-nut">${esc(nt.label)} <span class="coach-gap-pct">${g.currentPct}%</span></div>
+            <div class="coach-gap-food">→ ${esc(g.best.food.name)} <em>${g.best.grams} g</em></div>
+          </div>
+          <div class="coach-gap-add">
+            <div class="coach-gap-plus">+${Math.min(999, g.best.addedPct)}%</div>
+            <div class="coach-gap-kcal">${g.best.kcal} kcal</div>
+          </div>
+        </button>`;
+    }).join('')}
+    ${rec.perNutrient.length > 5 ? `<button class="coach-more" id="coach-toggle">${coachExpanded ? 'Weniger anzeigen' : `Alle ${rec.perNutrient.length} anzeigen`}</button>` : ''}`;
+
+  return `
+    <div class="card coach-card">
+      <div class="card-head"><span>🎯 Auf 100% bringen</span>
+        <span class="card-head-val">${kcalLine}</span></div>
+      ${topHtml}
+      ${listHtml}
+    </div>`;
+}
+
+function contribLine(contribs, max = 3) {
+  return contribs.slice(0, max).map(c => {
+    const nt = NUTRIENT_BY_KEY[c.key];
+    const short = nt.label.replace('Vitamin ', 'Vit. ').replace(' (B7)', '').replace(' (B9)', '');
+    return `<span class="cbadge">+${Math.min(999, c.addedPct)}% ${esc(short)}</span>`;
+  }).join('');
 }
 
 function calorieRing(value, target) {
@@ -261,6 +373,7 @@ function openAddFoodSheet() {
           </div>
           <input type="search" id="food-search" class="search" placeholder="Suchen…" value="${esc(query)}" autocomplete="off">
           ${selected ? selectedPanel(selected) : ''}
+          ${(!query && !selected) ? quickSheetSection() : ''}
           <div class="food-results">
             ${filtered.length === 0
               ? '<div class="empty">Nichts gefunden. Neues Lebensmittel im Tab „Bibliothek" anlegen.</div>'
@@ -280,7 +393,26 @@ function openAddFoodSheet() {
     modalRoot.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
       selected = store.foodById(b.dataset.food); draw();
     });
+    modalRoot.querySelectorAll('[data-qadd]').forEach(b => b.onclick = () => {
+      quickLog(b.dataset.qadd, Number(b.dataset.grams)); closeSheet();
+    });
     if (selected) wireSelectedPanel(selected);
+  }
+
+  function quickSheetSection() {
+    const picks = store.getQuickPicks(8);
+    if (!picks.length) return '';
+    return `
+      <div class="quick-sheet">
+        <div class="quick-sheet-label">⚡ Schnellzugriff</div>
+        <div class="quick-row">
+          ${picks.map(q => `
+            <button class="quick-chip" data-qadd="${q.food.id}" data-grams="${q.grams}">
+              <span class="quick-name">${esc(q.food.name)}</span>
+              <span class="quick-meta">${q.grams} g · ${Math.round(q.food.per100.kcal * q.grams/100)} kcal</span>
+            </button>`).join('')}
+        </div>
+      </div>`;
   }
 
   function selectedPanel(food) {
@@ -349,7 +481,7 @@ function renderLibrary() {
         <div class="cat-title">${esc(cat)}</div>
         ${foods.filter(f => (f.cat||'Sonstige') === cat).map(f => `
           <button class="lib-item" data-edit="${f.id}">
-            <span class="lib-name">${esc(f.name)}</span>
+            <span class="lib-name">${esc(f.name)}${f.whole === false ? ' <span class="meal-tag">Mahlzeit</span>' : ''}</span>
             <span class="lib-meta">${Math.round(f.per100.kcal)} kcal · ${f.per100.protein}P/${f.per100.carbs}C/${f.per100.fat}F</span>
           </button>`).join('')}
       </div>`).join('')}
@@ -363,8 +495,10 @@ function openFoodEditor(foodId) {
   const existing = foodId ? store.foodById(foodId) : null;
   const food = existing ? structuredClone(existing) : {
     id: 'food_' + Date.now().toString(36),
-    name: '', cat: 'Sonstige', servings: [], per100: Object.fromEntries(NUTRIENTS.map(nt => [nt.key, 0])),
+    name: '', cat: 'Sonstige', whole: true, servings: [],
+    per100: Object.fromEntries(NUTRIENTS.map(nt => [nt.key, 0])),
   };
+  if (typeof food.whole !== 'boolean') food.whole = true;
 
   function fieldRow(nt) {
     return `
@@ -386,6 +520,10 @@ function openFoodEditor(foodId) {
             <input type="text" id="ef-name" value="${esc(food.name)}" placeholder="z.B. Magerquark"></label>
           <label class="edit-field wide"><span>Kategorie</span>
             <input type="text" id="ef-cat" value="${esc(food.cat||'')}" placeholder="z.B. Milchprodukte"></label>
+          <label class="toggle-field">
+            <input type="checkbox" id="ef-whole" ${food.whole ? 'checked' : ''}>
+            <span>Unverarbeitetes Einzelprodukt <em>(darf als 100%-Empfehlung vorgeschlagen werden). Ausschalten für fertige Bowls/Mahlzeiten.</em></span>
+          </label>
           <div class="edit-section">Energie & Makros (pro 100 g)</div>
           <div class="edit-grid">${NUTRIENTS.filter(nt=>nt.group==='macro').map(fieldRow).join('')}</div>
           <div class="edit-section">Vitamine</div>
@@ -406,6 +544,7 @@ function openFoodEditor(foodId) {
   $('#ef-save').onclick = () => {
     food.name = $('#ef-name').value.trim();
     food.cat = $('#ef-cat').value.trim() || 'Sonstige';
+    food.whole = $('#ef-whole').checked;
     if (!food.name) { alert('Bitte einen Namen eingeben.'); return; }
     modalRoot.querySelectorAll('[data-nut]').forEach(inp => {
       food.per100[inp.dataset.nut] = Number(inp.value) || 0;
@@ -705,12 +844,20 @@ function calcMacros(p) {
 
 // --- Toast -------------------------------------------------------------------
 let toastTimer = null;
-function toast(msg) {
+function toast(msg, actionLabel, actionCb) {
   let el = $('#toast');
   if (!el) { el = document.createElement('div'); el.id = 'toast'; document.body.appendChild(el); }
-  el.textContent = msg; el.classList.add('show');
+  el.innerHTML = `<span class="toast-msg">${esc(msg)}</span>`;
+  if (actionLabel && actionCb) {
+    const btn = document.createElement('button');
+    btn.className = 'toast-action';
+    btn.textContent = actionLabel;
+    btn.onclick = () => { actionCb(); el.classList.remove('show'); };
+    el.appendChild(btn);
+  }
+  el.classList.add('show');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => el.classList.remove('show'), 2200);
+  toastTimer = setTimeout(() => el.classList.remove('show'), actionLabel ? 4000 : 2200);
 }
 
 // --- Export (ohne <a download> Abhängigkeit robust) --------------------------

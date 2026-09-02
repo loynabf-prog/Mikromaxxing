@@ -75,6 +75,8 @@ function migrate(parsed) {
   if (!Array.isArray(merged.foods) || merged.foods.length === 0) merged.foods = base.foods;
   if (!Array.isArray(merged.supplements)) merged.supplements = base.supplements;
   if (!merged.log) merged.log = {};
+  // Normalisierung: jedes Lebensmittel hat ein whole-Flag (Standard: unverarbeitet).
+  for (const f of merged.foods) if (typeof f.whole !== 'boolean') f.whole = true;
   return merged;
 }
 
@@ -100,8 +102,9 @@ export function getDay(key) {
 
 export function addEntry(key, foodId, grams) {
   const day = getDay(key);
-  day.entries.push({ foodId, grams: Number(grams) || 0 });
+  day.entries.push({ foodId, grams: Number(grams) || 0, ts: Date.now() });
   save();
+  return day.entries.length - 1;
 }
 
 export function updateEntry(key, index, grams) {
@@ -223,4 +226,151 @@ export function resetAll() {
   state = freshState();
   save();
   return state;
+}
+
+// ============================================================================
+// Schnellzugriff (Smart-Mix): Uhrzeit + zuletzt + Häufigkeit
+// ============================================================================
+// Liefert die passendsten Lebensmittel zum One-Tap-Loggen, inkl. vorgeschlagener
+// Grammzahl (aus der letzten Nutzung).
+export function getQuickPicks(limit = 8, now = Date.now()) {
+  const s = load();
+  const nowHour = new Date(now).getHours();
+  const stats = new Map(); // foodId -> { count, lastTs, lastGrams, hourHits }
+
+  for (const key of Object.keys(s.log)) {
+    for (const e of s.log[key].entries) {
+      if (!e.foodId) continue;
+      let st = stats.get(e.foodId);
+      if (!st) { st = { count: 0, lastTs: 0, lastGrams: 0, hourHits: 0 }; stats.set(e.foodId, st); }
+      st.count += 1;
+      if (e.ts) {
+        if (e.ts > st.lastTs) { st.lastTs = e.ts; st.lastGrams = e.grams; }
+        const h = new Date(e.ts).getHours();
+        let diff = Math.abs(h - nowHour);
+        if (diff > 12) diff = 24 - diff;      // zyklisch
+        if (diff <= 2) st.hourHits += 1;      // ±2 Stunden
+      } else if (!st.lastGrams) {
+        st.lastGrams = e.grams;
+      }
+    }
+  }
+
+  const scored = [];
+  for (const [foodId, st] of stats) {
+    const food = s.foods.find(f => f.id === foodId);
+    if (!food) continue;
+    // Recency-Bonus
+    let rec = 0;
+    if (st.lastTs) {
+      const ageH = (now - st.lastTs) / 3.6e6;
+      if (ageH < 24) rec = 3; else if (ageH < 72) rec = 2; else if (ageH < 168) rec = 1;
+    }
+    const score = st.hourHits * 2 + st.count + rec;
+    const grams = st.lastGrams || (food.servings && food.servings[0] ? food.servings[0].grams : 100);
+    scored.push({ food, grams, score });
+  }
+  scored.sort((a, b) => b.score - a.score);
+
+  if (scored.length === 0) {
+    // Erststart: sinnvolle Standard-Vorschläge
+    const seeds = ['chicken_breast', 'egg', 'oats', 'greek_yogurt', 'banana', 'salmon'];
+    return seeds.map(id => s.foods.find(f => f.id === id)).filter(Boolean)
+      .map(food => ({ food, grams: (food.servings && food.servings[0]) ? food.servings[0].grams : 100, score: 0 }));
+  }
+  return scored.slice(0, limit);
+}
+
+// ============================================================================
+// 100%-Coach: Empfehlungen zum Schließen der Nährstoff-Lücken
+// ============================================================================
+// Nährstoffe, die "auf 100%" gebracht werden sollen (ohne kcal & Limit-Werte).
+export const GAP_KEYS = [
+  'protein', 'fiber', 'omega3',
+  'vitA', 'vitC', 'vitD', 'vitE', 'vitK',
+  'vitB1', 'vitB2', 'vitB3', 'vitB5', 'vitB6', 'vitB7', 'vitB9', 'vitB12',
+  'calcium', 'iron', 'magnesium', 'zinc', 'potassium', 'phosphorus',
+  'selenium', 'copper', 'manganese', 'iodine',
+];
+
+function servingGrams(food) {
+  return (food.servings && food.servings[0]) ? food.servings[0].grams : 100;
+}
+
+// Bewertet ein Lebensmittel: wie viel der offenen Tages-Lücken schließt es
+// (Summe der geschlossenen Zielanteile) und was kostet es an kcal.
+function scoreFood(food, grams, totals, targets) {
+  const factor = grams / 100;
+  let gapClose = 0;
+  const contribs = [];
+  for (const key of GAP_KEYS) {
+    const target = targets[key];
+    if (!target) continue;
+    const gap = target - (totals[key] || 0);
+    if (gap <= 0.0001) continue;
+    const contrib = (food.per100[key] || 0) * factor;
+    if (contrib <= 0) continue;
+    const filled = Math.min(contrib, gap);
+    gapClose += filled / target;
+    contribs.push({ key, addedPct: Math.round((contrib / target) * 100) });
+  }
+  contribs.sort((a, b) => b.addedPct - a.addedPct);
+  return { gapClose, kcal: (food.per100.kcal || 0) * factor, contribs };
+}
+
+export function getRecommendations(key) {
+  const s = load();
+  const totals = computeTotals(key);
+  const targets = s.profile.targets;
+  const remainingKcal = targets.kcal - (totals.kcal || 0);
+  const wholeFoods = s.foods.filter(f => f.whole !== false);
+
+  // Offene Lücken (für die Fortschrittsanzeige / Erfolgszustand)
+  const openGaps = GAP_KEYS.filter(k => targets[k] && (totals[k] || 0) < targets[k] * 0.999);
+
+  // --- Top-Tipps: Lebensmittel, die am meisten Lücken pro Portion schließen ---
+  const ranked = wholeFoods
+    .map(food => {
+      const g = servingGrams(food);
+      return { food, grams: g, ...scoreFood(food, g, totals, targets) };
+    })
+    .filter(r => r.gapClose > 0.0001)
+    .sort((a, b) => b.gapClose - a.gapClose);
+
+  const fits = ranked.filter(r => r.kcal <= remainingKcal + 5);
+  const topTips = (fits.length ? fits : ranked).slice(0, 4);
+
+  // --- Aufschlüsselung pro fehlendem Nährstoff (größtes Defizit zuerst) ------
+  const perNutrient = openGaps.map(nutKey => {
+    const target = targets[nutKey];
+    const current = totals[nutKey] || 0;
+    const currentPct = Math.round((current / target) * 100);
+    // Bestes unverarbeitetes Lebensmittel für genau diesen Nährstoff
+    let best = null;
+    for (const food of wholeFoods) {
+      const g = servingGrams(food);
+      const contrib = (food.per100[nutKey] || 0) * (g / 100);
+      if (contrib <= 0) continue;
+      const addedPct = Math.round((contrib / target) * 100);
+      const kcal = Math.round((food.per100.kcal || 0) * (g / 100));
+      if (!best || addedPct > best.addedPct) best = { food, grams: g, addedPct, kcal };
+    }
+    return { nutKey, current, target, currentPct, best };
+  }).filter(x => x.best) // nur Nährstoffe, für die es einen Lieferanten gibt
+    .sort((a, b) => a.currentPct - b.currentPct);
+
+  return { totals, remainingKcal, openGaps, topTips, perNutrient, allDone: openGaps.length === 0 };
+}
+
+export function lastGramsFor(foodId) {
+  const s = load();
+  let latest = null;
+  for (const key of Object.keys(s.log)) {
+    for (const e of s.log[key].entries) {
+      if (e.foodId === foodId && (!latest || (e.ts || 0) > (latest.ts || 0))) latest = e;
+    }
+  }
+  if (latest) return latest.grams;
+  const food = s.foods.find(f => f.id === foodId);
+  return food && food.servings && food.servings[0] ? food.servings[0].grams : 100;
 }
