@@ -48,6 +48,7 @@ function freshState() {
     autopilot: structuredClone(DEFAULT_AUTOPILOT),
     _seedTrimV1: true,
     _athleteV1: true,
+    _athleteV2: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
   };
 }
@@ -121,6 +122,14 @@ function migrate(parsed) {
     merged.profile.goal = 'recomp';
     Object.assign(merged.profile.targets, { kcal: 2450, protein: 210, carbs: 210, fat: 85 });
     merged._athleteV1 = true;
+  }
+  // Stack-Update (persönliche Auswahl): fehlende Lebensmittel ergänzen, neuen
+  // Essential-Stack setzen. Log bleibt erhalten.
+  if (!merged._athleteV2) {
+    const have = new Set(merged.foods.map(f => f.id));
+    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
+    merged.autopilot = structuredClone(DEFAULT_AUTOPILOT);
+    merged._athleteV2 = true;
   }
   return merged;
 }

@@ -172,7 +172,7 @@ export const SEED_FOODS = [
     piece: { g: 50, def: 3, name: 'Ei' },
     per100: n({ kcal:143, protein:13, carbs:0.7, fat:10, satfat:3.1, vitA:160, vitD:2, vitB12:0.9, vitB2:0.5, vitB5:1.5, vitB7:22, selenium:30, vitB9:47, phosphorus:198, iron:1.8, zinc:1.3, iodine:24 }) },
 
-  { id: 'magerquark', name: 'Magerquark', cat: 'Protein',
+  { id: 'magerquark', name: 'Magerquark / Skyr', cat: 'Protein',
     servings: [{ label: 'Becher (250 g)', grams: 250 }],
     per100: n({ kcal:67, protein:12, carbs:4, fat:0.3, calcium:90, vitB12:0.8, vitB2:0.3, phosphorus:140, potassium:95, selenium:10, iodine:8 }) },
 
@@ -219,6 +219,10 @@ export const SEED_FOODS = [
   { id: 'pumpkin_seeds', name: 'Kürbiskerne', cat: 'Nüsse & Samen',
     servings: [{ label: 'Handvoll (30 g)', grams: 30 }],
     per100: n({ kcal:559, protein:30, carbs:11, fat:49, satfat:8.7, fiber:6, magnesium:592, zinc:7.6, iron:8.8, manganese:4.5, phosphorus:1233, potassium:809, copper:1.3 }) },
+
+  { id: 'walnuts', name: 'Walnüsse', cat: 'Nüsse & Samen',
+    servings: [{ label: 'Handvoll (20 g)', grams: 20 }],
+    per100: n({ kcal:654, protein:15, carbs:14, fat:65, satfat:6.1, fiber:6.7, omega3:9000, manganese:3.4, magnesium:158, copper:1.6, phosphorus:346, vitB6:0.5 }) },
 
 ];
 
@@ -332,14 +336,24 @@ export const DEFAULT_HABITS = [
 // Fokus: Mikros/Vitamine über Obst & Gemüse abdecken. Protein/Carb-Basics
 // fügst du selbst hinzu, sobald du sie in der Bibliothek angelegt hast.
 export const DEFAULT_AUTOPILOT = [
-  { foodId: 'egg',           grams: 150 }, // 3 Eier
+  // Protein-Basis
+  { foodId: 'egg',           grams: 150 }, // 3 Eier – Protein, Biotin, B12, Selen
   { foodId: 'magerquark',    grams: 250 }, // Protein, Calcium, B12
-  { foodId: 'whey',          grams: 30 },  // 1 Scoop
-  { foodId: 'oats',          grams: 60 },  // Carbs-Basis, Magnesium, Zink
-  { foodId: 'sardines',      grams: 100 }, // Omega-3, D, B12, Calcium, Jod
-  { foodId: 'spinach',       grams: 100 }, // K, A, Folat, Eisen, Magnesium
+  { foodId: 'whey',          grams: 30 },  // 1 Scoop – Protein
+  // Basis / Carbs
+  { foodId: 'oats',          grams: 50 },  // Carbs, Magnesium, Zink, B1, Ballaststoffe
+  // Gemüse
   { foodId: 'bell_pepper',   grams: 120 }, // 1 Paprika – Vit C
+  { foodId: 'carrot',        grams: 65 },  // 1 Karotte – Vit A
+  { foodId: 'tomato',        grams: 100 }, // Kalium, Vit C/K
+  { foodId: 'broccoli',      grams: 100 }, // Vit C, K, Folat
+  // Obst
   { foodId: 'kiwi',          grams: 150 }, // 2 Kiwi – Vit C, K, Folat
-  { foodId: 'pumpkin_seeds', grams: 30 },  // Magnesium, Zink, Eisen
-  { foodId: 'blueberries',   grams: 100 }, // Antioxidantien
+  { foodId: 'blueberries',   grams: 80 },  // Antioxidantien
+  { foodId: 'orange',        grams: 130 }, // 1 Orange – Vit C, Folat
+  { foodId: 'banana',        grams: 120 }, // 1 Banane – Kalium, B6
+  // Fette / Nüsse
+  { foodId: 'pumpkin_seeds', grams: 20 },  // Magnesium, Zink, Eisen
+  { foodId: 'walnuts',       grams: 15 },  // Omega-3 (ALA), Kupfer
+  { foodId: 'avocado',       grams: 70 },  // ½ – gesunde Fette, Vit E/K, Kalium
 ];
