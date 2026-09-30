@@ -50,6 +50,7 @@ function freshState() {
     _athleteV1: true,
     _athleteV2: true,
     _variety1: true,
+    _habitsV2: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
   };
 }
@@ -137,6 +138,14 @@ function migrate(parsed) {
     const have = new Set(merged.foods.map(f => f.id));
     for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
     merged._variety1 = true;
+  }
+  // Neue tägliche Gewohnheiten (Knie-Reha, Core, Calisthenics AM/PM) ergänzen
+  if (!merged._habitsV2) {
+    const haveH = new Set(merged.habits.map(h => h.id));
+    const additions = DEFAULT_HABITS.filter(h => !haveH.has(h.id));
+    // Neue Reha-/Athletik-Gewohnheiten nach vorne stellen
+    merged.habits = [...additions, ...merged.habits];
+    merged._habitsV2 = true;
   }
   return merged;
 }

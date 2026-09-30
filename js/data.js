@@ -404,6 +404,12 @@ export const DEFAULT_TRAINING = {
 
 // --- Gewohnheiten (Streaks) --------------------------------------------------
 export const DEFAULT_HABITS = [
+  // Tägliches Athletik-/Reha-Volumen (unabhängig vom Trainingstag)
+  { id: 'h_knee',       name: 'Knie-Reha (Isometrie 5×30–45s)', icon: '🦵' },
+  { id: 'h_core',       name: 'Core-Training',                  icon: '🧱' },
+  { id: 'h_cali_am',    name: 'Calisthenics morgens (Push/Pull/Dips)', icon: '🌅' },
+  { id: 'h_cali_pm',    name: 'Calisthenics abends (Push/Pull/Dips)',  icon: '🌙' },
+  // Lifestyle
   { id: 'h_water',     name: '3,5 L Wasser',            icon: '💧' },
   { id: 'h_nophone',   name: 'Kein Handy 1. Stunde',    icon: '📵' },
   { id: 'h_sun',       name: 'Morgens Tageslicht',      icon: '☀️' },
