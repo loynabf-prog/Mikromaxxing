@@ -49,6 +49,7 @@ function freshState() {
     _seedTrimV1: true,
     _athleteV1: true,
     _athleteV2: true,
+    _variety1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
   };
 }
@@ -130,6 +131,12 @@ function migrate(parsed) {
     for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
     merged.autopilot = structuredClone(DEFAULT_AUTOPILOT);
     merged._athleteV2 = true;
+  }
+  // Neue Lebensmittel für Abwechslung ergänzen (additiv, ändert Stack nicht)
+  if (!merged._variety1) {
+    const have = new Set(merged.foods.map(f => f.id));
+    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
+    merged._variety1 = true;
   }
   return merged;
 }

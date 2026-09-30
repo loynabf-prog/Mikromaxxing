@@ -224,6 +224,87 @@ export const SEED_FOODS = [
     servings: [{ label: 'Handvoll (20 g)', grams: 20 }],
     per100: n({ kcal:654, protein:15, carbs:14, fat:65, satfat:6.1, fiber:6.7, omega3:9000, manganese:3.4, magnesium:158, copper:1.6, phosphorus:346, vitB6:0.5 }) },
 
+  // --- Abwechslung / Fallback (vom Nutzer bestätigt) ---
+  { id: 'tuna_can', name: 'Thunfisch (in Wasser)', cat: 'Fisch',
+    servings: [{ label: 'Dose (120 g)', grams: 120 }],
+    per100: n({ kcal:116, protein:26, carbs:0, fat:0.8, sodium:247, selenium:80, vitB12:2.5, vitB3:13, vitD:2, omega3:270, phosphorus:200, iodine:12 }) },
+
+  { id: 'chicken_thigh', name: 'Hähnchenschenkel (gegart)', cat: 'Protein',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:209, protein:26, carbs:0, fat:11, satfat:3, zinc:2.5, vitB3:6, selenium:22, vitB6:0.35, phosphorus:180, potassium:230 }) },
+
+  { id: 'tofu', name: 'Tofu (fest)', cat: 'Protein',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:144, protein:17, carbs:3, fat:9, satfat:1.3, calcium:350, iron:2.7, magnesium:58, manganese:1.2, selenium:9, zinc:1.6, phosphorus:190 }) },
+
+  { id: 'chickpeas', name: 'Kichererbsen (gegart)', cat: 'Hülsenfrüchte',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:164, protein:8.9, carbs:27, fat:2.6, fiber:7.6, vitB9:172, iron:2.9, magnesium:48, zinc:1.5, copper:0.35, manganese:1, phosphorus:168, potassium:291 }) },
+
+  { id: 'kidney_beans', name: 'Kidneybohnen (gegart)', cat: 'Hülsenfrüchte',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:127, protein:8.7, carbs:23, fat:0.5, fiber:6.4, vitB9:130, iron:2.9, potassium:405, magnesium:45, manganese:0.5, phosphorus:140, zinc:1, copper:0.24 }) },
+
+  { id: 'cheese_gouda', name: 'Käse (Gouda/Emmentaler)', cat: 'Milchprodukte',
+    servings: [{ label: '2 Scheiben (60 g)', grams: 60 }],
+    per100: n({ kcal:356, protein:25, carbs:2, fat:27, satfat:18, calcium:700, vitB12:1.5, vitA:165, zinc:3.9, phosphorus:520, selenium:15, sodium:820, iodine:40 }) },
+
+  { id: 'milk', name: 'Milch', cat: 'Milchprodukte',
+    servings: [{ label: 'Glas (250 ml)', grams: 250 }],
+    per100: n({ kcal:61, protein:3.2, carbs:4.8, fat:3.3, satfat:1.9, calcium:113, vitB12:0.5, vitD:1, phosphorus:84, vitB2:0.2, potassium:132, iodine:20 }) },
+
+  { id: 'kefir', name: 'Kefir', cat: 'Milchprodukte',
+    servings: [{ label: 'Glas (250 ml)', grams: 250 }],
+    per100: n({ kcal:41, protein:3.3, carbs:4.5, fat:1, calcium:120, vitB12:0.4, vitD:1, phosphorus:100, iodine:15 }) },
+
+  { id: 'cottage_cheese', name: 'Körniger Frischkäse', cat: 'Milchprodukte',
+    servings: [{ label: 'Becher (200 g)', grams: 200 }],
+    per100: n({ kcal:98, protein:11, carbs:3.4, fat:4.3, calcium:83, vitB12:0.4, vitB2:0.16, phosphorus:160, selenium:9, sodium:330 }) },
+
+  { id: 'kale', name: 'Grünkohl', cat: 'Gemüse',
+    servings: [{ label: 'Portion (100 g)', grams: 100 }],
+    per100: n({ kcal:49, protein:4.3, carbs:9, fat:0.9, fiber:3.6, vitK:390, vitC:120, vitA:500, calcium:150, vitB9:141, potassium:491, manganese:0.7, vitB6:0.3 }) },
+
+  { id: 'feldsalat', name: 'Feldsalat', cat: 'Gemüse',
+    servings: [{ label: 'Portion (60 g)', grams: 60 }],
+    per100: n({ kcal:21, protein:2, carbs:3.6, fat:0.4, fiber:1.5, vitC:38, vitA:140, vitB9:145, iron:2, potassium:459, vitK:80 }) },
+
+  { id: 'peas', name: 'Erbsen (TK, gegart)', cat: 'Gemüse',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:84, protein:5.4, carbs:16, fat:0.2, fiber:5.5, vitC:14, vitK:25, vitB1:0.26, vitB9:65, iron:1.5, manganese:0.5, magnesium:36, potassium:271 }) },
+
+  { id: 'brussels_sprouts', name: 'Rosenkohl (gegart)', cat: 'Gemüse',
+    servings: [{ label: 'Portion (100 g)', grams: 100 }],
+    per100: n({ kcal:43, protein:3.4, carbs:9, fat:0.3, fiber:3.8, vitC:85, vitK:140, vitB9:60, potassium:317, manganese:0.3 }) },
+
+  { id: 'beetroot', name: 'Rote Bete (gegart)', cat: 'Gemüse',
+    servings: [{ label: 'Portion (100 g)', grams: 100 }],
+    per100: n({ kcal:44, protein:1.7, carbs:10, fat:0.2, fiber:2, vitB9:80, potassium:305, manganese:0.3, iron:0.8, vitC:3.6 }) },
+
+  { id: 'strawberries', name: 'Erdbeeren', cat: 'Obst',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:32, protein:0.7, carbs:7.7, fat:0.3, fiber:2, sugar:4.9, vitC:59, manganese:0.4, vitB9:24, potassium:153 }) },
+
+  { id: 'raspberries', name: 'Himbeeren', cat: 'Obst',
+    servings: [{ label: 'Portion (125 g)', grams: 125 }],
+    per100: n({ kcal:52, protein:1.2, carbs:12, fat:0.7, fiber:6.5, sugar:4.4, vitC:26, manganese:0.7, vitK:7.8, magnesium:22 }) },
+
+  { id: 'brazil_nuts', name: 'Paranüsse', cat: 'Nüsse & Samen',
+    piece: { g: 5, def: 2, name: 'Paranuss' },
+    per100: n({ kcal:659, protein:14, carbs:12, fat:67, satfat:16, fiber:7.5, selenium:1917, magnesium:376, phosphorus:725, copper:1.7, zinc:4, vitB1:0.6, manganese:1.2 }) },
+
+  { id: 'sunflower_seeds', name: 'Sonnenblumenkerne', cat: 'Nüsse & Samen',
+    servings: [{ label: 'Handvoll (30 g)', grams: 30 }],
+    per100: n({ kcal:584, protein:21, carbs:20, fat:51, satfat:4.5, fiber:8.6, vitE:35, selenium:53, magnesium:325, copper:1.8, vitB1:1.5, vitB6:1.3, vitB9:227, zinc:5, phosphorus:660, manganese:2 }) },
+
+  { id: 'chia', name: 'Chiasamen', cat: 'Nüsse & Samen',
+    servings: [{ label: 'EL (15 g)', grams: 15 }],
+    per100: n({ kcal:486, protein:17, carbs:42, fat:31, satfat:3.3, fiber:34, omega3:17800, calcium:631, magnesium:335, phosphorus:860, iron:7.7, zinc:4.6, manganese:2.7 }) },
+
+  { id: 'flaxseed', name: 'Leinsamen (geschrotet)', cat: 'Nüsse & Samen',
+    servings: [{ label: 'EL (15 g)', grams: 15 }],
+    per100: n({ kcal:534, protein:18, carbs:29, fat:42, satfat:3.7, fiber:27, omega3:22800, magnesium:392, manganese:2.5, vitB1:1.6, copper:1.2, phosphorus:642, potassium:813 }) },
+
 ];
 
 // ============================================================================
