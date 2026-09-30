@@ -62,14 +62,14 @@ export const DEFAULT_PROFILE = {
   name: '',
   sex: 'm',
   age: 26,
-  height: 181,
-  weight: 93,
-  activity: 'high',      // 5 Einheiten/Woche
-  goal: 'recomp',        // Fettabbau + Muskelaufbau
+  height: 180,
+  weight: 95,
+  activity: 'high',      // Gym + Basketball + athletisches Training
+  goal: 'recomp',        // Fettabbau + Muskelaufbau, All-Around-Athlet
   diet: 'omnivore',
   targets: {
-    // Makros
-    kcal: 2400, protein: 190, carbs: 230, fat: 80, fiber: 35,
+    // Makros (athletischer Recomp: Protein 2,2 g/kg, Carbs als Trainings-Fuel)
+    kcal: 2450, protein: 210, carbs: 210, fat: 85, fiber: 35,
     sugar: 50, satfat: 25,
     // Vitamine (DGE/DACH-nahe Referenzwerte, Mann ~26 J.)
     vitA: 900, vitC: 110, vitD: 20, vitE: 15, vitK: 70,
@@ -87,13 +87,19 @@ export const DEFAULT_PROFILE = {
 };
 
 // --- Supplemente (Start-Checkliste) -----------------------------------------
+// Empfohlener Athleten-Stack. `nutrients` = Nährwerte pro Dosis; werden in die
+// Tagesbilanz eingerechnet, sobald das Supplement abgehakt ist.
 export const DEFAULT_SUPPLEMENTS = [
-  { id: 'creatine',    name: 'Creatin',      dose: '5 g' },
-  { id: 'vitd3',       name: 'Vitamin D3',   dose: '' },
-  { id: 'vitk2',       name: 'Vitamin K2',   dose: '' },
-  { id: 'magnesium',   name: 'Magnesium',    dose: '' },
-  { id: 'ashwagandha', name: 'Ashwagandha',  dose: '' },
-  { id: 'shilajit',    name: 'Shilajit',     dose: '' },
+  { id: 'creatine',    name: 'Creatin Monohydrat', dose: '5 g täglich' },
+  { id: 'whey',        name: 'Whey Protein',       dose: '1–2 Scoops (Protein-Ziel)' },
+  { id: 'omega3',      name: 'Omega-3 (EPA+DHA)',  dose: '2 g', nutrients: { omega3: 2000 } },
+  { id: 'vitd3',       name: 'Vitamin D3',         dose: '3000 IU', nutrients: { vitD: 75 } },
+  { id: 'vitk2',       name: 'Vitamin K2 (MK-7)',  dose: '100 µg', nutrients: { vitK: 100 } },
+  { id: 'magnesium',   name: 'Magnesium (Glycinat)', dose: '350 mg (abends)', nutrients: { magnesium: 350 } },
+  { id: 'vitb12',      name: 'Vitamin B12',        dose: '500 µg', nutrients: { vitB12: 500 } },
+  { id: 'iodine',      name: 'Jod (oder jodiertes Salz)', dose: '150 µg', nutrients: { iodine: 150 } },
+  { id: 'betaalanin',  name: 'Beta-Alanin',        dose: '4 g (Explosivität/Ausdauer)' },
+  { id: 'ashwagandha', name: 'Ashwagandha',        dose: '600 mg (Schlaf/Stress)' },
 ];
 
 // --- Hilfsfunktion: leeres Nährstoffobjekt ----------------------------------
@@ -160,6 +166,59 @@ export const SEED_FOODS = [
   { id: 'avocado', name: 'Avocado', cat: 'Obst',
     servings: [{ label: '1/2 Avocado (70 g)', grams: 70 }],
     per100: n({ kcal:160, protein:2, carbs:9, fat:15, satfat:2.1, fiber:6.7, potassium:485, vitK:21, vitB9:81, vitE:2.1, vitC:10, magnesium:29 }) },
+
+  // --- Athleten-Basics (Protein / schwer erreichbare Mikros) ---
+  { id: 'egg', name: 'Ei (ganz)', cat: 'Protein',
+    piece: { g: 50, def: 3, name: 'Ei' },
+    per100: n({ kcal:143, protein:13, carbs:0.7, fat:10, satfat:3.1, vitA:160, vitD:2, vitB12:0.9, vitB2:0.5, vitB5:1.5, vitB7:22, selenium:30, vitB9:47, phosphorus:198, iron:1.8, zinc:1.3, iodine:24 }) },
+
+  { id: 'magerquark', name: 'Magerquark', cat: 'Protein',
+    servings: [{ label: 'Becher (250 g)', grams: 250 }],
+    per100: n({ kcal:67, protein:12, carbs:4, fat:0.3, calcium:90, vitB12:0.8, vitB2:0.3, phosphorus:140, potassium:95, selenium:10, iodine:8 }) },
+
+  { id: 'whey', name: 'Whey Protein (Pulver)', cat: 'Protein',
+    piece: { g: 30, def: 1, name: 'Scoop' },
+    per100: n({ kcal:380, protein:80, carbs:8, fat:6, satfat:2, calcium:300, potassium:500, magnesium:40, phosphorus:200, vitB12:1 }) },
+
+  { id: 'chicken_breast', name: 'Hähnchenbrust (gegart)', cat: 'Protein',
+    servings: [{ label: '1 Filet (150 g)', grams: 150 }],
+    per100: n({ kcal:165, protein:31, carbs:0, fat:3.6, satfat:1, sodium:74, potassium:256, phosphorus:210, selenium:24, vitB3:13.7, vitB6:0.6, zinc:1, magnesium:29 }) },
+
+  { id: 'beef_lean', name: 'Rinderhack (mager, gegart)', cat: 'Protein',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:176, protein:20, carbs:0, fat:10, satfat:4, vitB12:2.4, zinc:5.4, iron:2.4, selenium:20, vitB3:5, vitB6:0.4, phosphorus:190, potassium:290 }) },
+
+  { id: 'beef_liver', name: 'Rinderleber (gegart)', cat: 'Protein',
+    servings: [{ label: 'Portion (100 g)', grams: 100 }],
+    per100: n({ kcal:175, protein:26, carbs:5, fat:5, vitA:9440, vitB12:70, copper:12, vitB9:260, iron:5.5, vitB2:3.4, selenium:40, zinc:4, vitB3:15, vitB6:1 }) },
+
+  { id: 'salmon', name: 'Lachs (gegart)', cat: 'Fisch',
+    servings: [{ label: '1 Filet (150 g)', grams: 150 }],
+    per100: n({ kcal:206, protein:22, carbs:0, fat:13, satfat:3.1, vitD:11, omega3:2200, vitB12:3, selenium:36, vitB3:8, potassium:384, phosphorus:252, vitB6:0.6, iodine:20 }) },
+
+  { id: 'sardines', name: 'Sardinen (in Öl, abgetropft)', cat: 'Fisch',
+    servings: [{ label: 'Dose (100 g)', grams: 100 }],
+    per100: n({ kcal:208, protein:25, carbs:0, fat:11, satfat:1.5, calcium:382, vitD:4.8, vitB12:8.9, omega3:1400, selenium:52, phosphorus:490, iron:2.9, iodine:35 }) },
+
+  { id: 'greek_yogurt', name: 'Griechischer Joghurt (2%)', cat: 'Milchprodukte',
+    servings: [{ label: 'Becher (150 g)', grams: 150 }],
+    per100: n({ kcal:73, protein:10, carbs:4, fat:2, satfat:1.3, calcium:115, vitB12:0.5, phosphorus:135, potassium:141, vitB2:0.3, iodine:30 }) },
+
+  { id: 'oats', name: 'Haferflocken (trocken)', cat: 'Getreide',
+    servings: [{ label: 'Portion (60 g)', grams: 60 }],
+    per100: n({ kcal:389, protein:17, carbs:66, fat:7, fiber:10, satfat:1.2, magnesium:177, iron:4.7, zinc:4, manganese:4.9, phosphorus:523, vitB1:0.7, potassium:429 }) },
+
+  { id: 'lentils', name: 'Linsen (gegart)', cat: 'Hülsenfrüchte',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:116, protein:9, carbs:20, fat:0.4, fiber:7.9, vitB9:181, iron:3.3, manganese:0.5, potassium:369, phosphorus:180, zinc:1.3, magnesium:36, vitB1:0.17 }) },
+
+  { id: 'almonds', name: 'Mandeln', cat: 'Nüsse & Samen',
+    servings: [{ label: 'Handvoll (30 g)', grams: 30 }],
+    per100: n({ kcal:579, protein:21, carbs:22, fat:50, satfat:3.8, fiber:12.5, vitE:25.6, magnesium:270, calcium:269, manganese:2.2, vitB2:1.1, phosphorus:481, zinc:3.1, potassium:733, iron:3.7 }) },
+
+  { id: 'pumpkin_seeds', name: 'Kürbiskerne', cat: 'Nüsse & Samen',
+    servings: [{ label: 'Handvoll (30 g)', grams: 30 }],
+    per100: n({ kcal:559, protein:30, carbs:11, fat:49, satfat:8.7, fiber:6, magnesium:592, zinc:7.6, iron:8.8, manganese:4.5, phosphorus:1233, potassium:809, copper:1.3 }) },
 
 ];
 
@@ -241,19 +300,20 @@ export const DEFAULT_SCHEDULE = {
 };
 
 // --- Trainingsplan (pro Wochentag) ------------------------------------------
+// Athletischer Split: Kraft + Explosivität/Plyo + Sprints/Conditioning.
 export const DEFAULT_TRAINING = {
-  1: { title: 'Push', focus: 'Brust · Schulter · Trizeps',
-       exercises: ['Bankdrücken', 'Schrägbank KH-Drücken', 'Schulterdrücken', 'Seitheben', 'Trizeps Pushdown'] },
-  2: { title: 'Basketball', focus: 'Cardio · Skills',
-       exercises: ['Warm-up', 'Ballhandling', 'Shooting', 'Spiel'] },
-  3: { title: 'Pull', focus: 'Rücken · Bizeps',
-       exercises: ['Klimmzüge', 'Langhantelrudern', 'Latzug', 'Face Pulls', 'Bizeps Curls'] },
-  4: { title: 'Basketball', focus: 'Cardio · Skills',
-       exercises: ['Warm-up', 'Ballhandling', 'Shooting', 'Spiel'] },
-  5: { title: 'Legs', focus: 'Beine · Core',
-       exercises: ['Kniebeugen', 'Rumänisches Kreuzheben', 'Beinpresse', 'Wadenheben', 'Plank'] },
-  6: { title: 'Aktive Erholung', focus: 'Spaziergang · Mobilität',
-       exercises: ['30–45 Min Spaziergang', 'Dehnen / Mobility'] },
+  1: { title: 'Push + Power', focus: 'Brust · Schulter · Trizeps · Explosivität',
+       exercises: ['Explosiv-Warm-up (Med-Ball-Würfe)', 'Bankdrücken', 'Schrägbank KH-Drücken', 'Schulterdrücken', 'Seitheben', 'Trizeps Pushdown', 'Box Jumps 4×3'] },
+  2: { title: 'Basketball + Sprints', focus: 'Speed · Agilität · Skills',
+       exercises: ['Dynamisches Warm-up', 'Sprint-Intervalle 6×20 m', 'Agility-Leiter', 'Ballhandling', 'Shooting', 'Spiel'] },
+  3: { title: 'Pull + Athletik', focus: 'Rücken · Bizeps · Sprungkraft',
+       exercises: ['Klimmzüge', 'Langhantelrudern', 'Latzug', 'Face Pulls', 'Bizeps Curls', 'Depth Jumps 4×3', 'Hanging Leg Raises'] },
+  4: { title: 'Basketball + Kondition', focus: 'Ausdauer · Skills',
+       exercises: ['Dynamisches Warm-up', 'Shuttle Runs', 'Ballhandling', 'Shooting', 'Spiel', 'Cool-down'] },
+  5: { title: 'Legs + Explosivität', focus: 'Beine · Core · Sprungkraft',
+       exercises: ['Kniebeugen', 'Rumänisches Kreuzheben', 'Bulgarian Split Squats', 'Kastensprünge 5×3', 'Wadenheben', 'Plank + Core'] },
+  6: { title: 'Conditioning / Mobilität', focus: 'Zone-2-Ausdauer · Beweglichkeit',
+       exercises: ['30–45 Min Zone-2-Cardio (Rad/Lauf)', 'Mobility-Flow', 'Dehnen'] },
   0: { title: 'Ruhetag', focus: 'Erholung · Wochenplanung', exercises: [] },
 };
 
@@ -272,10 +332,14 @@ export const DEFAULT_HABITS = [
 // Fokus: Mikros/Vitamine über Obst & Gemüse abdecken. Protein/Carb-Basics
 // fügst du selbst hinzu, sobald du sie in der Bibliothek angelegt hast.
 export const DEFAULT_AUTOPILOT = [
-  { foodId: 'kiwi',        grams: 150 }, // 2 Kiwi
-  { foodId: 'bell_pepper', grams: 120 }, // 1 Paprika
-  { foodId: 'spinach',     grams: 100 },
-  { foodId: 'carrot',      grams: 65 },  // 1 Karotte
-  { foodId: 'blueberries', grams: 100 },
-  { foodId: 'orange',      grams: 130 }, // 1 Orange
+  { foodId: 'egg',           grams: 150 }, // 3 Eier
+  { foodId: 'magerquark',    grams: 250 }, // Protein, Calcium, B12
+  { foodId: 'whey',          grams: 30 },  // 1 Scoop
+  { foodId: 'oats',          grams: 60 },  // Carbs-Basis, Magnesium, Zink
+  { foodId: 'sardines',      grams: 100 }, // Omega-3, D, B12, Calcium, Jod
+  { foodId: 'spinach',       grams: 100 }, // K, A, Folat, Eisen, Magnesium
+  { foodId: 'bell_pepper',   grams: 120 }, // 1 Paprika – Vit C
+  { foodId: 'kiwi',          grams: 150 }, // 2 Kiwi – Vit C, K, Folat
+  { foodId: 'pumpkin_seeds', grams: 30 },  // Magnesium, Zink, Eisen
+  { foodId: 'blueberries',   grams: 100 }, // Antioxidantien
 ];

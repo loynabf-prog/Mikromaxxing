@@ -47,6 +47,7 @@ function freshState() {
     habits: structuredClone(DEFAULT_HABITS),
     autopilot: structuredClone(DEFAULT_AUTOPILOT),
     _seedTrimV1: true,
+    _athleteV1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
   };
 }
@@ -105,6 +106,21 @@ function migrate(parsed) {
     }
     merged.foods = merged.foods.filter(f => !(REMOVED.has(f.id) && !usedIds.has(f.id)));
     merged._seedTrimV1 = true;
+  }
+  // Einmalige Athleten-Einrichtung (Lebensmittel, Stack, Supplements, Training,
+  // Profil-Ziele). Log/gegessene Einträge bleiben erhalten.
+  if (!merged._athleteV1) {
+    const have = new Set(merged.foods.map(f => f.id));
+    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
+    merged.supplements = structuredClone(DEFAULT_SUPPLEMENTS);
+    merged.autopilot = structuredClone(DEFAULT_AUTOPILOT);
+    merged.training = structuredClone(DEFAULT_TRAINING);
+    merged.profile.height = 180;
+    merged.profile.weight = 95;
+    merged.profile.activity = 'high';
+    merged.profile.goal = 'recomp';
+    Object.assign(merged.profile.targets, { kcal: 2450, protein: 210, carbs: 210, fat: 85 });
+    merged._athleteV1 = true;
   }
   return merged;
 }
@@ -235,6 +251,16 @@ export function computeTotals(key) {
     const factor = (entry.grams || 0) / 100;
     for (const nut of NUTRIENTS) {
       totals[nut.key] += (food.per100[nut.key] || 0) * factor;
+    }
+  }
+  // Abgehakte Supplements mit hinterlegten Nährwerten mitzählen
+  if (day.supps) {
+    for (const supp of s.supplements) {
+      if (day.supps[supp.id] && supp.nutrients) {
+        for (const k in supp.nutrients) {
+          if (k in totals) totals[k] += supp.nutrients[k];
+        }
+      }
     }
   }
   return totals;
