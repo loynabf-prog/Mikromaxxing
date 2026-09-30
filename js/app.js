@@ -1048,9 +1048,10 @@ function bodyCompCard() {
     let deltaHtml = '';
     if (base != null && list.length > 1) {
       const d = cur - base;
-      const good = m.better === 'down' ? d < 0 : d > 0;
+      let cls = '';
+      if (d !== 0 && m.better !== 'neutral') cls = (m.better === 'down' ? d < 0 : d > 0) ? 'good' : 'bad';
       const sign = d > 0 ? '+' : '';
-      deltaHtml = `<span class="bc-delta ${d === 0 ? '' : good ? 'good' : 'bad'}">${sign}${d.toFixed(1)}</span>`;
+      deltaHtml = `<span class="bc-delta ${cls}">${sign}${d.toFixed(1)}</span>`;
     }
     return `<div class="bc-row">
       <span class="bc-label">${esc(m.label)}</span>

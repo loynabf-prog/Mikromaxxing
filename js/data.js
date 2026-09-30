@@ -84,20 +84,42 @@ export const DEFAULT_PROFILE = {
   },
   water: 3500, // ml
   autopilotAuto: true, // Essential-Stack automatisch jeden Tag laden
-  targetWeight: null,  // Zielgewicht (kg) – optional
+  targetWeight: 85,    // Zielgewicht (kg) – Fettabbau-Ziel, editierbar
 };
 
 // --- Körperanalyse-Metriken (InBody & Co.) ----------------------------------
-// better: 'up' = höher ist besser (Muskel), 'down' = niedriger ist besser (Fett)
+// better: 'up' = höher ist besser (Muskel), 'down' = niedriger ist besser (Fett),
+// 'neutral' = keine Wertung
 export const BODYCOMP_METRICS = [
-  { key: 'weight',   label: 'Gewicht',       unit: 'kg',    better: 'down' },
-  { key: 'bodyfat',  label: 'Körperfett',    unit: '%',     better: 'down' },
-  { key: 'fatmass',  label: 'Fettmasse',     unit: 'kg',    better: 'down' },
-  { key: 'muscle',   label: 'Muskelmasse',   unit: 'kg',    better: 'up' },
-  { key: 'water',    label: 'Körperwasser',  unit: '%',     better: 'up' },
-  { key: 'visceral', label: 'Viszeralfett',  unit: 'Level', better: 'down' },
-  { key: 'bmi',      label: 'BMI',           unit: '',      better: 'down' },
-  { key: 'bmr',      label: 'Grundumsatz',   unit: 'kcal',  better: 'up' },
+  { key: 'weight',      label: 'Gewicht',              unit: 'kg',    better: 'down' },
+  { key: 'bmi',         label: 'BMI',                  unit: 'kg/m²', better: 'down' },
+  { key: 'bodyfat',     label: 'Körperfett',           unit: '%',     better: 'down' },
+  { key: 'fatmass',     label: 'Fettmasse',            unit: 'kg',    better: 'down' },
+  { key: 'fmi',         label: 'Fett-Masse-Index',     unit: 'kg/m²', better: 'down' },
+  { key: 'muscle',      label: 'Skelettmuskelmasse',   unit: 'kg',    better: 'up' },
+  { key: 'musclePct',   label: 'Skelettmuskel %',      unit: '%',     better: 'up' },
+  { key: 'muscleTrunk', label: 'Muskeln Rumpf',        unit: 'kg',    better: 'up' },
+  { key: 'muscleArmL',  label: 'Muskeln Arm links',    unit: 'kg',    better: 'up' },
+  { key: 'muscleArmR',  label: 'Muskeln Arm rechts',   unit: 'kg',    better: 'up' },
+  { key: 'muscleLegL',  label: 'Muskeln Bein links',   unit: 'kg',    better: 'up' },
+  { key: 'muscleLegR',  label: 'Muskeln Bein rechts',  unit: 'kg',    better: 'up' },
+  { key: 'water',       label: 'Körperwasser',         unit: '%',     better: 'up' },
+  { key: 'waterL',      label: 'Körperwasser',         unit: 'l',     better: 'up' },
+  { key: 'ecwPct',      label: 'Extrazell. Wasser',    unit: '%',     better: 'neutral' },
+  { key: 'ecwL',        label: 'Extrazell. Wasser',    unit: 'l',     better: 'neutral' },
+  { key: 'phase',       label: 'Phasenwinkel',         unit: '°',     better: 'up' },
+  { key: 'visceral',    label: 'Viszeralfett',         unit: 'Level', better: 'down' },
+  { key: 'bmr',         label: 'Grundumsatz',          unit: 'kcal',  better: 'up' },
+];
+
+// --- Start-Körpermessung (InBody, 22.08.2026) -------------------------------
+export const DEFAULT_MEASUREMENTS = [
+  { date: '2026-08-22', note: 'InBody-Startmessung (Gym)', values: {
+    weight: 94.6, bmi: 28.7, bodyfat: 24.7, fatmass: 23.1, fmi: 7.1,
+    muscle: 34.8, musclePct: 37.2, muscleTrunk: 16.1,
+    muscleArmL: 2.3, muscleArmR: 2.3, muscleLegL: 7.1, muscleLegR: 7.0,
+    water: 54, waterL: 51.4, ecwPct: 40.5, ecwL: 20.8, phase: 6,
+  } },
 ];
 
 // --- Supplemente (Start-Checkliste) -----------------------------------------

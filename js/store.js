@@ -5,6 +5,7 @@
 import {
   NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS,
   DEFAULT_SCHEDULE, DEFAULT_TRAINING, DEFAULT_HABITS, DEFAULT_AUTOPILOT, GAMES,
+  DEFAULT_MEASUREMENTS,
 } from './data.js';
 
 const STORAGE_KEY = 'mikromaxxing_v1';
@@ -47,7 +48,7 @@ function freshState() {
     habits: structuredClone(DEFAULT_HABITS),
     autopilot: structuredClone(DEFAULT_AUTOPILOT),
     games: structuredClone(GAMES),
-    measurements: [],
+    measurements: structuredClone(DEFAULT_MEASUREMENTS),
     _seedTrimV1: true,
     _athleteV1: true,
     _athleteV2: true,
@@ -57,6 +58,7 @@ function freshState() {
     _planV3: true,
     _planV4: true,
     _gamesV1: true,
+    _bodyseed1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
   };
 }
@@ -178,6 +180,14 @@ function migrate(parsed) {
     merged._gamesV1 = true;
   }
   if (!Array.isArray(merged.games)) merged.games = structuredClone(GAMES);
+  // Start-Körpermessung (InBody) seeden, falls noch keine vorhanden
+  if (!merged._bodyseed1) {
+    if (!Array.isArray(merged.measurements) || merged.measurements.length === 0) {
+      merged.measurements = structuredClone(DEFAULT_MEASUREMENTS);
+    }
+    if (merged.profile.targetWeight == null) merged.profile.targetWeight = 85;
+    merged._bodyseed1 = true;
+  }
   return merged;
 }
 
