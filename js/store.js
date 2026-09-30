@@ -53,6 +53,7 @@ function freshState() {
     _variety1: true,
     _habitsV2: true,
     _planV3: true,
+    _planV4: true,
     _gamesV1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
   };
@@ -155,6 +156,12 @@ function migrate(parsed) {
     merged.schedule = structuredClone(DEFAULT_SCHEDULE);
     merged.training = structuredClone(DEFAULT_TRAINING);
     merged._planV3 = true;
+  }
+  // Plan-Update: Do flexibel, Gym B auf Fr, Schwimmen+Sauna kombiniert
+  if (!merged._planV4) {
+    merged.schedule = structuredClone(DEFAULT_SCHEDULE);
+    merged.training = structuredClone(DEFAULT_TRAINING);
+    merged._planV4 = true;
   }
   // Basketball-Spielplan setzen
   if (!merged._gamesV1) {
