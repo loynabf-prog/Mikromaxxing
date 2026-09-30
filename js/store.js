@@ -47,11 +47,13 @@ function freshState() {
     habits: structuredClone(DEFAULT_HABITS),
     autopilot: structuredClone(DEFAULT_AUTOPILOT),
     games: structuredClone(GAMES),
+    measurements: [],
     _seedTrimV1: true,
     _athleteV1: true,
     _athleteV2: true,
     _variety1: true,
     _habitsV2: true,
+    _habitsV3: true,
     _planV3: true,
     _planV4: true,
     _gamesV1: true,
@@ -151,6 +153,13 @@ function migrate(parsed) {
     merged.habits = [...additions, ...merged.habits];
     merged._habitsV2 = true;
   }
+  // Weitere neue Standard-Gewohnheiten ergänzen (z.B. Wiegen)
+  if (!merged._habitsV3) {
+    const haveH = new Set(merged.habits.map(h => h.id));
+    for (const h of DEFAULT_HABITS) if (!haveH.has(h.id)) merged.habits.push(structuredClone(h));
+    merged._habitsV3 = true;
+  }
+  if (!Array.isArray(merged.measurements)) merged.measurements = [];
   // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
   if (!merged._planV3) {
     merged.schedule = structuredClone(DEFAULT_SCHEDULE);
@@ -694,4 +703,43 @@ export function upcomingGames(fromKey = todayKey(), limit = 6) {
     .filter(g => g.date >= fromKey)
     .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
     .slice(0, limit);
+}
+
+// --- Körperanalyse / Messungen ----------------------------------------------
+export function getMeasurements() {
+  return (load().measurements || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+}
+export function addMeasurement(entry) {
+  const s = load();
+  if (!s.measurements) s.measurements = [];
+  // gleiches Datum überschreiben
+  const i = s.measurements.findIndex(m => m.date === entry.date);
+  if (i >= 0) s.measurements[i] = entry; else s.measurements.push(entry);
+  save();
+}
+export function deleteMeasurement(date) {
+  const s = load();
+  s.measurements = (s.measurements || []).filter(m => m.date !== date);
+  save();
+}
+export function latestMeasurement() {
+  const m = getMeasurements();
+  return m.length ? m[m.length - 1] : null;
+}
+export function firstMeasurement() {
+  const m = getMeasurements();
+  return m.length ? m[0] : null;
+}
+
+// --- 7-Tage-Gewichtsschnitt (aus Tages-Log) ---------------------------------
+export function weightTrend(key = todayKey(), windowDays = 7) {
+  const s = load();
+  const vals = [];
+  for (let i = 0; i < windowDays; i++) {
+    const d = shiftDate(key, -i);
+    const w = s.log[d] && s.log[d].weight;
+    if (w != null && !isNaN(w)) vals.push(w);
+  }
+  if (!vals.length) return null;
+  return vals.reduce((a, b) => a + b, 0) / vals.length;
 }

@@ -1,7 +1,7 @@
 // ============================================================================
 // Mikromaxxing – App-Logik & UI
 // ============================================================================
-import { NUTRIENTS, NUTRIENT_BY_KEY, WEEKDAYS, WEEKDAYS_LONG } from './data.js';
+import { NUTRIENTS, NUTRIENT_BY_KEY, WEEKDAYS, WEEKDAYS_LONG, BODYCOMP_METRICS } from './data.js';
 import * as store from './store.js';
 
 // --- Zustand der Oberfläche ---------------------------------------------------
@@ -1018,8 +1018,98 @@ function renderTrends() {
         }).join('')}
       </div>
     </div>
+
+    ${bodyCompCard()}
     <div class="spacer"></div>
   `;
+
+  app.querySelectorAll('[data-measure-edit]').forEach(b => b.onclick = () =>
+    openMeasurementEditor(b.dataset.measureEdit || null));
+}
+
+function bodyCompCard() {
+  const list = store.getMeasurements();
+  const latest = store.latestMeasurement();
+  const first = store.firstMeasurement();
+  const p = store.getState().profile;
+
+  if (!latest) {
+    return `
+      <div class="card">
+        <div class="card-head"><span>📊 Körperanalyse</span>
+          <button class="btn-primary small" data-measure-edit="">＋ Messung</button></div>
+        <div class="empty">Noch keine Messung. Trag deine InBody-/Körperanalyse-Werte ein, dann siehst du hier deine Entwicklung.</div>
+      </div>`;
+  }
+
+  const rows = BODYCOMP_METRICS.filter(m => latest.values[m.key] != null).map(m => {
+    const cur = latest.values[m.key];
+    const base = first && first.values[m.key] != null ? first.values[m.key] : null;
+    let deltaHtml = '';
+    if (base != null && list.length > 1) {
+      const d = cur - base;
+      const good = m.better === 'down' ? d < 0 : d > 0;
+      const sign = d > 0 ? '+' : '';
+      deltaHtml = `<span class="bc-delta ${d === 0 ? '' : good ? 'good' : 'bad'}">${sign}${d.toFixed(1)}</span>`;
+    }
+    return `<div class="bc-row">
+      <span class="bc-label">${esc(m.label)}</span>
+      <span class="bc-val">${cur}${m.unit ? ' ' + m.unit : ''}</span>
+      ${deltaHtml}
+    </div>`;
+  }).join('');
+
+  return `
+    <div class="card">
+      <div class="card-head"><span>📊 Körperanalyse</span>
+        <button class="btn-primary small" data-measure-edit="">＋ Messung</button></div>
+      <div class="bc-date">Letzte Messung: ${esc(latest.date)}${list.length > 1 ? ` · Δ seit ${esc(first.date)}` : ''}</div>
+      <div class="bc-grid">${rows}</div>
+      ${latest.note ? `<div class="hint">${esc(latest.note)}</div>` : ''}
+      <button class="btn-secondary small" data-measure-edit="${esc(latest.date)}">Letzte bearbeiten</button>
+    </div>`;
+}
+
+function openMeasurementEditor(date) {
+  const existing = date ? store.getMeasurements().find(m => m.date === date) : null;
+  const entry = existing ? structuredClone(existing) : { date: store.todayKey(), values: {}, note: '' };
+
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet tall">
+      <div class="sheet-head"><strong>Körperanalyse ${existing ? 'bearbeiten' : 'eintragen'}</strong>
+        <button class="sheet-close" id="sheet-close">✕</button></div>
+      <div class="editor-scroll">
+        <label class="edit-field wide"><span>Datum</span>
+          <input type="date" id="mDate" value="${esc(entry.date)}"></label>
+        <div class="edit-grid">
+          ${BODYCOMP_METRICS.map(m => `
+            <label class="edit-field"><span>${esc(m.label)} <em>(${m.unit || '–'})</em></span>
+              <input type="number" inputmode="decimal" step="any" data-m="${m.key}" value="${entry.values[m.key] ?? ''}"></label>`).join('')}
+        </div>
+        <label class="edit-field wide"><span>Notiz</span>
+          <input type="text" id="mNote" value="${esc(entry.note || '')}" placeholder="optional"></label>
+      </div>
+      <div class="editor-actions">
+        ${existing ? '<button class="btn-danger" id="mDel">Löschen</button>' : '<span></span>'}
+        <button class="btn-primary" id="mSave">Speichern</button>
+      </div>
+    </div></div>`;
+
+  $('#sheet-close').onclick = closeSheet;
+  $('#mSave').onclick = () => {
+    entry.date = $('#mDate').value || store.todayKey();
+    entry.values = {};
+    modalRoot.querySelectorAll('[data-m]').forEach(inp => {
+      if (inp.value !== '') entry.values[inp.dataset.m] = Number(inp.value);
+    });
+    entry.note = $('#mNote').value.trim();
+    store.addMeasurement(entry);
+    closeSheet(); renderTrends();
+  };
+  const del = $('#mDel');
+  if (del) del.onclick = () => {
+    if (confirm('Diese Messung löschen?')) { store.deleteMeasurement(entry.date); closeSheet(); renderTrends(); }
+  };
 }
 
 function trendCard(title, series, days, target, color, unit) {
@@ -1074,6 +1164,8 @@ function weightCard(series, days) {
   const dots = pts.map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3" fill="var(--accent)"/>`).join('');
   const last = vals[vals.length - 1], first = vals[0];
   const diff = (last - first).toFixed(1);
+  const avg7 = store.weightTrend();
+  const target = store.getState().profile.targetWeight;
   return `
     <div class="card">
       <div class="card-head"><span>Gewicht</span>
@@ -1083,6 +1175,10 @@ function weightCard(series, days) {
         ${dots}
       </svg>
       <div class="weight-legend"><span>${min.toFixed(1)} kg</span><span>aktuell ${last.toFixed(1)} kg</span></div>
+      <div class="weight-stats">
+        ${avg7 != null ? `<span>Ø 7 Tage: <strong>${avg7.toFixed(1)} kg</strong></span>` : ''}
+        ${target ? `<span>Ziel: <strong>${target} kg</strong> (${(last-target).toFixed(1)} kg)</span>` : ''}
+      </div>
     </div>`;
 }
 
@@ -1171,8 +1267,11 @@ function renderProfile() {
     </div>
 
     <div class="card">
-      <div class="card-head"><span>Wasserziel (ml)</span></div>
-      <label class="edit-field"><span>Wasser</span><input type="number" id="p-water" value="${p.water}"></label>
+      <div class="card-head"><span>Ziele</span></div>
+      <div class="edit-grid">
+        <label class="edit-field"><span>Wasser (ml)</span><input type="number" id="p-water" value="${p.water}"></label>
+        <label class="edit-field"><span>Zielgewicht (kg)</span><input type="number" step="0.1" id="p-targetweight" value="${p.targetWeight ?? ''}" placeholder="z.B. 88"></label>
+      </div>
     </div>
 
     <div class="card">
@@ -1224,6 +1323,10 @@ function renderProfile() {
   bind('p-weight', 'weight', true); bind('p-sex', 'sex');
   bind('p-activity', 'activity'); bind('p-goal', 'goal');
   $('#p-water').onchange = () => store.updateProfile({ water: Number($('#p-water').value) });
+  $('#p-targetweight').onchange = () => {
+    const v = $('#p-targetweight').value;
+    store.updateProfile({ targetWeight: v === '' ? null : Number(v) });
+  };
 
   $('#recalc').onclick = () => {
     const prof = store.getState().profile;

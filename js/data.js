@@ -84,7 +84,21 @@ export const DEFAULT_PROFILE = {
   },
   water: 3500, // ml
   autopilotAuto: true, // Essential-Stack automatisch jeden Tag laden
+  targetWeight: null,  // Zielgewicht (kg) – optional
 };
+
+// --- Körperanalyse-Metriken (InBody & Co.) ----------------------------------
+// better: 'up' = höher ist besser (Muskel), 'down' = niedriger ist besser (Fett)
+export const BODYCOMP_METRICS = [
+  { key: 'weight',   label: 'Gewicht',       unit: 'kg',    better: 'down' },
+  { key: 'bodyfat',  label: 'Körperfett',    unit: '%',     better: 'down' },
+  { key: 'fatmass',  label: 'Fettmasse',     unit: 'kg',    better: 'down' },
+  { key: 'muscle',   label: 'Muskelmasse',   unit: 'kg',    better: 'up' },
+  { key: 'water',    label: 'Körperwasser',  unit: '%',     better: 'up' },
+  { key: 'visceral', label: 'Viszeralfett',  unit: 'Level', better: 'down' },
+  { key: 'bmi',      label: 'BMI',           unit: '',      better: 'down' },
+  { key: 'bmr',      label: 'Grundumsatz',   unit: 'kcal',  better: 'up' },
+];
 
 // --- Supplemente (Start-Checkliste) -----------------------------------------
 // Empfohlener Athleten-Stack. `nutrients` = Nährwerte pro Dosis; werden in die
@@ -465,6 +479,7 @@ export const DEFAULT_HABITS = [
   { id: 'h_core',       name: 'Core-Training',                  icon: '🧱' },
   { id: 'h_cali_am',    name: 'Calisthenics morgens (Push/Pull/Dips)', icon: '🌅' },
   { id: 'h_cali_pm',    name: 'Calisthenics abends (Push/Pull/Dips)',  icon: '🌙' },
+  { id: 'h_weigh',      name: 'Morgens wiegen',                        icon: '⚖️' },
   // Lifestyle
   { id: 'h_water',     name: '3,5 L Wasser',            icon: '💧' },
   { id: 'h_nophone',   name: 'Kein Handy 1. Stunde',    icon: '📵' },
