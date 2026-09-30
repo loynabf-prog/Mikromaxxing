@@ -4,6 +4,7 @@
 // ============================================================================
 import {
   NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS,
+  DEFAULT_SCHEDULE, DEFAULT_TRAINING, DEFAULT_HABITS, DEFAULT_AUTOPILOT,
 } from './data.js';
 
 const STORAGE_KEY = 'mikromaxxing_v1';
@@ -41,7 +42,12 @@ function freshState() {
     profile: structuredClone(DEFAULT_PROFILE),
     foods: structuredClone(SEED_FOODS),
     supplements: structuredClone(DEFAULT_SUPPLEMENTS),
-    log: {}, // key -> { entries:[{foodId, grams}], water, supps:{id:bool}, weight, note }
+    schedule: structuredClone(DEFAULT_SCHEDULE),
+    training: structuredClone(DEFAULT_TRAINING),
+    habits: structuredClone(DEFAULT_HABITS),
+    autopilot: structuredClone(DEFAULT_AUTOPILOT),
+    _seedTrimV1: true,
+    log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
   };
 }
 
@@ -76,6 +82,11 @@ function migrate(parsed) {
   if (!Array.isArray(merged.foods) || merged.foods.length === 0) merged.foods = base.foods;
   if (!Array.isArray(merged.supplements)) merged.supplements = base.supplements;
   if (!merged.log) merged.log = {};
+  // Life-Planner-Felder (für bestehende Installs nachrüsten)
+  if (!merged.schedule) merged.schedule = base.schedule;
+  if (!merged.training) merged.training = base.training;
+  if (!Array.isArray(merged.habits)) merged.habits = base.habits;
+  if (!Array.isArray(merged.autopilot)) merged.autopilot = base.autopilot;
   // Normalisierung: jedes Lebensmittel hat ein whole-Flag (Standard: unverarbeitet).
   for (const f of merged.foods) if (typeof f.whole !== 'boolean') f.whole = true;
   // Einmalige Bereinigung: verarbeitete Start-Lebensmittel entfernen (nur Obst/Gemüse
@@ -113,8 +124,9 @@ export function getState() { return load(); }
 export function getDay(key) {
   const s = load();
   if (!s.log[key]) {
-    s.log[key] = { entries: [], water: 0, supps: {}, weight: null, note: '' };
+    s.log[key] = { entries: [], water: 0, supps: {}, weight: null, note: '', done: {}, autopilotLoaded: false };
   }
+  if (!s.log[key].done) s.log[key].done = {};
   return s.log[key];
 }
 
@@ -413,4 +425,136 @@ export function lastGramsFor(foodId) {
   if (latest) return latest.grams;
   const food = s.foods.find(f => f.id === foodId);
   return food && food.servings && food.servings[0] ? food.servings[0].grams : 100;
+}
+
+// ============================================================================
+// LIFE PLANNER
+// ============================================================================
+export function weekdayOf(key) {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+
+function timeToMin(t) {
+  const [h, m] = (t || '00:00').split(':').map(Number);
+  return h * 60 + m;
+}
+
+// --- Tagesplan / Timeline ----------------------------------------------------
+export function getDaySchedule(key) {
+  const s = load();
+  const wd = weekdayOf(key);
+  const blocks = (s.schedule[wd] || []).slice();
+  blocks.sort((a, b) => timeToMin(a.time) - timeToMin(b.time));
+  return blocks;
+}
+
+// Aktueller & nächster Block anhand der Uhrzeit
+export function currentBlock(key, now = new Date()) {
+  const blocks = getDaySchedule(key);
+  if (!blocks.length) return { current: null, next: null };
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  let current = null, next = null;
+  for (const b of blocks) {
+    if (timeToMin(b.time) <= nowMin) current = b;
+    else { next = b; break; }
+  }
+  // Vor dem ersten Block: nächster ist der erste
+  if (!current) next = blocks[0];
+  return { current, next };
+}
+
+// --- Checks (Blöcke, Steps, Habits) -----------------------------------------
+export function toggleCheck(key, checkKey) {
+  const day = getDay(key);
+  day.done[checkKey] = !day.done[checkKey];
+  save();
+}
+export function isChecked(key, checkKey) {
+  const s = load();
+  const day = s.log[key];
+  return !!(day && day.done && day.done[checkKey]);
+}
+
+// --- Training ----------------------------------------------------------------
+export function getTrainingFor(key) {
+  const s = load();
+  return s.training[weekdayOf(key)] || null;
+}
+
+// --- Gewohnheiten & Streaks --------------------------------------------------
+export function getHabits() { return load().habits; }
+
+export function habitStreak(habitId, todayKeyStr = todayKey()) {
+  const s = load();
+  const ck = 'habit:' + habitId;
+  let streak = 0;
+  let cursor = todayKeyStr;
+  // Heute zählt nur, wenn erledigt; sonst wird heute übersprungen (noch offen).
+  let first = true;
+  while (true) {
+    const day = s.log[cursor];
+    const done = !!(day && day.done && day.done[ck]);
+    if (done) { streak++; }
+    else if (first) { /* heute noch offen: nicht abbrechen */ }
+    else { break; }
+    first = false;
+    cursor = shiftDate(cursor, -1);
+    if (streak > 400) break; // Sicherheitslimit
+  }
+  return streak;
+}
+
+export function upsertHabit(habit) {
+  const s = load();
+  const i = s.habits.findIndex(h => h.id === habit.id);
+  if (i >= 0) s.habits[i] = habit; else s.habits.push(habit);
+  save();
+}
+export function deleteHabit(id) {
+  const s = load();
+  s.habits = s.habits.filter(h => h.id !== id);
+  save();
+}
+
+// --- Ernährungs-Autopilot ----------------------------------------------------
+export function getAutopilot() { return load().autopilot; }
+
+export function setAutopilot(list) {
+  const s = load();
+  s.autopilot = list;
+  save();
+}
+
+export function isAutopilotLoaded(key) {
+  const s = load();
+  return !!(s.log[key] && s.log[key].autopilotLoaded);
+}
+
+// Lädt den festen Tagesplan in den heutigen Log (einmalig).
+export function loadAutopilot(key) {
+  const s = load();
+  const day = getDay(key);
+  let added = 0;
+  for (const item of s.autopilot) {
+    const food = s.foods.find(f => f.id === item.foodId);
+    if (!food) continue;
+    day.entries.push({ foodId: item.foodId, grams: Number(item.grams) || 0, ts: Date.now() });
+    added++;
+  }
+  day.autopilotLoaded = true;
+  save();
+  return added;
+}
+
+// --- Tagesplan-Editor --------------------------------------------------------
+export function setScheduleDay(weekday, blocks) {
+  const s = load();
+  s.schedule[weekday] = blocks;
+  save();
+}
+export function setTrainingDay(weekday, training) {
+  const s = load();
+  s.training[weekday] = training;
+  save();
 }

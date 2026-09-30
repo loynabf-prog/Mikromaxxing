@@ -161,3 +161,120 @@ export const SEED_FOODS = [
     per100: n({ kcal:160, protein:2, carbs:9, fat:15, satfat:2.1, fiber:6.7, potassium:485, vitK:21, vitB9:81, vitE:2.1, vitC:10, magnesium:29 }) },
 
 ];
+
+// ============================================================================
+// LIFE PLANNER – Tagesstruktur, Training, Gewohnheiten, Ernährungs-Autopilot
+// Alles nur Standard-Vorgaben; in der App (Tab „Setup") frei editierbar.
+// Wochentag-Index: 0=So, 1=Mo, 2=Di, 3=Mi, 4=Do, 5=Fr, 6=Sa
+// ============================================================================
+export const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+export const WEEKDAYS_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+
+// block: { id, time:'HH:MM', title, icon, kind, steps?:[...] }
+// kind: wake | routine | meal | work | gym | move | winddown | sleep | custom
+function blk(id, time, title, icon, kind, steps) {
+  const b = { id, time, title, icon, kind };
+  if (steps) b.steps = steps;
+  return b;
+}
+
+// --- Tagesvorlagen -----------------------------------------------------------
+function weekdayBlocks(prefix, gym) {
+  return [
+    blk(`${prefix}-0`, '06:30', 'Aufstehen & Wasser', '💧', 'wake',
+      ['Großes Glas Wasser trinken', 'KEIN Handy in der 1. Stunde', 'Fenster auf / Tageslicht']),
+    blk(`${prefix}-1`, '06:45', 'Morgenroutine', '☀️', 'routine',
+      ['Bett machen', 'Zähne putzen', 'Kalt duschen/waschen', '10 Min Bewegung/Sonne', 'Morgen-Supplements']),
+    blk(`${prefix}-2`, '07:15', 'Frühstück', '🍳', 'meal'),
+    blk(`${prefix}-3`, '08:00', 'Deep Work – Block 1', '💻', 'work',
+      ['Wichtigste Aufgabe zuerst', 'Handy im anderen Raum']),
+    blk(`${prefix}-4`, '10:30', 'Pause & Bewegung', '🚶', 'move'),
+    blk(`${prefix}-5`, '12:30', 'Mittagessen', '🥗', 'meal'),
+    blk(`${prefix}-6`, '13:30', 'Deep Work – Block 2', '💻', 'work'),
+    gym === 'gym'
+      ? blk(`${prefix}-7`, '17:00', 'Training (Gym)', '🏋️', 'gym')
+      : gym === 'ball'
+        ? blk(`${prefix}-7`, '17:00', 'Basketball', '🏀', 'gym')
+        : blk(`${prefix}-7`, '17:00', 'Aktive Erholung', '🧘', 'move'),
+    blk(`${prefix}-8`, '19:00', 'Abendessen', '🍽️', 'meal'),
+    blk(`${prefix}-9`, '21:30', 'Wind-down', '🌙', 'winddown',
+      ['Handy in anderen Raum', 'Licht dimmen', 'Lesen statt Bildschirm']),
+    blk(`${prefix}-10`, '22:30', 'Schlafvorbereitung', '🛏️', 'routine',
+      ['Abend-Supplements (Magnesium)', 'Kurz reflektieren / Dankbarkeit', 'Für morgen vorbereiten']),
+    blk(`${prefix}-11`, '23:00', 'Schlafen', '😴', 'sleep'),
+  ];
+}
+
+function weekendBlocks(prefix, sunday) {
+  return [
+    blk(`${prefix}-0`, '08:00', 'Aufstehen & Wasser', '💧', 'wake',
+      ['Großes Glas Wasser', 'Kein Handy in der 1. Stunde', 'Tageslicht']),
+    blk(`${prefix}-1`, '08:15', 'Morgenroutine', '☀️', 'routine',
+      ['Bett machen', 'Zähne putzen', 'Bewegung/Sonne', 'Morgen-Supplements']),
+    blk(`${prefix}-2`, '09:00', 'Frühstück', '🍳', 'meal'),
+    sunday
+      ? blk(`${prefix}-3`, '10:00', 'Wochenplanung', '🗓️', 'work', ['Woche planen', 'Ziele setzen', 'Einkauf/Meal-Prep planen'])
+      : blk(`${prefix}-3`, '10:00', 'Fokus / Admin', '💻', 'work'),
+    blk(`${prefix}-4`, '12:30', 'Mittagessen', '🥗', 'meal'),
+    sunday
+      ? blk(`${prefix}-5`, '14:00', 'Erholung / Zeit für dich', '🧘', 'move')
+      : blk(`${prefix}-5`, '14:00', 'Basketball / Aktivität', '🏀', 'gym'),
+    blk(`${prefix}-6`, '19:00', 'Abendessen', '🍽️', 'meal'),
+    blk(`${prefix}-7`, '21:30', 'Wind-down', '🌙', 'winddown',
+      ['Handy weglegen', 'Licht dimmen', 'Lesen']),
+    blk(`${prefix}-8`, '22:30', 'Schlafvorbereitung', '🛏️', 'routine',
+      ['Abend-Supplements', 'Reflexion', 'Für morgen vorbereiten']),
+    blk(`${prefix}-9`, '23:00', 'Schlafen', '😴', 'sleep'),
+  ];
+}
+
+// Wochenplan: Mo/Mi/Fr Gym, Di/Do Basketball, Sa aktiv, So Ruhe
+export const DEFAULT_SCHEDULE = {
+  1: weekdayBlocks('mo', 'gym'),
+  2: weekdayBlocks('di', 'ball'),
+  3: weekdayBlocks('mi', 'gym'),
+  4: weekdayBlocks('do', 'ball'),
+  5: weekdayBlocks('fr', 'gym'),
+  6: weekendBlocks('sa', false),
+  0: weekendBlocks('so', true),
+};
+
+// --- Trainingsplan (pro Wochentag) ------------------------------------------
+export const DEFAULT_TRAINING = {
+  1: { title: 'Push', focus: 'Brust · Schulter · Trizeps',
+       exercises: ['Bankdrücken', 'Schrägbank KH-Drücken', 'Schulterdrücken', 'Seitheben', 'Trizeps Pushdown'] },
+  2: { title: 'Basketball', focus: 'Cardio · Skills',
+       exercises: ['Warm-up', 'Ballhandling', 'Shooting', 'Spiel'] },
+  3: { title: 'Pull', focus: 'Rücken · Bizeps',
+       exercises: ['Klimmzüge', 'Langhantelrudern', 'Latzug', 'Face Pulls', 'Bizeps Curls'] },
+  4: { title: 'Basketball', focus: 'Cardio · Skills',
+       exercises: ['Warm-up', 'Ballhandling', 'Shooting', 'Spiel'] },
+  5: { title: 'Legs', focus: 'Beine · Core',
+       exercises: ['Kniebeugen', 'Rumänisches Kreuzheben', 'Beinpresse', 'Wadenheben', 'Plank'] },
+  6: { title: 'Aktive Erholung', focus: 'Spaziergang · Mobilität',
+       exercises: ['30–45 Min Spaziergang', 'Dehnen / Mobility'] },
+  0: { title: 'Ruhetag', focus: 'Erholung · Wochenplanung', exercises: [] },
+};
+
+// --- Gewohnheiten (Streaks) --------------------------------------------------
+export const DEFAULT_HABITS = [
+  { id: 'h_water',     name: '3,5 L Wasser',            icon: '💧' },
+  { id: 'h_nophone',   name: 'Kein Handy 1. Stunde',    icon: '📵' },
+  { id: 'h_sun',       name: 'Morgens Tageslicht',      icon: '☀️' },
+  { id: 'h_steps',     name: '10.000 Schritte',         icon: '👟' },
+  { id: 'h_read',      name: '10 Min lesen',            icon: '📖' },
+  { id: 'h_supps',     name: 'Alle Supplements',        icon: '💊' },
+  { id: 'h_phoneoff',  name: 'Handy weg 22:30',         icon: '🌙' },
+];
+
+// --- Ernährungs-Autopilot (fester Tages-Grundplan) --------------------------
+// Fokus: Mikros/Vitamine über Obst & Gemüse abdecken. Protein/Carb-Basics
+// fügst du selbst hinzu, sobald du sie in der Bibliothek angelegt hast.
+export const DEFAULT_AUTOPILOT = [
+  { foodId: 'kiwi',        grams: 150 }, // 2 Kiwi
+  { foodId: 'bell_pepper', grams: 120 }, // 1 Paprika
+  { foodId: 'spinach',     grams: 100 },
+  { foodId: 'carrot',      grams: 65 },  // 1 Karotte
+  { foodId: 'blueberries', grams: 100 },
+  { foodId: 'orange',      grams: 130 }, // 1 Orange
+];

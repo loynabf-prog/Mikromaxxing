@@ -1,7 +1,7 @@
 // ============================================================================
 // Mikromaxxing – App-Logik & UI
 // ============================================================================
-import { NUTRIENTS, NUTRIENT_BY_KEY } from './data.js';
+import { NUTRIENTS, NUTRIENT_BY_KEY, WEEKDAYS, WEEKDAYS_LONG } from './data.js';
 import * as store from './store.js';
 
 // --- Zustand der Oberfläche ---------------------------------------------------
@@ -42,6 +42,8 @@ function amountLabel(food, grams) {
 // ============================================================================
 function render() {
   if (currentTab === 'today') renderToday();
+  else if (currentTab === 'food') renderNutrition();
+  else if (currentTab === 'training') renderTraining();
   else if (currentTab === 'library') renderLibrary();
   else if (currentTab === 'trends') renderTrends();
   else if (currentTab === 'profile') renderProfile();
@@ -57,10 +59,182 @@ function updateNav() {
 
 function setTab(tab) { currentTab = tab; render(); }
 
+// Ansicht neu zeichnen ohne nach oben zu scrollen (für Häkchen etc.)
+function rerender() {
+  if (currentTab === 'today') renderToday();
+  else if (currentTab === 'food') renderNutrition();
+  else if (currentTab === 'training') renderTraining();
+  else if (currentTab === 'library') renderLibrary();
+  else if (currentTab === 'trends') renderTrends();
+  else if (currentTab === 'profile') renderProfile();
+  updateNav();
+}
+
 // ============================================================================
-// View: HEUTE (Dashboard)
+// View: HEUTE (Kommandozentrale / Tages-Timeline)
 // ============================================================================
+const expandedBlocks = new Set();
+
 function renderToday() {
+  const key = store.todayKey();
+  const now = new Date();
+  const wd = now.getDay();
+  const blocks = store.getDaySchedule(key);
+  const { current, next } = store.currentBlock(key, now);
+  const training = store.getTrainingFor(key);
+  const habits = store.getHabits();
+
+  // Ernährungs-Kurzstatus (heute)
+  const targets = store.getState().profile.targets;
+  const totals = store.computeTotals(key);
+  const day = store.getDay(key);
+  const remainKcal = Math.round(targets.kcal - (totals.kcal || 0));
+  const suppTotal = store.getState().supplements.length;
+  const suppDone = store.getState().supplements.filter(s => day.supps[s.id]).length;
+  const rec = store.getRecommendations(key);
+  const openGaps = rec.openGaps.length;
+
+  const hour = now.getHours();
+  const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
+
+  app.innerHTML = `
+    <div class="hero">
+      <div class="hero-greet">${greeting}</div>
+      <div class="hero-date">${WEEKDAYS_LONG[wd]} · ${now.getDate()}.${now.getMonth()+1}.</div>
+    </div>
+
+    ${nowCard(current, next, key)}
+
+    <!-- Timeline -->
+    <div class="card">
+      <div class="card-head"><span>🗓️ Tagesplan</span>
+        <span class="card-head-val">${blocks.filter(b=>store.isChecked(key,'block:'+b.id)).length}/${blocks.length}</span></div>
+      <div class="timeline">
+        ${blocks.map(b => timelineBlock(b, key, current && b.id === current.id)).join('')}
+      </div>
+    </div>
+
+    <!-- Training heute -->
+    ${training ? `
+      <button class="card train-card" id="go-training">
+        <div class="train-head"><span>🏋️ Training heute</span><span class="train-arrow">›</span></div>
+        <div class="train-title">${esc(training.title)}</div>
+        <div class="train-focus">${esc(training.focus || '')}</div>
+      </button>` : ''}
+
+    <!-- Gewohnheiten -->
+    <div class="card">
+      <div class="card-head"><span>🔥 Gewohnheiten</span></div>
+      <div class="habit-grid">
+        ${habits.map(h => habitChip(h, key)).join('')}
+      </div>
+    </div>
+
+    <!-- Ernährung Kurzstatus -->
+    <button class="card nutri-mini" id="go-food">
+      <div class="card-head"><span>🍽️ Ernährung</span><span class="train-arrow">›</span></div>
+      <div class="nutri-row">
+        <div class="nutri-stat"><div class="nutri-val ${remainKcal<0?'over':''}">${remainKcal>=0?remainKcal:'+'+(-remainKcal)}</div><div class="nutri-lbl">${remainKcal>=0?'kcal übrig':'kcal drüber'}</div></div>
+        <div class="nutri-stat"><div class="nutri-val">${(day.water/1000).toFixed(1)}L</div><div class="nutri-lbl">Wasser</div></div>
+        <div class="nutri-stat"><div class="nutri-val">${suppDone}/${suppTotal}</div><div class="nutri-lbl">Supps</div></div>
+        <div class="nutri-stat"><div class="nutri-val ${openGaps===0?'good':''}">${openGaps===0?'100%':openGaps}</div><div class="nutri-lbl">${openGaps===0?'erreicht':'Lücken'}</div></div>
+      </div>
+    </button>
+
+    <div class="spacer"></div>
+  `;
+
+  // Events
+  app.querySelectorAll('[data-block]').forEach(b => b.onclick = () => {
+    store.toggleCheck(key, 'block:' + b.dataset.block); rerender();
+  });
+  app.querySelectorAll('[data-expand]').forEach(b => b.onclick = (e) => {
+    e.stopPropagation();
+    const id = b.dataset.expand;
+    if (expandedBlocks.has(id)) expandedBlocks.delete(id); else expandedBlocks.add(id);
+    rerender();
+  });
+  app.querySelectorAll('[data-step]').forEach(b => b.onclick = (e) => {
+    e.stopPropagation();
+    store.toggleCheck(key, b.dataset.step); rerender();
+  });
+  app.querySelectorAll('[data-habit]').forEach(b => b.onclick = () => {
+    store.toggleCheck(key, 'habit:' + b.dataset.habit); rerender();
+  });
+  const gt = $('#go-training'); if (gt) gt.onclick = () => setTab('training');
+  const gf = $('#go-food'); if (gf) gf.onclick = () => setTab('food');
+  const nowDone = $('#now-done');
+  if (nowDone && current) nowDone.onclick = (e) => {
+    e.stopPropagation();
+    store.toggleCheck(key, 'block:' + current.id); rerender();
+  };
+}
+
+function nowCard(current, next, key) {
+  if (!current && !next) {
+    return `<div class="card now-card"><div class="now-label">Kein Plan für heute</div>
+      <div class="now-hint">Leg deinen Tagesplan im Tab „Setup" an.</div></div>`;
+  }
+  if (!current) {
+    return `<div class="card now-card">
+      <div class="now-label">Gleich dran</div>
+      <div class="now-title">${esc(next.icon)} ${esc(next.title)}</div>
+      <div class="now-time">ab ${esc(next.time)}</div>
+    </div>`;
+  }
+  const done = store.isChecked(key, 'block:' + current.id);
+  return `<div class="card now-card ${done ? 'done' : ''}">
+    <div class="now-label">Jetzt${done ? ' · erledigt ✓' : ''}</div>
+    <div class="now-main">
+      <div>
+        <div class="now-title">${esc(current.icon)} ${esc(current.title)}</div>
+        <div class="now-time">${esc(current.time)}${next ? ` · als Nächstes ${esc(next.time)} ${esc(next.title)}` : ''}</div>
+      </div>
+      <button class="now-check ${done ? 'on' : ''}" id="now-done">${done ? '✓' : ''}</button>
+    </div>
+  </div>`;
+}
+
+function timelineBlock(b, key, isCurrent) {
+  const done = store.isChecked(key, 'block:' + b.id);
+  const hasSteps = b.steps && b.steps.length;
+  const expanded = expandedBlocks.has(b.id);
+  const stepsDone = hasSteps ? b.steps.filter((_, i) => store.isChecked(key, `step:${b.id}:${i}`)).length : 0;
+  return `
+    <div class="tl-block ${isCurrent ? 'current' : ''} ${done ? 'done' : ''}">
+      <div class="tl-time">${esc(b.time)}</div>
+      <button class="tl-check ${done ? 'on' : ''}" data-block="${b.id}">${done ? '✓' : ''}</button>
+      <div class="tl-body ${hasSteps ? 'has-steps' : ''}" ${hasSteps ? `data-expand="${b.id}"` : ''}>
+        <div class="tl-title">${esc(b.icon)} ${esc(b.title)}
+          ${hasSteps ? `<span class="tl-steps-badge">${stepsDone}/${b.steps.length} ${expanded ? '▾' : '▸'}</span>` : ''}
+        </div>
+        ${hasSteps && expanded ? `<div class="tl-steps">
+          ${b.steps.map((st, i) => {
+            const sk = `step:${b.id}:${i}`;
+            const sd = store.isChecked(key, sk);
+            return `<button class="tl-step ${sd ? 'on' : ''}" data-step="${sk}">
+              <span class="tl-step-box">${sd ? '✓' : ''}</span>${esc(st)}</button>`;
+          }).join('')}
+        </div>` : ''}
+      </div>
+    </div>`;
+}
+
+function habitChip(h, key) {
+  const done = store.isChecked(key, 'habit:' + h.id);
+  const streak = store.habitStreak(h.id, key);
+  return `
+    <button class="habit-chip ${done ? 'done' : ''}" data-habit="${h.id}">
+      <span class="habit-ico">${esc(h.icon || '•')}</span>
+      <span class="habit-name">${esc(h.name)}</span>
+      <span class="habit-streak">${streak > 0 ? '🔥 ' + streak : ''}</span>
+    </button>`;
+}
+
+// ============================================================================
+// View: ESSEN (Ernährungs-Dashboard)
+// ============================================================================
+function renderNutrition() {
   const profile = store.getState().profile;
   const targets = profile.targets;
   const totals = store.computeTotals(currentDate);
@@ -78,6 +252,8 @@ function renderToday() {
       <div class="date-label">${esc(store.formatDateLabel(currentDate))}</div>
       <button class="date-nav" id="next-day" aria-label="Nächster Tag">›</button>
     </div>
+
+    ${autopilotBar()}
 
     <!-- Kalorien-Hauptkarte -->
     <div class="card calorie-card">
@@ -179,23 +355,29 @@ function renderToday() {
   `;
 
   // Events
-  $('#prev-day').onclick = () => { currentDate = store.shiftDate(currentDate, -1); renderToday(); };
-  $('#next-day').onclick = () => { currentDate = store.shiftDate(currentDate, 1); renderToday(); };
+  $('#prev-day').onclick = () => { currentDate = store.shiftDate(currentDate, -1); rerender(); };
+  $('#next-day').onclick = () => { currentDate = store.shiftDate(currentDate, 1); rerender(); };
   app.querySelectorAll('[data-water]').forEach(b => b.onclick = () => {
     const d = store.getDay(currentDate);
     store.setWater(currentDate, d.water + Number(b.dataset.water));
-    renderToday();
+    rerender();
   });
-  $('#water-reset').onclick = () => { store.setWater(currentDate, 0); renderToday(); };
+  $('#water-reset').onclick = () => { store.setWater(currentDate, 0); rerender(); };
   app.querySelectorAll('[data-supp]').forEach(b => b.onclick = () => {
-    store.toggleSupp(currentDate, b.dataset.supp); renderToday();
+    store.toggleSupp(currentDate, b.dataset.supp); rerender();
   });
   app.querySelectorAll('[data-entry]').forEach(b => b.onclick = () => {
-    store.removeEntry(currentDate, Number(b.dataset.entry)); renderToday();
+    store.removeEntry(currentDate, Number(b.dataset.entry)); rerender();
   });
   const wInput = $('#weight-input');
   wInput.onchange = () => store.setWeight(currentDate, wInput.value);
   $('#add-food-btn').onclick = openAddFoodSheet;
+  const apBtn = $('#autopilot-load');
+  if (apBtn) apBtn.onclick = () => {
+    const added = store.loadAutopilot(currentDate);
+    rerender();
+    toast(`Autopilot: ${added} Lebensmittel geladen ✓`);
+  };
 
   // Schnellzugriff & Coach: One-Tap-Logging
   app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
@@ -204,7 +386,7 @@ function renderToday() {
     quickLog(b.dataset.rec, Number(b.dataset.grams)));
   const coachToggle = $('#coach-toggle');
   if (coachToggle) coachToggle.onclick = () => {
-    coachExpanded = !coachExpanded; renderToday();
+    coachExpanded = !coachExpanded; rerender();
   };
 }
 
@@ -213,10 +395,23 @@ function quickLog(foodId, grams) {
   const food = store.foodById(foodId);
   if (!food) return;
   const index = store.addEntry(currentDate, foodId, grams);
-  renderToday();
+  rerender();
   toast(`${food.name} (${grams} g) hinzugefügt`, 'Rückgängig', () => {
-    store.removeEntry(currentDate, index); renderToday();
+    store.removeEntry(currentDate, index); rerender();
   });
+}
+
+// --- Autopilot-Leiste --------------------------------------------------------
+function autopilotBar() {
+  const list = store.getAutopilot();
+  const loaded = store.isAutopilotLoaded(currentDate);
+  if (!list.length) return '';
+  if (loaded) {
+    return `<div class="autopilot-bar done"><span>✓ Autopilot geladen</span>
+      <button class="chip" id="autopilot-load">nochmal laden</button></div>`;
+  }
+  return `<button class="autopilot-btn" id="autopilot-load">
+      🍽️ Tagesplan laden <em>(${list.length} feste Lebensmittel)</em></button>`;
 }
 
 // --- Coach-Karte -------------------------------------------------------------
@@ -499,7 +694,7 @@ function openAddFoodSheet() {
 
     $('#confirm-add').onclick = () => {
       const g = Number(gramInput.value) || 0;
-      if (g > 0) { store.addEntry(currentDate, food.id, g); closeSheet(); renderToday(); }
+      if (g > 0) { store.addEntry(currentDate, food.id, g); closeSheet(); rerender(); }
     };
   }
 
@@ -508,6 +703,65 @@ function openAddFoodSheet() {
 }
 
 function closeSheet() { modalRoot.innerHTML = ''; }
+
+// ============================================================================
+// View: TRAINING
+// ============================================================================
+let selectedTrainDay = new Date().getDay();
+
+function renderTraining() {
+  const s = store.getState();
+  const todayWd = new Date().getDay();
+  const t = s.training[selectedTrainDay] || { title: '—', focus: '', exercises: [] };
+  const isToday = selectedTrainDay === todayWd;
+  const key = store.todayKey();
+
+  app.innerHTML = `
+    <div class="view-head"><h2>Training</h2></div>
+
+    <div class="week-strip">
+      ${[1,2,3,4,5,6,0].map(wd => {
+        const tt = s.training[wd] || { title: '' };
+        const isGym = tt.title && !/ruhe|erholung/i.test(tt.title);
+        return `<button class="week-day ${wd===selectedTrainDay?'sel':''} ${wd===todayWd?'today':''}" data-wd="${wd}">
+          <span class="week-day-lbl">${WEEKDAYS[wd]}</span>
+          <span class="week-day-dot ${isGym?'on':''}"></span>
+        </button>`;
+      }).join('')}
+    </div>
+
+    <div class="card">
+      <div class="card-head">
+        <span>${WEEKDAYS_LONG[selectedTrainDay]}${isToday ? ' · heute' : ''}</span>
+      </div>
+      <div class="train-big-title">${esc(t.title)}</div>
+      ${t.focus ? `<div class="train-big-focus">${esc(t.focus)}</div>` : ''}
+      ${t.exercises && t.exercises.length ? `
+        <div class="ex-list">
+          ${t.exercises.map((ex, i) => {
+            const ck = `ex:${selectedTrainDay}:${i}`;
+            const dn = isToday && store.isChecked(key, ck);
+            return `<button class="ex-item ${dn?'on':''}" ${isToday?`data-ex="${ck}"`:''}>
+              <span class="ex-box">${dn?'✓':''}</span>
+              <span class="ex-name">${esc(ex)}</span>
+            </button>`;
+          }).join('')}
+        </div>
+        ${!isToday ? '<p class="hint">Übungen abhaken kannst du am jeweiligen Tag.</p>' : ''}
+      ` : '<div class="empty">Ruhetag – keine Übungen.</div>'}
+    </div>
+
+    <p class="hint">Deinen Split bearbeitest du im Tab „Setup" → Trainingsplan.</p>
+    <div class="spacer"></div>
+  `;
+
+  app.querySelectorAll('[data-wd]').forEach(b => b.onclick = () => {
+    selectedTrainDay = Number(b.dataset.wd); renderTraining();
+  });
+  app.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => {
+    store.toggleCheck(key, b.dataset.ex); renderTraining();
+  });
+}
 
 // ============================================================================
 // View: BIBLIOTHEK
@@ -659,6 +913,20 @@ function renderTrends() {
         ${avgTile('Wasser', avg(waterSeries), store.getState().profile.water/1000, 'L')}
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-head"><span>🔥 Gewohnheiten – Streaks</span></div>
+      <div class="streak-list">
+        ${store.getHabits().map(h => {
+          const st = store.habitStreak(h.id);
+          return `<div class="streak-row">
+            <span class="streak-ico">${esc(h.icon||'•')}</span>
+            <span class="streak-name">${esc(h.name)}</span>
+            <span class="streak-val ${st>0?'on':''}">${st>0?'🔥 '+st+' Tage':'—'}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
     <div class="spacer"></div>
   `;
 }
@@ -758,7 +1026,30 @@ function renderProfile() {
     </label>`;
 
   app.innerHTML = `
-    <div class="view-head"><h2>Profil & Ziele</h2></div>
+    <div class="view-head"><h2>Setup</h2></div>
+
+    <div class="card">
+      <div class="card-head"><span>Bereiche einrichten</span></div>
+      <div class="setup-links">
+        <button class="setup-link" id="edit-schedule"><span>🗓️ Tagesplan / Timeline</span><span class="train-arrow">›</span></button>
+        <button class="setup-link" id="edit-training"><span>🏋️ Trainingsplan (Split)</span><span class="train-arrow">›</span></button>
+        <button class="setup-link" id="edit-autopilot"><span>🍽️ Ernährungs-Autopilot</span><span class="train-arrow">›</span></button>
+        <button class="setup-link" id="open-library"><span>📚 Lebensmittel-Bibliothek</span><span class="train-arrow">›</span></button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span>Gewohnheiten verwalten</span></div>
+      <div class="supp-manage">
+        ${store.getHabits().map(h => `
+          <div class="supp-manage-row">
+            <input type="text" data-habit-icon="${h.id}" value="${esc(h.icon||'')}" placeholder="🔥" style="max-width:52px;text-align:center">
+            <input type="text" data-habit-name="${h.id}" value="${esc(h.name)}" placeholder="Gewohnheit">
+            <button class="btn-danger tiny" data-habit-del="${h.id}">✕</button>
+          </div>`).join('')}
+      </div>
+      <button class="btn-secondary small" id="add-habit">＋ Gewohnheit</button>
+    </div>
 
     <div class="card">
       <div class="card-head"><span>Körperdaten</span></div>
@@ -874,6 +1165,29 @@ function renderProfile() {
     renderProfile();
   };
 
+  // Setup-Links
+  $('#edit-schedule').onclick = openScheduleEditor;
+  $('#edit-training').onclick = openTrainingEditor;
+  $('#edit-autopilot').onclick = openAutopilotEditor;
+  $('#open-library').onclick = () => setTab('library');
+
+  // Gewohnheiten
+  app.querySelectorAll('[data-habit-name]').forEach(inp => inp.onchange = () => {
+    const h = store.getHabits().find(x => x.id === inp.dataset.habitName);
+    if (h) { h.name = inp.value; store.upsertHabit(h); }
+  });
+  app.querySelectorAll('[data-habit-icon]').forEach(inp => inp.onchange = () => {
+    const h = store.getHabits().find(x => x.id === inp.dataset.habitIcon);
+    if (h) { h.icon = inp.value; store.upsertHabit(h); }
+  });
+  app.querySelectorAll('[data-habit-del]').forEach(b => b.onclick = () => {
+    store.deleteHabit(b.dataset.habitDel); renderProfile();
+  });
+  $('#add-habit').onclick = () => {
+    store.upsertHabit({ id: 'h_' + Date.now().toString(36), name: 'Neue Gewohnheit', icon: '✅' });
+    renderProfile();
+  };
+
   // Backup
   $('#export-btn').onclick = doExport;
   $('#import-btn').onclick = () => $('#import-file').click();
@@ -938,6 +1252,181 @@ function doExport() {
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
   toast('Backup heruntergeladen ✓');
+}
+
+// ============================================================================
+// Editor: Tagesplan / Timeline
+// ============================================================================
+function openScheduleEditor() {
+  let wd = new Date().getDay();
+  let blocks = structuredClone(store.getState().schedule[wd] || []);
+
+  function draw() {
+    blocks.sort((a, b) => a.time.localeCompare(b.time));
+    modalRoot.innerHTML = `
+      <div class="sheet-overlay"><div class="sheet tall">
+        <div class="sheet-head"><strong>Tagesplan</strong>
+          <button class="sheet-close" id="sheet-close">✕</button></div>
+        <div class="week-strip">
+          ${[1,2,3,4,5,6,0].map(d => `<button class="week-day ${d===wd?'sel':''}" data-wd="${d}">
+            <span class="week-day-lbl">${WEEKDAYS[d]}</span></button>`).join('')}
+        </div>
+        <div class="editor-scroll">
+          ${blocks.map((b, i) => `
+            <div class="blk-edit">
+              <div class="blk-edit-row">
+                <input type="time" data-bt="${i}" value="${esc(b.time)}">
+                <input type="text" data-bi="${i}" value="${esc(b.icon||'')}" class="blk-icon" placeholder="⏰">
+                <input type="text" data-bn="${i}" value="${esc(b.title)}" placeholder="Titel">
+                <button class="btn-danger tiny" data-bd="${i}">✕</button>
+              </div>
+              <textarea data-bs="${i}" class="blk-steps" placeholder="Schritte (eine Zeile pro Schritt, optional)">${esc((b.steps||[]).join('\n'))}</textarea>
+            </div>`).join('')}
+          <button class="btn-secondary small" id="blk-add">＋ Block</button>
+          <div class="copy-row">
+            <button class="chip" id="copy-week">Auf ganze Woche kopieren</button>
+            <button class="chip" id="copy-workdays">Auf Mo–Fr kopieren</button>
+          </div>
+        </div>
+        <div class="editor-actions"><span></span>
+          <button class="btn-primary" id="blk-save">Speichern</button></div>
+      </div></div>`;
+
+    $('#sheet-close').onclick = closeSheet;
+    modalRoot.querySelectorAll('[data-wd]').forEach(b => b.onclick = () => {
+      commit(); store.setScheduleDay(wd, blocks);
+      wd = Number(b.dataset.wd); blocks = structuredClone(store.getState().schedule[wd] || []); draw();
+    });
+    modalRoot.querySelectorAll('[data-bd]').forEach(b => b.onclick = () => {
+      commit(); blocks.splice(Number(b.dataset.bd), 1); draw();
+    });
+    $('#blk-add').onclick = () => {
+      commit();
+      blocks.push({ id: `${wd}-${Date.now().toString(36)}`, time: '12:00', title: 'Neuer Block', icon: '•', kind: 'custom' });
+      draw();
+    };
+    $('#blk-save').onclick = () => { commit(); store.setScheduleDay(wd, blocks); closeSheet(); toast('Tagesplan gespeichert ✓'); };
+    $('#copy-week').onclick = () => {
+      commit();
+      for (let d = 0; d < 7; d++) store.setScheduleDay(d, cloneBlocks(d));
+      toast('Auf ganze Woche kopiert ✓');
+    };
+    $('#copy-workdays').onclick = () => {
+      commit();
+      for (const d of [1,2,3,4,5]) store.setScheduleDay(d, cloneBlocks(d));
+      toast('Auf Mo–Fr kopiert ✓');
+    };
+  }
+
+  function commit() {
+    modalRoot.querySelectorAll('[data-bt]').forEach(inp => blocks[+inp.dataset.bt].time = inp.value);
+    modalRoot.querySelectorAll('[data-bi]').forEach(inp => blocks[+inp.dataset.bi].icon = inp.value);
+    modalRoot.querySelectorAll('[data-bn]').forEach(inp => blocks[+inp.dataset.bn].title = inp.value);
+    modalRoot.querySelectorAll('[data-bs]').forEach(inp => {
+      const steps = inp.value.split('\n').map(s => s.trim()).filter(Boolean);
+      if (steps.length) blocks[+inp.dataset.bs].steps = steps; else delete blocks[+inp.dataset.bs].steps;
+    });
+  }
+  function cloneBlocks(targetWd) {
+    return blocks.map((b, i) => ({ ...structuredClone(b), id: `${targetWd}-${i}` }));
+  }
+
+  draw();
+}
+
+// ============================================================================
+// Editor: Trainingsplan
+// ============================================================================
+function openTrainingEditor() {
+  let wd = new Date().getDay();
+
+  function draw() {
+    const t = store.getState().training[wd] || { title: '', focus: '', exercises: [] };
+    modalRoot.innerHTML = `
+      <div class="sheet-overlay"><div class="sheet tall">
+        <div class="sheet-head"><strong>Trainingsplan</strong>
+          <button class="sheet-close" id="sheet-close">✕</button></div>
+        <div class="week-strip">
+          ${[1,2,3,4,5,6,0].map(d => `<button class="week-day ${d===wd?'sel':''}" data-wd="${d}">
+            <span class="week-day-lbl">${WEEKDAYS[d]}</span></button>`).join('')}
+        </div>
+        <div class="editor-scroll">
+          <label class="edit-field wide"><span>Titel</span>
+            <input type="text" id="tr-title" value="${esc(t.title||'')}" placeholder="z.B. Push"></label>
+          <label class="edit-field wide"><span>Fokus</span>
+            <input type="text" id="tr-focus" value="${esc(t.focus||'')}" placeholder="z.B. Brust · Schulter · Trizeps"></label>
+          <label class="edit-field wide"><span>Übungen (eine pro Zeile)</span>
+            <textarea id="tr-ex" class="blk-steps" style="min-height:160px">${esc((t.exercises||[]).join('\n'))}</textarea></label>
+        </div>
+        <div class="editor-actions"><span></span>
+          <button class="btn-primary" id="tr-save">Speichern</button></div>
+      </div></div>`;
+    $('#sheet-close').onclick = closeSheet;
+    modalRoot.querySelectorAll('[data-wd]').forEach(b => b.onclick = () => { commit(); wd = Number(b.dataset.wd); draw(); });
+    $('#tr-save').onclick = () => { commit(); closeSheet(); toast('Trainingsplan gespeichert ✓'); };
+  }
+  function commit() {
+    const title = $('#tr-title').value.trim();
+    const focus = $('#tr-focus').value.trim();
+    const exercises = $('#tr-ex').value.split('\n').map(s => s.trim()).filter(Boolean);
+    store.setTrainingDay(wd, { title, focus, exercises });
+  }
+  draw();
+}
+
+// ============================================================================
+// Editor: Ernährungs-Autopilot
+// ============================================================================
+function openAutopilotEditor() {
+  let list = structuredClone(store.getAutopilot());
+  const foods = store.getState().foods.slice().sort((a, b) => a.name.localeCompare(b.name));
+
+  function draw() {
+    modalRoot.innerHTML = `
+      <div class="sheet-overlay"><div class="sheet tall">
+        <div class="sheet-head"><strong>Ernährungs-Autopilot</strong>
+          <button class="sheet-close" id="sheet-close">✕</button></div>
+        <p class="hint">Dein fester Tagesplan. „Tagesplan laden" im Essen-Tag fügt diese Lebensmittel mit einem Tap ein.</p>
+        <div class="editor-scroll">
+          ${list.length ? list.map((it, i) => {
+            const f = store.foodById(it.foodId);
+            if (!f) return '';
+            const isPiece = !!f.piece;
+            const val = isPiece ? Math.max(1, Math.round(it.grams / f.piece.g)) : it.grams;
+            return `<div class="ap-row">
+              <span class="ap-name">${esc(f.name)}</span>
+              <input type="number" inputmode="decimal" data-ap="${i}" value="${val}" step="${isPiece?1:10}" min="0">
+              <span class="ap-unit">${isPiece ? '× ' + esc(f.piece.name) : 'g'}</span>
+              <button class="btn-danger tiny" data-apdel="${i}">✕</button>
+            </div>`;
+          }).join('') : '<div class="empty">Noch keine Lebensmittel im Autopilot.</div>'}
+          <div class="ap-add">
+            <select id="ap-food">${foods.map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join('')}</select>
+            <button class="btn-secondary small" id="ap-add-btn">＋ Hinzufügen</button>
+          </div>
+        </div>
+        <div class="editor-actions"><span></span>
+          <button class="btn-primary" id="ap-save">Speichern</button></div>
+      </div></div>`;
+    $('#sheet-close').onclick = closeSheet;
+    modalRoot.querySelectorAll('[data-apdel]').forEach(b => b.onclick = () => { commit(); list.splice(+b.dataset.apdel, 1); draw(); });
+    $('#ap-add-btn').onclick = () => {
+      commit();
+      const f = store.foodById($('#ap-food').value);
+      if (f) list.push({ foodId: f.id, grams: f.piece ? f.piece.g * (f.piece.def || 1) : 100 });
+      draw();
+    };
+    $('#ap-save').onclick = () => { commit(); store.setAutopilot(list); closeSheet(); toast('Autopilot gespeichert ✓'); };
+  }
+  function commit() {
+    modalRoot.querySelectorAll('[data-ap]').forEach(inp => {
+      const i = +inp.dataset.ap;
+      const f = store.foodById(list[i].foodId);
+      const v = Number(inp.value) || 0;
+      list[i].grams = f && f.piece ? v * f.piece.g : v;
+    });
+  }
+  draw();
 }
 
 // ============================================================================

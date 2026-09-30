@@ -1,10 +1,21 @@
-# Mikromaxxing 🥩💊💧
+# Mikromaxxing – Life Planner 🧭💪🥗
 
-Persönlicher Nährstoff-Tracker für **Makros, Mikros, Vitamine, Supplemente und Wasser** –
-mit Fokus auf unverarbeitete Lebensmittel. Läuft als installierbare Web-App (PWA)
+Persönlicher **Lebensplaner** für Struktur, Disziplin & Gesundheit: fester Tagesablauf,
+Trainings-Split, Gewohnheiten und ein Ernährungs-Autopilot, der dich ohne Nachdenken
+auf ~100 % aller Nährwerte bringt. Ziel: **so wenig Entscheidungen wie möglich** –
+alles vorgeplant, jeden Tag durchziehbar. Läuft als installierbare Web-App (PWA)
 direkt am Handy, komplett offline, kostenlos über GitHub Pages. Keine Anmeldung, kein Server.
 
-## Features
+## Life-Planner-Features
+
+- **🧭 Heute (Kommandozentrale)** – Zeit-Timeline deines Tages mit „was ist JETZT dran", abhakbaren Blöcken & Routine-Schritten (Aufstehen, kein Handy morgens, Deep Work, Training, Wind-down, Schlafen), plus Kurzstatus für Training, Gewohnheiten & Ernährung.
+- **🗓️ Tagesstruktur & Schlaf** – feste Aufsteh-/Schlafenszeiten und Morgen-/Abendroutine pro Wochentag; voll editierbar (Setup → Tagesplan), auf Werktage/Woche kopierbar.
+- **🏋️ Training / Gym-Split** – fester Wochen-Trainingsplan (welcher Tag welches Training), Übungen am Trainingstag abhakbar; Split editierbar.
+- **💻 Arbeit / Fokus** – Deep-Work-Blöcke fest im Tagesplan für Disziplin & Selbstständigkeit.
+- **🔥 Gewohnheiten & Streaks** – feste tägliche Gewohnheiten mit Streak-Zähler (dranbleiben, für immer durchziehen).
+- **🍽️ Ernährungs-Autopilot** – fester Tages-Grundplan an Lebensmitteln, den du mit einem Tap lädst und nur abhakst.
+
+## Ernährungs-Features
 
 - **⚡ Schnellzugriff (Smart-Mix)** – deine Standard-Sachen mit einem Tap loggen. Sortiert automatisch nach Uhrzeit (was isst du sonst um diese Zeit?), zuletzt gegessen und Häufigkeit. Mit „Rückgängig".
 - **🎯 100%-Coach** – schaut, was dir heute noch fehlt, und empfiehlt unverarbeitete Produkte, um deine Lücken zu schließen, **ohne dein Kalorienlimit zu sprengen**:
