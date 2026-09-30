@@ -15,6 +15,15 @@ direkt am Handy, komplett offline, kostenlos über GitHub Pages. Keine Anmeldung
 - **🔥 Gewohnheiten & Streaks** – feste tägliche Gewohnheiten mit Streak-Zähler (dranbleiben, für immer durchziehen).
 - **🍽️ Ernährungs-Autopilot** – fester Tages-Grundplan an Lebensmitteln, den du mit einem Tap lädst und nur abhakst.
 
+## Ernährungs-Konzept: Essentials statt Kalorienzählen
+
+Die App trennt bewusst zwei Ebenen:
+
+1. **Freie Hauptmahlzeit** (zuhause/unterwegs) – wird **nicht getrackt**. Liefert Kalorien, Kohlenhydrate, Sättigung, Geschmack. Kalorien/Carbs werden nur klein als Info gezeigt.
+2. **Essential-Stack** – ein fester, jeden Tag **automatisch geladener** Satz an Obst/Gemüse (+ Supplements), der genau die **bewusst zu planenden Nährstoffe** abdeckt: alle Vitamine, Mineralstoffe, Omega-3, Ballaststoffe **und Protein**.
+
+Das große Ziel ist die **Essentials-Abdeckung** (z.B. „18/26 auf 100 %"), unabhängig von der Hauptmahlzeit. Der Coach zeigt, was noch fehlt und mit welchem festen Produkt du es schließt. Nährstoffe, die aus Obst/Gemüse praktisch nicht kommen (**B12, Vitamin D, Omega-3, Jod, Calcium …**), werden separat als **🔒 „nur über Supplement/Hauptmahlzeit"** ausgewiesen – so siehst du ehrlich, ob dein fester Plan reicht.
+
 ## Ernährungs-Features
 
 - **⚡ Schnellzugriff (Smart-Mix)** – deine Standard-Sachen mit einem Tap loggen. Sortiert automatisch nach Uhrzeit (was isst du sonst um diese Zeit?), zuletzt gegessen und Häufigkeit. Mit „Rückgängig".

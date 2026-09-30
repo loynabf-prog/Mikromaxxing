@@ -374,7 +374,7 @@ export function getRecommendations(key) {
   const topTips = (fits.length ? fits : ranked).slice(0, 4);
 
   // --- Aufschlüsselung pro fehlendem Nährstoff (größtes Defizit zuerst) ------
-  const perNutrient = openGaps.map(nutKey => {
+  const allGaps = openGaps.map(nutKey => {
     const target = targets[nutKey];
     const current = totals[nutKey] || 0;
     const currentPct = Math.round((current / target) * 100);
@@ -408,10 +408,46 @@ export function getRecommendations(key) {
       };
     }
     return { nutKey, current, target, currentPct, best };
-  }).filter(x => x.best) // nur Nährstoffe, für die es einen Lieferanten gibt
-    .sort((a, b) => a.currentPct - b.currentPct);
+  });
+  // Aufteilen: füllbar über Obst/Gemüse vs. nur über Supplement/Hauptmahlzeit
+  const perNutrient = allGaps.filter(x => x.best).sort((a, b) => a.currentPct - b.currentPct);
+  const hardGaps = allGaps.filter(x => !x.best).sort((a, b) => a.currentPct - b.currentPct);
 
-  return { totals, remainingKcal, openGaps, topTips, perNutrient, allDone: openGaps.length === 0 };
+  return { totals, remainingKcal, openGaps, topTips, perNutrient, hardGaps, allDone: openGaps.length === 0 };
+}
+
+// Nährstoffe, die aus Obst/Gemüse praktisch nicht ausreichend kommen
+// (Info-Hinweis für den Nutzer). Werden als "über Supplement/Hauptmahlzeit" markiert.
+export const SUPPLEMENT_ONLY = new Set(['vitB12', 'vitD', 'omega3', 'iodine', 'calcium']);
+
+// --- Essentials-Zusammenfassung (Mikros + Protein) --------------------------
+export function essentialsSummary(key) {
+  const s = load();
+  const totals = computeTotals(key);
+  const t = s.profile.targets;
+  let done = 0, n = 0, sum = 0;
+  const byKey = [];
+  for (const k of GAP_KEYS) {
+    if (!t[k]) continue;
+    const cur = totals[k] || 0;
+    const p = (cur / t[k]) * 100;
+    byKey.push({ key: k, pct: Math.round(p) });
+    sum += Math.min(100, p);
+    n++;
+    if (cur >= t[k] * 0.999) done++;
+  }
+  return { done, total: n, coverage: n ? Math.round(sum / n) : 0, byKey };
+}
+
+// --- Essential-Stack automatisch für heute laden ----------------------------
+export function ensureAutopilot(key) {
+  const s = load();
+  if (s.profile.autopilotAuto === false) return false;
+  if (!s.autopilot || !s.autopilot.length) return false;
+  const day = getDay(key);
+  if (day.autopilotLoaded) return false;
+  loadAutopilot(key);
+  return true;
 }
 
 export function lastGramsFor(foodId) {

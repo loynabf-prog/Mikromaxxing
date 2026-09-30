@@ -83,6 +83,7 @@ export const DEFAULT_PROFILE = {
     omega3: 1000,
   },
   water: 3500, // ml
+  autopilotAuto: true, // Essential-Stack automatisch jeden Tag laden
 };
 
 // --- Supplemente (Start-Checkliste) -----------------------------------------

@@ -93,6 +93,7 @@ function renderToday() {
   const suppDone = store.getState().supplements.filter(s => day.supps[s.id]).length;
   const rec = store.getRecommendations(key);
   const openGaps = rec.openGaps.length;
+  const ess = store.essentialsSummary(key);
 
   const hour = now.getHours();
   const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
@@ -134,10 +135,10 @@ function renderToday() {
     <button class="card nutri-mini" id="go-food">
       <div class="card-head"><span>🍽️ Ernährung</span><span class="train-arrow">›</span></div>
       <div class="nutri-row">
-        <div class="nutri-stat"><div class="nutri-val ${remainKcal<0?'over':''}">${remainKcal>=0?remainKcal:'+'+(-remainKcal)}</div><div class="nutri-lbl">${remainKcal>=0?'kcal übrig':'kcal drüber'}</div></div>
+        <div class="nutri-stat"><div class="nutri-val ${ess.done===ess.total?'good':''}">${ess.done}/${ess.total}</div><div class="nutri-lbl">Essentials</div></div>
         <div class="nutri-stat"><div class="nutri-val">${(day.water/1000).toFixed(1)}L</div><div class="nutri-lbl">Wasser</div></div>
         <div class="nutri-stat"><div class="nutri-val">${suppDone}/${suppTotal}</div><div class="nutri-lbl">Supps</div></div>
-        <div class="nutri-stat"><div class="nutri-val ${openGaps===0?'good':''}">${openGaps===0?'100%':openGaps}</div><div class="nutri-lbl">${openGaps===0?'erreicht':'Lücken'}</div></div>
+        <div class="nutri-stat"><div class="nutri-val ${openGaps===0?'good':''}">${openGaps===0?'✓':openGaps}</div><div class="nutri-lbl">${openGaps===0?'erreicht':'offen'}</div></div>
       </div>
     </button>
 
@@ -245,6 +246,7 @@ function renderNutrition() {
 
   const quickPicks = store.getQuickPicks(8);
   const rec = store.getRecommendations(currentDate);
+  const ess = store.essentialsSummary(currentDate);
 
   app.innerHTML = `
     <div class="date-bar">
@@ -255,12 +257,22 @@ function renderNutrition() {
 
     ${autopilotBar()}
 
-    <!-- Kalorien-Hauptkarte -->
+    <!-- Essentials-Hauptkarte -->
     <div class="card calorie-card">
-      ${calorieRing(totals.kcal, targets.kcal)}
+      ${essentialsRing(ess)}
       <div class="macro-mini">
-        ${macroKeys.map(k => macroBar(k, totals[k], targets[k], macroColors[k])).join('')}
+        ${macroBar('protein', totals.protein, targets.protein, macroColors.protein)}
       </div>
+    </div>
+
+    <!-- Kalorien/Carbs nur als Info -->
+    <div class="card info-card">
+      <div class="info-row">
+        <div class="info-stat"><div class="info-val">${Math.round(totals.kcal)}</div><div class="info-lbl">kcal (getrackt)</div></div>
+        <div class="info-stat"><div class="info-val">${Math.round(totals.carbs)} g</div><div class="info-lbl">Carbs (getrackt)</div></div>
+        <div class="info-stat"><div class="info-val">${Math.round(totals.fat)} g</div><div class="info-lbl">Fett (getrackt)</div></div>
+      </div>
+      <div class="info-note">🍽️ Deine freie Hauptmahlzeit kommt hier oben drauf – wird nicht mitgezählt.</div>
     </div>
 
     <!-- Schnellzugriff -->
@@ -407,11 +419,11 @@ function autopilotBar() {
   const loaded = store.isAutopilotLoaded(currentDate);
   if (!list.length) return '';
   if (loaded) {
-    return `<div class="autopilot-bar done"><span>✓ Autopilot geladen</span>
+    return `<div class="autopilot-bar done"><span>✓ Essential-Stack geladen</span>
       <button class="chip" id="autopilot-load">nochmal laden</button></div>`;
   }
   return `<button class="autopilot-btn" id="autopilot-load">
-      🍽️ Tagesplan laden <em>(${list.length} feste Lebensmittel)</em></button>`;
+      🥗 Essential-Stack laden <em>(${list.length} feste Lebensmittel)</em></button>`;
 }
 
 // --- Coach-Karte -------------------------------------------------------------
@@ -421,14 +433,12 @@ function coachCard(rec) {
   if (rec.allDone) {
     return `
       <div class="card coach-card done">
-        <div class="coach-done">🎉 Alle Tagesziele erreicht!</div>
-        <div class="coach-done-sub">Makros & Mikros sind auf 100%. Stark.</div>
+        <div class="coach-done">🎉 Alle Essentials auf 100%!</div>
+        <div class="coach-done-sub">Vitamine, Mineralstoffe & Protein sind gedeckt. Stark.</div>
       </div>`;
   }
 
-  const kcalLine = rec.remainingKcal > 0
-    ? `noch <strong>${Math.round(rec.remainingKcal)} kcal</strong> übrig`
-    : `<strong class="over">Kalorienlimit erreicht</strong> – Tipps sind kalorienarm`;
+  const kcalLine = `${rec.openGaps.length} offen`;
 
   const top = rec.topTips[0];
   const topHtml = top ? `
@@ -470,12 +480,27 @@ function coachCard(rec) {
     }).join('')}
     ${rec.perNutrient.length > 5 ? `<button class="coach-more" id="coach-toggle">${coachExpanded ? 'Weniger anzeigen' : `Alle ${rec.perNutrient.length} anzeigen`}</button>` : ''}`;
 
+  // Schwer erreichbar: nur über Supplement/Hauptmahlzeit
+  const hard = (rec.hardGaps || []);
+  const hardHtml = hard.length ? `
+    <div class="coach-hard-label">🔒 Nur über Supplement / Hauptmahlzeit</div>
+    ${hard.map(g => {
+      const nt = NUTRIENT_BY_KEY[g.nutKey];
+      return `<div class="coach-hard-row">
+        <span class="coach-hard-nut">${esc(nt.label)}</span>
+        <span class="coach-hard-pct">${g.currentPct}%</span>
+      </div>`;
+    }).join('')}
+    <div class="coach-hard-note">Diese kommen kaum aus Obst/Gemüse – deck sie über deine Supplements oder deine Hauptmahlzeit ab.</div>
+  ` : '';
+
   return `
     <div class="card coach-card">
-      <div class="card-head"><span>🎯 Auf 100% bringen</span>
+      <div class="card-head"><span>🎯 Essentials auf 100%</span>
         <span class="card-head-val">${kcalLine}</span></div>
       ${topHtml}
-      ${listHtml}
+      ${rec.perNutrient.length ? listHtml : ''}
+      ${hardHtml}
     </div>`;
 }
 
@@ -505,6 +530,29 @@ function calorieRing(value, target) {
         <div class="ring-label">/ ${target} kcal</div>
         <div class="ring-sub ${remaining < 0 ? 'over' : ''}">
           ${remaining >= 0 ? `${remaining} übrig` : `${Math.abs(remaining)} über`}
+        </div>
+      </div>
+    </div>`;
+}
+
+function essentialsRing(ess) {
+  const p = ess.coverage;
+  const r = 52, c = 2 * Math.PI * r;
+  const offset = c * (1 - p / 100);
+  const allDone = ess.done === ess.total;
+  return `
+    <div class="ring-wrap">
+      <svg viewBox="0 0 120 120" class="ring">
+        <circle cx="60" cy="60" r="${r}" class="ring-bg"/>
+        <circle cx="60" cy="60" r="${r}" class="ring-fg"
+          stroke-dasharray="${c}" stroke-dashoffset="${offset}"
+          transform="rotate(-90 60 60)"/>
+      </svg>
+      <div class="ring-center">
+        <div class="ring-value">${ess.done}<span class="ring-of">/${ess.total}</span></div>
+        <div class="ring-label">Essentials auf 100%</div>
+        <div class="ring-sub ${allDone ? '' : 'pending'}">
+          ${allDone ? '🎉 alle erreicht' : ess.coverage + '% Abdeckung'}
         </div>
       </div>
     </div>`;
@@ -1434,6 +1482,7 @@ function openAutopilotEditor() {
 // ============================================================================
 function init() {
   store.load();
+  store.ensureAutopilot(store.todayKey()); // Essential-Stack automatisch für heute laden
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.onclick = () => setTab(btn.dataset.tab);
   });
