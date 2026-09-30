@@ -79,7 +79,16 @@ function renderToday() {
   const key = store.todayKey();
   const now = new Date();
   const wd = now.getDay();
-  const blocks = store.getDaySchedule(key);
+  let blocks = store.getDaySchedule(key);
+  // Heutige Spiele als Blöcke einblenden
+  const todaysGames = store.gamesForDate(key);
+  if (todaysGames.length) {
+    const gameBlocks = todaysGames.map((g, i) => ({
+      id: 'game' + i, time: g.time, icon: '🏀', kind: 'gym',
+      title: `Spiel: ${g.home ? 'vs' : '@'} ${g.opponent}`,
+    }));
+    blocks = [...blocks, ...gameBlocks].sort((a, b) => a.time.localeCompare(b.time));
+  }
   const { current, next } = store.currentBlock(key, now);
   const training = store.getTrainingFor(key);
   const habits = store.getHabits();
@@ -105,6 +114,7 @@ function renderToday() {
     </div>
 
     ${nowCard(current, next, key)}
+    ${nextGameCard()}
 
     <!-- Timeline -->
     <div class="card">
@@ -169,6 +179,22 @@ function renderToday() {
     e.stopPropagation();
     store.toggleCheck(key, 'block:' + current.id); rerender();
   };
+}
+
+function nextGameCard() {
+  const ng = store.nextGame();
+  if (!ng) return '';
+  const { game, days } = ng;
+  const [y, m, d] = game.date.split('-').map(Number);
+  const wd = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'][new Date(y, m - 1, d).getDay()];
+  const when = days === 0 ? 'HEUTE' : days === 1 ? 'morgen' : `in ${days} Tagen`;
+  return `
+    <div class="card game-card">
+      <div class="game-when">🏀 Nächstes Spiel · ${when}</div>
+      <div class="game-main">${game.home ? 'vs' : '@'} ${esc(game.opponent)}</div>
+      <div class="game-meta">${wd} ${d}.${m}. · ${esc(game.time)} · ${game.home ? '🏠 Heim' : '🚌 Auswärts'}</div>
+      <div class="game-hall">${esc(game.hall)}</div>
+    </div>`;
 }
 
 function nowCard(current, next, key) {
@@ -797,6 +823,23 @@ function renderTraining() {
         </div>
         ${!isToday ? '<p class="hint">Übungen abhaken kannst du am jeweiligen Tag.</p>' : ''}
       ` : '<div class="empty">Ruhetag – keine Übungen.</div>'}
+    </div>
+
+    <div class="card">
+      <div class="card-head"><span>🏀 Spielplan (TSC Münster)</span></div>
+      <div class="game-list">
+        ${store.upcomingGames(store.todayKey(), 6).map(g => {
+          const [yy, mm, dd] = g.date.split('-').map(Number);
+          const wd = WEEKDAYS[new Date(yy, mm - 1, dd).getDay()];
+          return `<div class="game-row">
+            <div class="game-row-date">${wd}<br>${dd}.${mm}.</div>
+            <div class="game-row-main">
+              <div class="game-row-opp">${g.home ? 'vs' : '@'} ${esc(g.opponent)}</div>
+              <div class="game-row-meta">${esc(g.time)} · ${g.home ? '🏠 Heim' : '🚌 Auswärts'}</div>
+            </div>
+          </div>`;
+        }).join('') || '<div class="empty">Keine anstehenden Spiele.</div>'}
+      </div>
     </div>
 
     <p class="hint">Deinen Split bearbeitest du im Tab „Setup" → Trainingsplan.</p>

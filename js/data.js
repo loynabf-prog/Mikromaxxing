@@ -323,84 +323,133 @@ function blk(id, time, title, icon, kind, steps) {
   return b;
 }
 
-// --- Tagesvorlagen -----------------------------------------------------------
-function weekdayBlocks(prefix, gym) {
+// --- Bausteine ---------------------------------------------------------------
+// Tag mit FRÜH-Training (06:30) – Gym/Sprints/Skills
+function morningTrain(px, title, icon) {
   return [
-    blk(`${prefix}-0`, '06:30', 'Aufstehen & Wasser', '💧', 'wake',
-      ['Großes Glas Wasser trinken', 'KEIN Handy in der 1. Stunde', 'Fenster auf / Tageslicht']),
-    blk(`${prefix}-1`, '06:45', 'Morgenroutine', '☀️', 'routine',
-      ['Bett machen', 'Zähne putzen', 'Kalt duschen/waschen', '10 Min Bewegung/Sonne', 'Morgen-Supplements']),
-    blk(`${prefix}-2`, '07:15', 'Frühstück', '🍳', 'meal'),
-    blk(`${prefix}-3`, '08:00', 'Deep Work – Block 1', '💻', 'work',
-      ['Wichtigste Aufgabe zuerst', 'Handy im anderen Raum']),
-    blk(`${prefix}-4`, '10:30', 'Pause & Bewegung', '🚶', 'move'),
-    blk(`${prefix}-5`, '12:30', 'Mittagessen', '🥗', 'meal'),
-    blk(`${prefix}-6`, '13:30', 'Deep Work – Block 2', '💻', 'work'),
-    gym === 'gym'
-      ? blk(`${prefix}-7`, '17:00', 'Training (Gym)', '🏋️', 'gym')
-      : gym === 'ball'
-        ? blk(`${prefix}-7`, '17:00', 'Basketball', '🏀', 'gym')
-        : blk(`${prefix}-7`, '17:00', 'Aktive Erholung', '🧘', 'move'),
-    blk(`${prefix}-8`, '19:00', 'Abendessen', '🍽️', 'meal'),
-    blk(`${prefix}-9`, '21:30', 'Wind-down', '🌙', 'winddown',
-      ['Handy in anderen Raum', 'Licht dimmen', 'Lesen statt Bildschirm']),
-    blk(`${prefix}-10`, '22:30', 'Schlafvorbereitung', '🛏️', 'routine',
-      ['Abend-Supplements (Magnesium)', 'Kurz reflektieren / Dankbarkeit', 'Für morgen vorbereiten']),
-    blk(`${prefix}-11`, '23:00', 'Schlafen', '😴', 'sleep'),
+    blk(`${px}-0`, '06:15', 'Aufstehen & Wasser', '💧', 'wake',
+      ['Großes Glas Wasser', 'KEIN Handy in der 1. Stunde', 'Tageslicht']),
+    blk(`${px}-1`, '06:30', title, icon, 'gym'),
+    blk(`${px}-2`, '08:00', 'Duschen & Frühstück', '🍳', 'meal',
+      ['Kalt abduschen', 'Morgen-Supplements', 'Protein + Carbs']),
+    blk(`${px}-3`, '09:00', 'Deep Work – Block 1', '💻', 'work', ['Wichtigste Aufgabe zuerst', 'Handy weg']),
+    blk(`${px}-4`, '11:30', 'Pause & Bewegung', '🚶', 'move'),
+    blk(`${px}-5`, '12:30', 'Mittagessen', '🥗', 'meal'),
+    blk(`${px}-6`, '13:30', 'Deep Work – Block 2', '💻', 'work'),
+    blk(`${px}-7`, '19:00', 'Abendessen', '🍽️', 'meal'),
+    blk(`${px}-8`, '21:30', 'Wind-down', '🌙', 'winddown', ['Handy in anderen Raum', 'Licht dimmen', 'Lesen']),
+    blk(`${px}-9`, '22:30', 'Schlafvorbereitung', '🛏️', 'routine', ['Abend-Supplements (Magnesium)', 'Kurz reflektieren', 'Für morgen vorbereiten']),
+    blk(`${px}-10`, '23:00', 'Schlafen', '😴', 'sleep'),
   ];
 }
 
-function weekendBlocks(prefix, sunday) {
+// Tag ohne Früh-Training (Abend-Aktivität separat)
+function deskMorning(px) {
   return [
-    blk(`${prefix}-0`, '08:00', 'Aufstehen & Wasser', '💧', 'wake',
-      ['Großes Glas Wasser', 'Kein Handy in der 1. Stunde', 'Tageslicht']),
-    blk(`${prefix}-1`, '08:15', 'Morgenroutine', '☀️', 'routine',
-      ['Bett machen', 'Zähne putzen', 'Bewegung/Sonne', 'Morgen-Supplements']),
-    blk(`${prefix}-2`, '09:00', 'Frühstück', '🍳', 'meal'),
-    sunday
-      ? blk(`${prefix}-3`, '10:00', 'Wochenplanung', '🗓️', 'work', ['Woche planen', 'Ziele setzen', 'Einkauf/Meal-Prep planen'])
-      : blk(`${prefix}-3`, '10:00', 'Fokus / Admin', '💻', 'work'),
-    blk(`${prefix}-4`, '12:30', 'Mittagessen', '🥗', 'meal'),
-    sunday
-      ? blk(`${prefix}-5`, '14:00', 'Erholung / Zeit für dich', '🧘', 'move')
-      : blk(`${prefix}-5`, '14:00', 'Basketball / Aktivität', '🏀', 'gym'),
-    blk(`${prefix}-6`, '19:00', 'Abendessen', '🍽️', 'meal'),
-    blk(`${prefix}-7`, '21:30', 'Wind-down', '🌙', 'winddown',
-      ['Handy weglegen', 'Licht dimmen', 'Lesen']),
-    blk(`${prefix}-8`, '22:30', 'Schlafvorbereitung', '🛏️', 'routine',
-      ['Abend-Supplements', 'Reflexion', 'Für morgen vorbereiten']),
-    blk(`${prefix}-9`, '23:00', 'Schlafen', '😴', 'sleep'),
+    blk(`${px}-0`, '06:30', 'Aufstehen & Wasser', '💧', 'wake', ['Großes Glas Wasser', 'KEIN Handy in der 1. Stunde', 'Tageslicht']),
+    blk(`${px}-1`, '06:45', 'Morgenroutine', '☀️', 'routine', ['Bett machen', 'Zähne putzen', 'Kalt duschen', 'Morgen-Supplements']),
+    blk(`${px}-2`, '07:15', 'Frühstück', '🍳', 'meal'),
+    blk(`${px}-3`, '08:00', 'Deep Work – Block 1', '💻', 'work', ['Wichtigste Aufgabe zuerst', 'Handy weg']),
+    blk(`${px}-4`, '10:30', 'Pause & Bewegung', '🚶', 'move'),
+    blk(`${px}-5`, '12:30', 'Mittagessen', '🥗', 'meal'),
+    blk(`${px}-6`, '13:30', 'Deep Work – Block 2', '💻', 'work'),
   ];
 }
 
-// Wochenplan: Mo/Mi/Fr Gym, Di/Do Basketball, Sa aktiv, So Ruhe
+// Wochenplan (knie-sicher): Mo Gym A · Di Basketball · Mi Yoga · Do Gym B ·
+// Fr Skills/Mobility · Sa Sprints+Schwimmen · So Ruhe/Sauna. Spiele s. GAMES.
 export const DEFAULT_SCHEDULE = {
-  1: weekdayBlocks('mo', 'gym'),
-  2: weekdayBlocks('di', 'ball'),
-  3: weekdayBlocks('mi', 'gym'),
-  4: weekdayBlocks('do', 'ball'),
-  5: weekdayBlocks('fr', 'gym'),
-  6: weekendBlocks('sa', false),
-  0: weekendBlocks('so', true),
+  1: [...morningTrain('mo', 'Gym: Oberkörper A (frei)', '🏋️')],
+  2: [
+    ...deskMorning('di'),
+    blk('di-7', '17:30', 'Snack (Pre-Basketball)', '🍌', 'meal'),
+    blk('di-8', '19:00', 'Basketball (Training)', '🏀', 'gym'),
+    blk('di-9', '21:00', 'Duschen & Heimweg', '🚿', 'routine'),
+    blk('di-10', '21:30', 'Abendessen', '🍽️', 'meal'),
+    blk('di-11', '22:45', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Licht dimmen']),
+    blk('di-12', '23:15', 'Schlafen', '😴', 'sleep'),
+  ],
+  3: [
+    ...deskMorning('mi'),
+    blk('mi-7', '17:00', 'Schwimmen (optional, gelenkschonend)', '🏊', 'move'),
+    blk('mi-8', '19:00', 'Yoga', '🧘', 'move'),
+    blk('mi-9', '20:15', 'Abendessen', '🍽️', 'meal'),
+    blk('mi-10', '21:15', 'Sauna / Entspannung', '🧖', 'winddown'),
+    blk('mi-11', '22:30', 'Schlafvorbereitung', '🛏️', 'routine', ['Abend-Supplements', 'Reflexion']),
+    blk('mi-12', '23:00', 'Schlafen', '😴', 'sleep'),
+  ],
+  4: [...morningTrain('do', 'Gym: Oberkörper B + Kreuzheben leicht', '🏋️')],
+  5: [...morningTrain('fr', 'Skills & Mobility (knieschonend)', '🤸')],
+  6: [
+    blk('sa-0', '08:00', 'Aufstehen & Wasser', '💧', 'wake', ['Wasser', 'Tageslicht']),
+    blk('sa-1', '08:15', 'Morgenroutine', '☀️', 'routine', ['Zähne putzen', 'Kalt duschen', 'Morgen-Supplements']),
+    blk('sa-2', '09:00', 'Frühstück', '🍳', 'meal'),
+    blk('sa-3', '10:30', 'Sprints + Schwimmen (Athletik)', '⚡', 'gym'),
+    blk('sa-4', '12:30', 'Mittagessen', '🥗', 'meal'),
+    blk('sa-5', '14:00', 'Freizeit / Erholung', '🌿', 'move'),
+    blk('sa-6', '19:00', 'Abendessen', '🍽️', 'meal'),
+    blk('sa-7', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Lesen']),
+    blk('sa-8', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),
+    blk('sa-9', '23:00', 'Schlafen', '😴', 'sleep'),
+  ],
+  0: [
+    blk('so-0', '08:00', 'Aufstehen & Wasser', '💧', 'wake', ['Wasser', 'Tageslicht']),
+    blk('so-1', '08:15', 'Morgenroutine', '☀️', 'routine', ['Zähne putzen', 'Morgen-Supplements']),
+    blk('so-2', '09:00', 'Frühstück', '🍳', 'meal'),
+    blk('so-3', '10:00', 'Wochenplanung', '🗓️', 'work', ['Woche planen', 'Spiele checken', 'Einkauf / Meal-Prep']),
+    blk('so-4', '12:30', 'Mittagessen', '🥗', 'meal'),
+    blk('so-5', '15:00', 'Sauna + Mobility (Recovery)', '🧖', 'move'),
+    blk('so-6', '19:00', 'Abendessen', '🍽️', 'meal'),
+    blk('so-7', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Lesen']),
+    blk('so-8', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),
+    blk('so-9', '23:00', 'Schlafen', '😴', 'sleep'),
+  ],
 };
 
 // --- Trainingsplan (pro Wochentag) ------------------------------------------
-// Athletischer Split: Kraft + Explosivität/Plyo + Sprints/Conditioning.
+// Knie-sicher: Oberkörper frei/Calisthenics, Hinge leicht, Sprints submaximal,
+// KEINE Sprünge/Beinstrecker bis schmerzfrei. Viel Abwechslung, freie Übungen.
 export const DEFAULT_TRAINING = {
-  1: { title: 'Push + Power', focus: 'Brust · Schulter · Trizeps · Explosivität',
-       exercises: ['Explosiv-Warm-up (Med-Ball-Würfe)', 'Bankdrücken', 'Schrägbank KH-Drücken', 'Schulterdrücken', 'Seitheben', 'Trizeps Pushdown', 'Box Jumps 4×3'] },
-  2: { title: 'Basketball + Sprints', focus: 'Speed · Agilität · Skills',
-       exercises: ['Dynamisches Warm-up', 'Sprint-Intervalle 6×20 m', 'Agility-Leiter', 'Ballhandling', 'Shooting', 'Spiel'] },
-  3: { title: 'Pull + Athletik', focus: 'Rücken · Bizeps · Sprungkraft',
-       exercises: ['Klimmzüge', 'Langhantelrudern', 'Latzug', 'Face Pulls', 'Bizeps Curls', 'Depth Jumps 4×3', 'Hanging Leg Raises'] },
-  4: { title: 'Basketball + Kondition', focus: 'Ausdauer · Skills',
-       exercises: ['Dynamisches Warm-up', 'Shuttle Runs', 'Ballhandling', 'Shooting', 'Spiel', 'Cool-down'] },
-  5: { title: 'Legs + Explosivität', focus: 'Beine · Core · Sprungkraft',
-       exercises: ['Kniebeugen', 'Rumänisches Kreuzheben', 'Bulgarian Split Squats', 'Kastensprünge 5×3', 'Wadenheben', 'Plank + Core'] },
-  6: { title: 'Conditioning / Mobilität', focus: 'Zone-2-Ausdauer · Beweglichkeit',
-       exercises: ['30–45 Min Zone-2-Cardio (Rad/Lauf)', 'Mobility-Flow', 'Dehnen'] },
-  0: { title: 'Ruhetag', focus: 'Erholung · Wochenplanung', exercises: [] },
+  1: { title: 'Oberkörper A (frei)', focus: 'Rücken · Brust · Arme · Calisthenics',
+       exercises: ['Klimmzüge (oder Negative/assistiert)', 'Schrägbankdrücken', 'Inverted Rows (horizontal an der Stange)', 'Dips (oder Bank-Dips)', 'Face Pulls / Band Pull-Aparts', 'Knie-Isometrie: Wall Sit 5×30–45s'] },
+  2: { title: 'Basketball (Training)', focus: 'Skills · Spiel · 19:00',
+       exercises: ['Dynamisches Warm-up', 'Ballhandling', 'Shooting', 'Spiel', 'Cool-down / Dehnen'] },
+  3: { title: 'Yoga & Mobility', focus: 'Beweglichkeit · Recovery',
+       exercises: ['Yoga-Flow 45–60 min', 'Hüft-/Schulter-Mobility', 'Optional: Schwimmen 20–30 min', 'Sauna'] },
+  4: { title: 'Oberkörper B + Kreuzheben', focus: 'Rücken · Schulter · Hinge (knieschonend)',
+       exercises: ['Chin-ups / enge Klimmzüge', 'Überkopfdrücken (frei)', 'Australian Pull-ups / Inverted Rows', 'Dips oder Liegestütz-Varianten', 'Kreuzheben LEICHT (Technik, hüftdominant)', 'Langsame Wadenheben + Knie-Reha'] },
+  5: { title: 'Skills & Mobility', focus: 'Calisthenics-Skills · Core · knieschonend',
+       exercises: ['L-Sit-Progression', 'Handstand-/Pike-Progression', 'Hollow Hold + Core', 'Mobility-Flow', '⚠️ KEINE Sprünge (Knie schont)'] },
+  6: { title: 'Sprints + Schwimmen', focus: 'Speed · Wachstumshormon · Gelenke',
+       exercises: ['Dynamisches Warm-up + Steigerungen', 'Sprints 6–8× 40–60 m (submaximal → steigern)', 'Lange Pausen (voll erholen)', 'Schwimmen 20–30 min', 'Cool-down'] },
+  0: { title: 'Ruhetag', focus: 'Sauna · Mobility · Wochenplanung',
+       exercises: ['Sauna', 'Lockere Mobility', 'Woche planen'] },
 };
+
+// --- Basketball-Spielplan (TSC Münster, LL07H 2026/27) ----------------------
+// home = Heimspiel. In der App bearbeitbar/erweiterbar.
+export const GAMES = [
+  { date: '2026-10-02', time: '20:30', opponent: 'SC Westfalia Kinderhaus 2', home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+  { date: '2026-10-11', time: '18:00', opponent: 'ATV Haltern',               home: false, hall: 'Joseph Hennewig Schule' },
+  { date: '2026-11-08', time: '16:00', opponent: 'CSG Bulmke',                home: false, hall: 'Halle am Wildenbruchplatz' },
+  { date: '2026-11-13', time: '20:30', opponent: 'TuS Hiltrup 2',             home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+  { date: '2026-11-28', time: '18:00', opponent: 'DJK Vorwärts Lette',        home: false, hall: 'Turnhalle Pictorius Berufskolleg' },
+  { date: '2026-12-05', time: '16:00', opponent: 'BG Dorsten 2',              home: true,  hall: 'Juliushalle' },
+  { date: '2026-12-12', time: '18:00', opponent: 'Hertener Löwen 2',          home: false, hall: 'Halle der Ludgerus-Schule' },
+  { date: '2026-12-18', time: '20:30', opponent: 'TSV Bocholt',               home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+  { date: '2027-01-10', time: '18:00', opponent: 'S.C. Union Lüdinghausen',   home: false, hall: 'Sporthalle der Sekundarschule' },
+  { date: '2027-01-16', time: '14:00', opponent: 'Citybasket Recklinghausen 3', home: false, hall: 'Vestische Arena Alfons Schütt' },
+  { date: '2027-01-22', time: '20:30', opponent: 'UBC Münster 4',             home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+  { date: '2027-01-31', time: '12:00', opponent: 'SC Westfalia Kinderhaus 2', home: false, hall: '3-fach-Halle Schulzentrum Kinderhaus' },
+  { date: '2027-02-12', time: '20:30', opponent: 'ATV Haltern',               home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+  { date: '2027-02-19', time: '20:30', opponent: 'CSG Bulmke',                home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+  { date: '2027-02-27', time: '19:00', opponent: 'TuS Hiltrup 2',             home: false, hall: 'Dreifachhalle Hiltrup Mitte' },
+  { date: '2027-03-05', time: '20:30', opponent: 'DJK Vorwärts Lette',        home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+  { date: '2027-03-13', time: '20:00', opponent: 'BG Dorsten 2',              home: false, hall: 'Juliushalle' },
+  { date: '2027-04-09', time: '20:30', opponent: 'Hertener Löwen 2',          home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+  { date: '2027-04-13', time: '19:30', opponent: 'TSV Bocholt',               home: false, hall: 'SH Jerichostraße' },
+  { date: '2027-04-23', time: '20:30', opponent: 'S.C. Union Lüdinghausen',   home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
+];
 
 // --- Gewohnheiten (Streaks) --------------------------------------------------
 export const DEFAULT_HABITS = [

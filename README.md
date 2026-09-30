@@ -10,7 +10,8 @@ direkt am Handy, komplett offline, kostenlos über GitHub Pages. Keine Anmeldung
 
 - **🧭 Heute (Kommandozentrale)** – Zeit-Timeline deines Tages mit „was ist JETZT dran", abhakbaren Blöcken & Routine-Schritten (Aufstehen, kein Handy morgens, Deep Work, Training, Wind-down, Schlafen), plus Kurzstatus für Training, Gewohnheiten & Ernährung.
 - **🗓️ Tagesstruktur & Schlaf** – feste Aufsteh-/Schlafenszeiten und Morgen-/Abendroutine pro Wochentag; voll editierbar (Setup → Tagesplan), auf Werktage/Woche kopierbar.
-- **🏋️ Training / Gym-Split** – fester Wochen-Trainingsplan (welcher Tag welches Training), Übungen am Trainingstag abhakbar; Split editierbar.
+- **🏋️ Training / Gym-Split** – knie-sicherer Wochenplan mit Früh-Training: Mo Oberkörper A, Di Basketball, Mi Yoga+Schwimmen, Do Oberkörper B + Kreuzheben, Fr Skills/Mobility, Sa Sprints+Schwimmen, So Ruhe+Sauna. Freie/Calisthenics-Übungen, Sprünge/Beinstrecker pausiert bis Knie schmerzfrei. Übungen am Trainingstag abhakbar; Split editierbar.
+- **🏀 Basketball-Spielplan** – kompletter Saison-Spielplan (TSC Münster) integriert: „Nächstes Spiel"-Karte auf Heute (mit Countdown), Spieltag-Block in der Timeline, Spielplan-Liste im Training-Tab.
 - **💻 Arbeit / Fokus** – Deep-Work-Blöcke fest im Tagesplan für Disziplin & Selbstständigkeit.
 - **🔥 Gewohnheiten & Streaks** – feste tägliche Gewohnheiten mit Streak-Zähler (dranbleiben, für immer durchziehen).
 - **🍽️ Ernährungs-Autopilot** – fester Tages-Grundplan an Lebensmitteln, den du mit einem Tap lädst und nur abhakst.

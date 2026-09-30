@@ -4,7 +4,7 @@
 // ============================================================================
 import {
   NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS,
-  DEFAULT_SCHEDULE, DEFAULT_TRAINING, DEFAULT_HABITS, DEFAULT_AUTOPILOT,
+  DEFAULT_SCHEDULE, DEFAULT_TRAINING, DEFAULT_HABITS, DEFAULT_AUTOPILOT, GAMES,
 } from './data.js';
 
 const STORAGE_KEY = 'mikromaxxing_v1';
@@ -46,11 +46,14 @@ function freshState() {
     training: structuredClone(DEFAULT_TRAINING),
     habits: structuredClone(DEFAULT_HABITS),
     autopilot: structuredClone(DEFAULT_AUTOPILOT),
+    games: structuredClone(GAMES),
     _seedTrimV1: true,
     _athleteV1: true,
     _athleteV2: true,
     _variety1: true,
     _habitsV2: true,
+    _planV3: true,
+    _gamesV1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
   };
 }
@@ -147,6 +150,18 @@ function migrate(parsed) {
     merged.habits = [...additions, ...merged.habits];
     merged._habitsV2 = true;
   }
+  // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
+  if (!merged._planV3) {
+    merged.schedule = structuredClone(DEFAULT_SCHEDULE);
+    merged.training = structuredClone(DEFAULT_TRAINING);
+    merged._planV3 = true;
+  }
+  // Basketball-Spielplan setzen
+  if (!merged._gamesV1) {
+    merged.games = structuredClone(GAMES);
+    merged._gamesV1 = true;
+  }
+  if (!Array.isArray(merged.games)) merged.games = structuredClone(GAMES);
   return merged;
 }
 
@@ -644,4 +659,32 @@ export function setTrainingDay(weekday, training) {
   const s = load();
   s.training[weekday] = training;
   save();
+}
+
+// --- Basketball-Spielplan ----------------------------------------------------
+export function getGames() { return load().games || []; }
+
+export function gamesForDate(key) {
+  return (load().games || []).filter(g => g.date === key);
+}
+
+export function nextGame(fromKey = todayKey()) {
+  const games = (load().games || []).slice().sort((a, b) =>
+    (a.date + a.time).localeCompare(b.date + b.time));
+  for (const g of games) {
+    if (g.date >= fromKey) {
+      const [y, m, d] = g.date.split('-').map(Number);
+      const [fy, fm, fd] = fromKey.split('-').map(Number);
+      const days = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(fy, fm - 1, fd)) / 86400000);
+      return { game: g, days };
+    }
+  }
+  return null;
+}
+
+export function upcomingGames(fromKey = todayKey(), limit = 6) {
+  return (load().games || [])
+    .filter(g => g.date >= fromKey)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
+    .slice(0, limit);
 }
