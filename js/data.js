@@ -561,6 +561,47 @@ export const SNACKS = [
 ];
 
 // ============================================================================
+// TAGESSTRUKTUR – Essens-Empfehlungen nach Tageszeit
+// Jeder Slot: Prinzip (why) + passende Lebensmittel (foods) & Kombis (snacks).
+// Die freie Hauptmahlzeit bleibt frei – das hier ist Struktur & Inspiration.
+// ============================================================================
+export const MEAL_SLOTS = [
+  { id: 'breakfast', label: 'Frühstück', icon: '🌅', time: '06:30–09:00',
+    from: 5, to: 10,
+    why: 'Protein + Mikros + langsame Energie. Bringt dich wach rein und hält den Blutzucker stabil.',
+    note: 'Dein halbes Glas Schwarztee + Milch passt hierhin. Mineral-Supps (Magnesium, Shilajit) lieber ~1 h versetzt – Tee hemmt die Aufnahme.',
+    foods: ['egg', 'oats', 'magerquark', 'greek_yogurt', 'banana', 'blueberries', 'flaxseed', 'chia', 'walnuts'],
+    snacks: ['skyr_berry'] },
+  { id: 'snack_am', label: 'Vormittags-Snack', icon: '🍎', time: '10:00–11:30',
+    from: 10, to: 12,
+    why: 'Leicht & mikronährstoffreich, hält bis zum Mittag. Obst + Nüsse oder Gemüse + Protein.',
+    foods: ['apple', 'pear', 'orange', 'bell_pepper', 'almonds', 'carrot'],
+    snacks: ['apple_pb', 'carrot_hummus', 'pepper_cottage', 'orange_brazil'] },
+  { id: 'lunch', label: 'Mittag', icon: '🍽️', time: '12:00–14:00',
+    from: 12, to: 15,
+    why: 'Deine freie Hauptmahlzeit passt perfekt hierhin: Protein + viel Gemüse + komplexe Carbs. Satt, aber nicht träge.',
+    foods: ['chicken_breast', 'salmon', 'turkey_breast', 'tofu', 'broccoli', 'spinach', 'brown_rice', 'quinoa', 'sweet_potato', 'lentils', 'chickpeas'],
+    snacks: [] },
+  { id: 'pre', label: 'Pre-Workout', icon: '⚡', time: '~60–90 Min vorher',
+    from: 15, to: 18,
+    why: 'Schnelle Energie + bisschen Protein, wenig Fett/Ballaststoffe – damit nichts schwer im Magen liegt.',
+    note: 'Je näher am Training, desto leichter & kohlenhydratbetonter.',
+    foods: ['banana', 'dates', 'rice_cakes', 'white_rice', 'oats'],
+    snacks: ['dates_almonds', 'banana_pb'] },
+  { id: 'post', label: 'Post-Workout', icon: '💪', time: '0–60 Min danach',
+    from: 18, to: 20,
+    why: 'Protein + schnelle Carbs füllen die Speicher und starten die Regeneration – genau hier passiert Muskelaufbau.',
+    foods: ['whey', 'protein_pudding', 'magerquark', 'banana', 'white_rice', 'potato'],
+    snacks: ['skyr_berry', 'kiwi_skyr'] },
+  { id: 'evening', label: 'Abend / vor dem Schlafen', icon: '🌙', time: 'ab 20:00',
+    from: 20, to: 29,
+    why: 'Langsames Protein (Casein) über Nacht, wenig Zucker, schlaffördernd. Gut für Regeneration & Appetit am Morgen.',
+    note: 'Kein schneller Zucker mehr – stört Schlaf & Fettabbau.',
+    foods: ['magerquark', 'cottage_cheese', 'harzer', 'walnuts', 'pumpkin_seeds'],
+    snacks: [] },
+];
+
+// ============================================================================
 // LIFE PLANNER – Tagesstruktur, Training, Gewohnheiten, Ernährungs-Autopilot
 // Alles nur Standard-Vorgaben; in der App (Tab „Setup") frei editierbar.
 // Wochentag-Index: 0=So, 1=Mo, 2=Di, 3=Mi, 4=Do, 5=Fr, 6=Sa

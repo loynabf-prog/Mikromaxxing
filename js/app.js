@@ -1,7 +1,7 @@
 // ============================================================================
 // Mikromaxxing – App-Logik & UI
 // ============================================================================
-import { NUTRIENTS, NUTRIENT_BY_KEY, NUTRIENT_INFO, WEEKDAYS, WEEKDAYS_LONG, BODYCOMP_METRICS, SUPP_TIME_LABELS, SUPP_TIME_ORDER } from './data.js';
+import { NUTRIENTS, NUTRIENT_BY_KEY, NUTRIENT_INFO, WEEKDAYS, WEEKDAYS_LONG, BODYCOMP_METRICS, SUPP_TIME_LABELS, SUPP_TIME_ORDER, MEAL_SLOTS } from './data.js';
 import * as store from './store.js';
 
 // --- Zustand der Oberfläche ---------------------------------------------------
@@ -533,8 +533,8 @@ function renderNutrition() {
     <!-- 100%-Coach -->
     ${coachCard(rec)}
 
-    <!-- Snack-Ideen -->
-    ${snacksCard()}
+    <!-- Tagesstruktur: was wann essen -->
+    ${mealSlotsCard()}
 
     <!-- Wasser -->
     <div class="card">
@@ -638,8 +638,11 @@ function renderNutrition() {
     rerender();
     toast(`Snack geloggt (${added} Zutaten) ✓`);
   });
-  const st = $('#snacks-toggle');
-  if (st) st.onclick = () => { snacksOpen = !snacksOpen; rerender(); };
+  app.querySelectorAll('[data-slot]').forEach(b => b.onclick = () => {
+    const id = b.dataset.slot;
+    if (openSlots.has(id)) openSlots.delete(id); else openSlots.add(id);
+    rerender();
+  });
 
   // Schnellzugriff & Coach: One-Tap-Logging
   app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
@@ -706,28 +709,59 @@ function quickLog(foodId, grams) {
 }
 
 // --- Snack-Ideen -------------------------------------------------------------
-let snacksOpen = false;
-function snacksCard() {
-  const snacks = store.getSnacks();
-  const shown = snacksOpen ? snacks : snacks.slice(0, 3);
+// --- Tagesstruktur: Essens-Empfehlungen nach Tageszeit ----------------------
+const openSlots = new Set();
+let slotsInit = false;
+
+function servingG(food) {
+  if (food.piece) return food.piece.g * (food.piece.def || 1);
+  return (food.servings && food.servings[0]) ? food.servings[0].grams : 100;
+}
+
+function currentSlotId() {
+  const h = new Date().getHours();
+  const s = MEAL_SLOTS.find(sl => h >= sl.from && h < sl.to);
+  return s ? s.id : null;
+}
+
+function mealSlotsCard() {
+  const nowId = currentSlotId();
+  if (!slotsInit) { if (nowId) openSlots.add(nowId); slotsInit = true; }
+  const allSnacks = store.getSnacks();
+
+  const slots = MEAL_SLOTS.map(sl => {
+    const isNow = sl.id === nowId;
+    const open = openSlots.has(sl.id);
+    const foods = (sl.foods || []).map(id => store.foodById(id)).filter(Boolean);
+    const snacks = (sl.snacks || []).map(id => allSnacks.find(s => s.id === id)).filter(Boolean);
+    const body = open ? `
+      <div class="slot-body">
+        <div class="slot-why">${esc(sl.why)}</div>
+        ${sl.note ? `<div class="slot-note">💡 ${esc(sl.note)}</div>` : ''}
+        <div class="slot-chips">
+          ${foods.map(f => `<button class="slot-chip" data-quick="${f.id}" data-grams="${servingG(f)}"><span>${esc(f.name)}</span><em>＋</em></button>`).join('')}
+          ${snacks.map(sn => `<button class="slot-chip combo" data-snack="${sn.id}"><span>${sn.emoji} ${esc(sn.name)}</span><em>＋</em></button>`).join('')}
+        </div>
+      </div>` : '';
+    return `
+      <div class="slot ${isNow ? 'now' : ''} ${open ? 'open' : ''}">
+        <button class="slot-head" data-slot="${sl.id}">
+          <span class="slot-ico">${sl.icon}</span>
+          <span class="slot-main">
+            <span class="slot-name">${esc(sl.label)}${isNow ? '<span class="slot-badge">jetzt</span>' : ''}</span>
+            <span class="slot-time">${esc(sl.time)}</span>
+          </span>
+          <span class="slot-arrow">${open ? '▾' : '▸'}</span>
+        </button>
+        ${body}
+      </div>`;
+  }).join('');
+
   return `
-    <div class="card">
-      <div class="card-head"><span>🍓 Gesunde Snack-Ideen</span></div>
-      <div class="snack-list">
-        ${shown.map(sn => {
-          let kcal = 0;
-          for (const it of sn.items) { const f = store.foodById(it.foodId); if (f) kcal += (f.per100.kcal || 0) * it.grams / 100; }
-          return `
-            <div class="snack">
-              <div class="snack-main">
-                <div class="snack-name">${sn.emoji} ${esc(sn.name)} <span class="snack-kcal">${Math.round(kcal)} kcal</span></div>
-                <div class="snack-why">${esc(sn.why)}</div>
-              </div>
-              <button class="snack-add" data-snack="${sn.id}">＋</button>
-            </div>`;
-        }).join('')}
-      </div>
-      ${snacks.length > 3 ? `<button class="coach-more" id="snacks-toggle">${snacksOpen ? 'Weniger' : `Alle ${snacks.length} Snacks`}</button>` : ''}
+    <div class="card slots-card">
+      <div class="card-head"><span>🗓️ Tagesstruktur</span>
+        <span class="card-head-val">was wann essen</span></div>
+      <div class="slot-list">${slots}</div>
     </div>`;
 }
 
