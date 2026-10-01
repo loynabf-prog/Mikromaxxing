@@ -576,6 +576,16 @@ function blk(id, time, title, icon, kind, steps) {
 }
 
 // --- Bausteine ---------------------------------------------------------------
+// Feste Tages-Mini-Blöcke (Reha/Core/Calisthenics) – füllen den Ring mit
+function rcMorning(px) {
+  return blk(`${px}-rc`, '07:40', 'Reha · Core · Calisthenics', '🦵', 'routine',
+    ['Knie-Reha: Wall Sit 5×30–45s', 'Core-Training', 'Calisthenics: Push/Pull/Dips (submaximal)']);
+}
+function caliEvening(px) {
+  return blk(`${px}-pm`, '21:00', 'Calisthenics abends', '🌙', 'routine',
+    ['Push/Pull/Dips (submaximal)']);
+}
+
 // Tag mit FRÜH-Training (06:30) – Gym/Sprints/Skills
 function morningTrain(px, title, icon) {
   return [
@@ -584,11 +594,13 @@ function morningTrain(px, title, icon) {
     blk(`${px}-1`, '06:30', title, icon, 'gym'),
     blk(`${px}-2`, '08:00', 'Duschen & Frühstück', '🍳', 'meal',
       ['Kalt abduschen', 'Morgen-Supplements', 'Protein + Carbs']),
+    rcMorning(px),
     blk(`${px}-3`, '09:00', 'Deep Work – Block 1', '💻', 'work', ['Wichtigste Aufgabe zuerst', 'Handy weg']),
     blk(`${px}-4`, '11:30', 'Pause & Bewegung', '🚶', 'move'),
     blk(`${px}-5`, '12:30', 'Mittagessen', '🥗', 'meal'),
     blk(`${px}-6`, '13:30', 'Deep Work – Block 2', '💻', 'work'),
     blk(`${px}-7`, '19:00', 'Abendessen', '🍽️', 'meal'),
+    caliEvening(px),
     blk(`${px}-8`, '21:30', 'Wind-down', '🌙', 'winddown', ['Handy in anderen Raum', 'Licht dimmen', 'Lesen']),
     blk(`${px}-9`, '22:30', 'Schlafvorbereitung', '🛏️', 'routine', ['Abend-Supplements (Magnesium)', 'Kurz reflektieren', 'Für morgen vorbereiten']),
     blk(`${px}-10`, '23:00', 'Schlafen', '😴', 'sleep'),
@@ -601,6 +613,7 @@ function deskMorning(px) {
     blk(`${px}-0`, '06:30', 'Aufstehen & Wasser', '💧', 'wake', ['Großes Glas Wasser', 'KEIN Handy in der 1. Stunde', 'Tageslicht']),
     blk(`${px}-1`, '06:45', 'Morgenroutine', '☀️', 'routine', ['Bett machen', 'Zähne putzen', 'Kalt duschen', 'Morgen-Supplements']),
     blk(`${px}-2`, '07:15', 'Frühstück', '🍳', 'meal'),
+    rcMorning(px),
     blk(`${px}-3`, '08:00', 'Deep Work – Block 1', '💻', 'work', ['Wichtigste Aufgabe zuerst', 'Handy weg']),
     blk(`${px}-4`, '10:30', 'Pause & Bewegung', '🚶', 'move'),
     blk(`${px}-5`, '12:30', 'Mittagessen', '🥗', 'meal'),
@@ -618,6 +631,7 @@ export const DEFAULT_SCHEDULE = {
     blk('di-8', '19:00', 'Basketball (Training)', '🏀', 'gym'),
     blk('di-9', '21:00', 'Duschen & Heimweg', '🚿', 'routine'),
     blk('di-10', '21:30', 'Abendessen', '🍽️', 'meal'),
+    caliEvening('di'),
     blk('di-11', '22:45', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Licht dimmen']),
     blk('di-12', '23:15', 'Schlafen', '😴', 'sleep'),
   ],
@@ -626,6 +640,7 @@ export const DEFAULT_SCHEDULE = {
     blk('mi-7', '17:00', 'Schwimmen + Sauna (gelenkschonend)', '🏊', 'move'),
     blk('mi-8', '19:00', 'Yoga', '🧘', 'move'),
     blk('mi-9', '20:15', 'Abendessen', '🍽️', 'meal'),
+    caliEvening('mi'),
     blk('mi-10', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Licht dimmen']),
     blk('mi-11', '22:30', 'Schlafvorbereitung', '🛏️', 'routine', ['Abend-Supplements', 'Reflexion']),
     blk('mi-12', '23:00', 'Schlafen', '😴', 'sleep'),
@@ -634,6 +649,7 @@ export const DEFAULT_SCHEDULE = {
     ...deskMorning('do'),
     blk('do-7', '18:30', 'Aktiv (flexibel): Basketball / Gym / Sprints', '🔄', 'gym'),
     blk('do-8', '20:00', 'Abendessen', '🍽️', 'meal'),
+    caliEvening('do'),
     blk('do-9', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Licht dimmen']),
     blk('do-10', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),
     blk('do-11', '23:00', 'Schlafen', '😴', 'sleep'),
@@ -643,10 +659,12 @@ export const DEFAULT_SCHEDULE = {
     blk('sa-0', '08:00', 'Aufstehen & Wasser', '💧', 'wake', ['Wasser', 'Tageslicht']),
     blk('sa-1', '08:15', 'Morgenroutine', '☀️', 'routine', ['Zähne putzen', 'Kalt duschen', 'Morgen-Supplements']),
     blk('sa-2', '09:00', 'Frühstück', '🍳', 'meal'),
+    rcMorning('sa'),
     blk('sa-3', '10:30', 'Sprints + Schwimmen + Sauna', '⚡', 'gym'),
     blk('sa-4', '12:30', 'Mittagessen', '🥗', 'meal'),
     blk('sa-5', '14:00', 'Freizeit / Erholung', '🌿', 'move'),
     blk('sa-6', '19:00', 'Abendessen', '🍽️', 'meal'),
+    caliEvening('sa'),
     blk('sa-7', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Lesen']),
     blk('sa-8', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),
     blk('sa-9', '23:00', 'Schlafen', '😴', 'sleep'),
@@ -655,10 +673,12 @@ export const DEFAULT_SCHEDULE = {
     blk('so-0', '08:00', 'Aufstehen & Wasser', '💧', 'wake', ['Wasser', 'Tageslicht']),
     blk('so-1', '08:15', 'Morgenroutine', '☀️', 'routine', ['Zähne putzen', 'Morgen-Supplements']),
     blk('so-2', '09:00', 'Frühstück', '🍳', 'meal'),
+    rcMorning('so'),
     blk('so-3', '10:00', 'Wochenplanung', '🗓️', 'work', ['Woche planen', 'Spiele checken', 'Einkauf / Meal-Prep']),
     blk('so-4', '12:30', 'Mittagessen', '🥗', 'meal'),
     blk('so-5', '15:00', 'Lockere Mobility / Spaziergang', '🌿', 'move'),
     blk('so-6', '19:00', 'Abendessen', '🍽️', 'meal'),
+    caliEvening('so'),
     blk('so-7', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Lesen']),
     blk('so-8', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),
     blk('so-9', '23:00', 'Schlafen', '😴', 'sleep'),

@@ -144,8 +144,6 @@ function renderToday() {
   }
   const { current } = store.currentBlock(key, now);
   const training = store.getTrainingFor(key);
-  const habits = store.getHabits();
-  const md = store.mustDoSummary(key);
   const ring = store.ringSummary(key);
   const day = store.getDay(key);
   const profile = store.getState().profile;
@@ -164,15 +162,6 @@ function renderToday() {
       <div class="ring-hero-greet">${greeting}</div>
       <div class="ring-hero-status ${allDone ? 'done' : ''}">${statusLine}</div>
       <input type="file" id="photo-input" accept="image/*" hidden>
-    </div>
-
-    <!-- Must-Dos: der Ring füllt sich damit auf 100% -->
-    <div class="card">
-      <div class="card-head"><span>✅ Tägliche Must-Dos</span>
-        <span class="card-head-val ${allDone ? 'good' : ''}">${md.done}/${md.total}</span></div>
-      <div class="mustdo-list">
-        ${habits.map(h => mustDoRow(h, key)).join('')}
-      </div>
     </div>
 
     <!-- Wasser (hochzählen – füllt den Ring anteilig) -->
@@ -224,9 +213,6 @@ function renderToday() {
   `;
 
   // Events
-  app.querySelectorAll('[data-habit]').forEach(b => b.onclick = () => {
-    store.toggleCheck(key, 'habit:' + b.dataset.habit); rerender();
-  });
   app.querySelectorAll('[data-water]').forEach(b => b.onclick = () => {
     const d = store.getDay(key);
     store.setWater(key, d.water + Number(b.dataset.water)); rerender();
@@ -1196,20 +1182,6 @@ function renderTrends() {
       </div>
     </div>
 
-    <div class="card">
-      <div class="card-head"><span>🔥 Gewohnheiten – Streaks</span></div>
-      <div class="streak-list">
-        ${store.getHabits().map(h => {
-          const st = store.habitStreak(h.id);
-          return `<div class="streak-row">
-            <span class="streak-ico">${esc(h.icon||'•')}</span>
-            <span class="streak-name">${esc(h.name)}</span>
-            <span class="streak-val ${st>0?'on':''}">${st>0?'🔥 '+st+' Tage':'—'}</span>
-          </div>`;
-        }).join('')}
-      </div>
-    </div>
-
     ${bodyCompCard()}
     <div class="spacer"></div>
   `;
@@ -1417,19 +1389,6 @@ function renderProfile() {
     </div>
 
     <div class="card">
-      <div class="card-head"><span>Gewohnheiten verwalten</span></div>
-      <div class="supp-manage">
-        ${store.getHabits().map(h => `
-          <div class="supp-manage-row">
-            <input type="text" data-habit-icon="${h.id}" value="${esc(h.icon||'')}" placeholder="🔥" style="max-width:52px;text-align:center">
-            <input type="text" data-habit-name="${h.id}" value="${esc(h.name)}" placeholder="Gewohnheit">
-            <button class="btn-danger tiny" data-habit-del="${h.id}">✕</button>
-          </div>`).join('')}
-      </div>
-      <button class="btn-secondary small" id="add-habit">＋ Gewohnheit</button>
-    </div>
-
-    <div class="card">
       <div class="card-head"><span>Körperdaten</span></div>
       <div class="edit-grid">
         <label class="edit-field"><span>Alter</span><input type="number" id="p-age" value="${p.age}"></label>
@@ -1554,23 +1513,6 @@ function renderProfile() {
   $('#edit-schedule').onclick = openScheduleEditor;
   $('#edit-training').onclick = openTrainingEditor;
   $('#open-library').onclick = () => setTab('library');
-
-  // Gewohnheiten
-  app.querySelectorAll('[data-habit-name]').forEach(inp => inp.onchange = () => {
-    const h = store.getHabits().find(x => x.id === inp.dataset.habitName);
-    if (h) { h.name = inp.value; store.upsertHabit(h); }
-  });
-  app.querySelectorAll('[data-habit-icon]').forEach(inp => inp.onchange = () => {
-    const h = store.getHabits().find(x => x.id === inp.dataset.habitIcon);
-    if (h) { h.icon = inp.value; store.upsertHabit(h); }
-  });
-  app.querySelectorAll('[data-habit-del]').forEach(b => b.onclick = () => {
-    store.deleteHabit(b.dataset.habitDel); renderProfile();
-  });
-  $('#add-habit').onclick = () => {
-    store.upsertHabit({ id: 'h_' + Date.now().toString(36), name: 'Neue Gewohnheit', icon: '✅' });
-    renderProfile();
-  };
 
   // Backup
   $('#export-btn').onclick = doExport;

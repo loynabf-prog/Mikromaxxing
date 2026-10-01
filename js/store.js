@@ -65,6 +65,7 @@ function freshState() {
     _planV4: true,
     _planV5: true,
     _planV6: true,
+    _planV7: true,
     _gamesV1: true,
     _bodyseed1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
@@ -221,6 +222,11 @@ function migrate(parsed) {
   if (!merged._planV6) {
     merged.training = structuredClone(DEFAULT_TRAINING);
     merged._planV6 = true;
+  }
+  // Reha/Core/Calisthenics als feste Blöcke im Tagesplan
+  if (!merged._planV7) {
+    merged.schedule = structuredClone(DEFAULT_SCHEDULE);
+    merged._planV7 = true;
   }
   if (!Array.isArray(merged.measurements)) merged.measurements = [];
   // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
@@ -690,13 +696,14 @@ export function getTrainingFor(key) {
 // --- Gewohnheiten & Streaks --------------------------------------------------
 export function getHabits() { return load().habits; }
 
-// Tages-Ring: anteiliger Fortschritt aus Gewohnheiten + Wasser + Supplements
+// Tages-Ring: anteiliger Fortschritt aus Tagesplan-Blöcken + Wasser + Supplements
 export function ringSummary(key) {
   const s = load();
   const day = s.log[key];
   const done = day && day.done ? day.done : {};
   let sum = 0, count = 0;
-  for (const h of s.habits) { count++; if (done['habit:' + h.id]) sum++; }
+  // Tagesplan-Blöcke abgehakt
+  for (const b of getDaySchedule(key)) { count++; if (done['block:' + b.id]) sum++; }
   // Wasser anteilig
   const water = day ? (day.water || 0) : 0;
   const wTarget = s.profile.water || 1;
