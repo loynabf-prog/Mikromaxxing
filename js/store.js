@@ -54,6 +54,7 @@ function freshState() {
     _athleteV2: true,
     _variety1: true,
     _variety2: true,
+    _foodsV3: true,
     _habitsV2: true,
     _habitsV3: true,
     _habitsV4: true,
@@ -159,6 +160,12 @@ function migrate(parsed) {
     const have = new Set(merged.foods.map(f => f.id));
     for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
     merged._variety2 = true;
+  }
+  // Große Lebensmittel-Erweiterung (Protein/Carbs/Obst/Gemüse/Snacks)
+  if (!merged._foodsV3) {
+    const have = new Set(merged.foods.map(f => f.id));
+    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
+    merged._foodsV3 = true;
   }
   // Neue tägliche Gewohnheiten (Knie-Reha, Core, Calisthenics AM/PM) ergänzen
   if (!merged._habitsV2) {
