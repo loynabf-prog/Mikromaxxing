@@ -1127,3 +1127,57 @@ export function isLiftPR(id) {
     x.date < lift.date || (x.date === lift.date && x.id < lift.id));
   return earlier.every(x => e1rm(x.weight, x.reps) < e) && e > 0;
 }
+
+// --- Favoriten (1-Tap-Logging) ----------------------------------------------
+export function isFavorite(id) {
+  return (load().favorites || []).includes(id);
+}
+export function toggleFavorite(id) {
+  const s = load();
+  if (!Array.isArray(s.favorites)) s.favorites = [];
+  const i = s.favorites.indexOf(id);
+  if (i >= 0) s.favorites.splice(i, 1); else s.favorites.push(id);
+  save();
+  return s.favorites.includes(id);
+}
+export function getFavorites() {
+  const s = load();
+  return (s.favorites || [])
+    .map(id => s.foods.find(f => f.id === id))
+    .filter(Boolean)
+    .map(food => ({ food, grams: servingGrams(food) }));
+}
+
+// --- Standardtag (Vorlage der getrackten Essentials) ------------------------
+export function saveDayTemplate(key = todayKey()) {
+  const s = load();
+  const day = s.log[key];
+  const entries = (day && day.entries) ? day.entries : [];
+  s.dayTemplate = entries.map(e => ({ foodId: e.foodId, grams: e.grams }));
+  save();
+  return s.dayTemplate.length;
+}
+export function getDayTemplate() {
+  return load().dayTemplate || [];
+}
+export function hasDayTemplate() {
+  return (load().dayTemplate || []).length > 0;
+}
+export function loadDayTemplate(key = todayKey()) {
+  const s = load();
+  const tpl = s.dayTemplate || [];
+  const day = getDay(key);
+  let added = 0;
+  tpl.forEach(t => {
+    if (!s.foods.find(f => f.id === t.foodId)) return;
+    day.entries.push({ foodId: t.foodId, grams: Number(t.grams) || 0, ts: Date.now() });
+    added++;
+  });
+  save();
+  return added;
+}
+export function clearDayTemplate() {
+  const s = load();
+  s.dayTemplate = [];
+  save();
+}

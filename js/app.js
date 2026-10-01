@@ -477,6 +477,7 @@ function renderNutrition() {
   const macroColors = { protein: 'var(--protein)', carbs: 'var(--carbs)', fat: 'var(--fat)' };
 
   const quickPicks = store.getQuickPicks(8);
+  const favs = store.getFavorites();
   const rec = store.getRecommendations(currentDate);
   const ess = store.essentialsSummary(currentDate);
 
@@ -507,7 +508,19 @@ function renderNutrition() {
 
     <!-- Schnellzugriff -->
     <div class="card">
-      <div class="card-head"><span>⚡ Schnellzugriff</span></div>
+      <div class="card-head"><span>⚡ Schnellzugriff</span>
+        <button class="btn-secondary small" id="std-day">${store.hasDayTemplate() ? '📋 Standardtag laden' : '📋 Standardtag merken'}</button>
+      </div>
+      ${favs.length ? `
+        <div class="quick-sub">⭐ Favoriten</div>
+        <div class="quick-row">
+          ${favs.map(q => `
+            <button class="quick-chip fav" data-quick="${q.food.id}" data-grams="${q.grams}">
+              <span class="quick-name">${esc(q.food.name)}</span>
+              <span class="quick-meta">${esc(amountLabel(q.food, q.grams))} · ${Math.round(q.food.per100.kcal * q.grams/100)} kcal</span>
+            </button>`).join('')}
+        </div>` : ''}
+      ${favs.length ? '<div class="quick-sub">Häufig</div>' : ''}
       <div class="quick-row">
         ${quickPicks.map(q => `
           <button class="quick-chip" data-quick="${q.food.id}" data-grams="${q.grams}">
@@ -636,6 +649,48 @@ function renderNutrition() {
   const coachToggle = $('#coach-toggle');
   if (coachToggle) coachToggle.onclick = () => {
     coachExpanded = !coachExpanded; rerender();
+  };
+  const stdBtn = $('#std-day');
+  if (stdBtn) stdBtn.onclick = openDayTemplateSheet;
+}
+
+// Standardtag: getrackte Essentials als Vorlage speichern/laden
+function openDayTemplateSheet() {
+  const tpl = store.getDayTemplate();
+  const dayEntries = store.getDay(currentDate).entries.length;
+  const tplRows = tpl.map(t => {
+    const f = store.foodById(t.foodId);
+    if (!f) return '';
+    return `<div class="tpl-row"><span>${esc(f.name)}</span><span>${esc(amountLabel(f, t.grams))}</span></div>`;
+  }).join('');
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet">
+      <div class="sheet-head"><strong>📋 Standardtag</strong>
+        <button class="sheet-close" id="sheet-close">✕</button></div>
+      <p class="hint">Dein typischer Tag an getrackten Essentials – einmal merken, danach mit einem Tipp laden.</p>
+      ${tpl.length ? `<div class="tpl-list">${tplRows}</div>` : '<div class="empty">Noch kein Standardtag gespeichert.</div>'}
+      <div class="tpl-actions">
+        ${tpl.length ? '<button class="btn-primary" id="tpl-load">Auf heute laden</button>' : ''}
+        <button class="btn-secondary" id="tpl-save">${tpl.length ? 'Mit heutigem Tag überschreiben' : 'Heutigen Tag merken'}</button>
+        ${tpl.length ? '<button class="btn-danger" id="tpl-clear">Standardtag löschen</button>' : ''}
+      </div>
+    </div></div>`;
+  $('#sheet-close').onclick = closeSheet;
+  const load = $('#tpl-load');
+  if (load) load.onclick = () => {
+    const n = store.loadDayTemplate(currentDate);
+    closeSheet(); rerender();
+    toast(n ? `Standardtag geladen (${n}) ✓` : 'Nichts zu laden');
+  };
+  $('#tpl-save').onclick = () => {
+    if (!dayEntries) { toast('Erst Essen eintragen, dann merken'); return; }
+    const n = store.saveDayTemplate(currentDate);
+    closeSheet(); rerender();
+    toast(`Standardtag gemerkt (${n}) 📋`);
+  };
+  const clr = $('#tpl-clear');
+  if (clr) clr.onclick = () => {
+    if (confirm('Standardtag löschen?')) { store.clearDayTemplate(); closeSheet(); rerender(); }
   };
 }
 
@@ -894,10 +949,13 @@ function openAddFoodSheet() {
             ${filtered.length === 0
               ? '<div class="empty">Nichts gefunden. Neues Lebensmittel im Tab „Bibliothek" anlegen.</div>'
               : filtered.map(f => `
-                <button class="food-opt ${selected && selected.id === f.id ? 'sel' : ''}" data-food="${f.id}">
-                  <span class="food-opt-name">${esc(f.name)} ${f.whole !== false ? boostBadge(f) : ''}</span>
-                  <span class="food-opt-meta">${Math.round(f.per100.kcal)} kcal · ${f.per100.protein} P <em>/100g</em></span>
-                </button>`).join('')}
+                <div class="food-opt-row ${selected && selected.id === f.id ? 'sel' : ''}">
+                  <button class="food-opt" data-food="${f.id}">
+                    <span class="food-opt-name">${esc(f.name)} ${f.whole !== false ? boostBadge(f) : ''}</span>
+                    <span class="food-opt-meta">${Math.round(f.per100.kcal)} kcal · ${f.per100.protein} P <em>/100g</em></span>
+                  </button>
+                  <button class="food-fav ${store.isFavorite(f.id) ? 'on' : ''}" data-fav="${f.id}" aria-label="Favorit">${store.isFavorite(f.id) ? '★' : '☆'}</button>
+                </div>`).join('')}
           </div>
         </div>
       </div>`;
@@ -908,6 +966,11 @@ function openAddFoodSheet() {
     search.oninput = () => { query = search.value; const pos = search.selectionStart; draw(); const ns=$('#food-search'); ns.focus(); ns.setSelectionRange(pos,pos); };
     modalRoot.querySelectorAll('[data-food]').forEach(b => b.onclick = () => {
       selected = store.foodById(b.dataset.food); draw();
+    });
+    modalRoot.querySelectorAll('[data-fav]').forEach(b => b.onclick = (e) => {
+      e.stopPropagation();
+      const on = store.toggleFavorite(b.dataset.fav);
+      b.classList.toggle('on', on); b.textContent = on ? '★' : '☆';
     });
     modalRoot.querySelectorAll('[data-qadd]').forEach(b => b.onclick = () => {
       quickLog(b.dataset.qadd, Number(b.dataset.grams)); closeSheet();

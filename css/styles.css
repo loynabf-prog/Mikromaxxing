@@ -743,3 +743,19 @@ select { appearance: none; -webkit-appearance: none; }
 .lh-set { font-weight: 700; }
 .lh-e1rm { color: var(--accent); font-weight: 700; }
 .lh-del { background: none; border: none; color: var(--text-faint); font-size: 14px; cursor: pointer; padding: 4px; }
+
+/* --- Schnell-Logging: Favoriten & Standardtag --- */
+.quick-sub { font-size: 12px; font-weight: 700; color: var(--text-dim); margin: 4px 0 8px; }
+.quick-chip.fav { border: 1px solid rgba(251,191,36,.4); }
+.food-opt-row { display: flex; align-items: stretch; gap: 6px; }
+.food-opt-row .food-opt { flex: 1; min-width: 0; }
+.food-fav { flex: 0 0 auto; width: 44px; background: var(--card-2); border: 1px solid var(--line);
+  color: var(--text-faint); border-radius: 12px; font-size: 20px; cursor: pointer; line-height: 1; }
+.food-fav.on { color: var(--fat); border-color: rgba(251,191,36,.5); }
+.food-opt-row.sel .food-opt { outline: 2px solid var(--accent); }
+.tpl-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.tpl-row { display: flex; justify-content: space-between; gap: 10px; background: var(--card-2);
+  border-radius: 10px; padding: 9px 12px; font-size: 13px; }
+.tpl-row span:last-child { color: var(--text-dim); flex: 0 0 auto; }
+.tpl-actions { display: flex; flex-direction: column; gap: 8px; }
+.tpl-actions button { width: 100%; }
