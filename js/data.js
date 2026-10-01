@@ -122,6 +122,7 @@ export const DEFAULT_PROFILE = {
   targetWeight: 84,   // Zielgewicht (kg) – Fettabbau-Ziel, editierbar
   targetBodyfat: 15,  // Ziel-Körperfett % (Stretch: 12 %)
   photo: null,        // Profilfoto (Data-URL) für den Tages-Ring
+  dayGoal: 80,        // ab wie viel % Ring gilt der Tag als "geschafft" (Streak)
 };
 
 // --- Körperanalyse-Metriken (InBody & Co.) ----------------------------------

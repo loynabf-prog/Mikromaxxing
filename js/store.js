@@ -192,6 +192,7 @@ function migrate(parsed) {
   }
   if (merged.profile.targetBodyfat == null) merged.profile.targetBodyfat = 15;
   if (!('photo' in merged.profile)) merged.profile.photo = null;
+  if (merged.profile.dayGoal == null) merged.profile.dayGoal = 80;
   // "Warum"-Texte in bestehende Gewohnheiten mergen (nach id)
   if (!merged._habitsV5) {
     const byId = Object.fromEntries(DEFAULT_HABITS.map(h => [h.id, h]));
@@ -279,7 +280,7 @@ export function getState() { return load(); }
 export function getDay(key) {
   const s = load();
   if (!s.log[key]) {
-    s.log[key] = { entries: [], water: 0, supps: {}, weight: null, note: '', done: {}, autopilotLoaded: false };
+    s.log[key] = { entries: [], water: 0, supps: {}, weight: null, note: '', done: {}, autopilotLoaded: false, review: null };
   }
   if (!s.log[key].done) s.log[key].done = {};
   return s.log[key];
@@ -720,6 +721,70 @@ export function ringSummary(key) {
     sum += sd / s.supplements.length; count++;
   }
   return { pct: count ? Math.round((sum / count) * 100) : 0 };
+}
+
+// Gilt der Tag als "geschafft"? (Ring >= Tagesziel)
+export function dayComplete(key) {
+  const goal = load().profile.dayGoal || 80;
+  return ringSummary(key).pct >= goal;
+}
+
+// Aktuelle Streak: aufeinanderfolgende geschaffte Tage (heute offen = läuft weiter)
+export function currentStreak(todayKeyStr = todayKey()) {
+  let streak = 0, cursor = todayKeyStr, first = true;
+  while (true) {
+    if (dayComplete(cursor)) streak++;
+    else if (first) { /* heute noch offen – nicht abbrechen */ }
+    else break;
+    first = false;
+    cursor = shiftDate(cursor, -1);
+    if (streak > 500) break;
+  }
+  return streak;
+}
+
+// Längste je erreichte Streak (aus dem Log)
+export function bestStreak() {
+  const s = load();
+  const keys = Object.keys(s.log).sort();
+  if (!keys.length) return 0;
+  let best = 0, run = 0, prev = null;
+  for (const k of keys) {
+    if (!dayComplete(k)) { run = 0; prev = k; continue; }
+    if (prev && shiftDate(prev, 1) === k && run > 0) run++;
+    else run = 1;
+    if (run > best) best = run;
+    prev = k;
+  }
+  return best;
+}
+
+// Ring-Verlauf der letzten n Tage (für Kalender-Kette)
+export function ringHistory(n = 28, todayKeyStr = todayKey()) {
+  const out = [];
+  for (let i = n - 1; i >= 0; i--) {
+    const k = shiftDate(todayKeyStr, -i);
+    const pct = ringSummary(k).pct;
+    out.push({ key: k, pct, complete: pct >= (load().profile.dayGoal || 80) });
+  }
+  return out;
+}
+
+// Anzahl 100%-Tage insgesamt
+export function perfectDays() {
+  const s = load();
+  return Object.keys(s.log).filter(k => ringSummary(k).pct >= 100).length;
+}
+
+// --- Tagesabschluss / Review -------------------------------------------------
+export function setReview(key, data) {
+  const day = getDay(key);
+  day.review = Object.assign({}, day.review, data);
+  save();
+}
+export function getReview(key) {
+  const s = load();
+  return s.log[key] ? s.log[key].review : null;
 }
 
 // Tages-Ring: wie viele Must-Dos (Gewohnheiten) sind heute erledigt

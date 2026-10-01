@@ -142,12 +142,14 @@ function renderToday() {
     }));
     blocks = [...blocks, ...gameBlocks].sort((a, b) => a.time.localeCompare(b.time));
   }
-  const { current } = store.currentBlock(key, now);
+  const { current, next } = store.currentBlock(key, now);
   const training = store.getTrainingFor(key);
   const ring = store.ringSummary(key);
   const day = store.getDay(key);
   const profile = store.getState().profile;
   const supps = store.getState().supplements;
+  const streak = store.currentStreak();
+  const review = store.getReview(key);
 
   const hour = now.getHours();
   const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
@@ -159,10 +161,14 @@ function renderToday() {
   app.innerHTML = `
     <div class="ring-hero">
       ${progressPhotoRing(ring.pct, profile.photo)}
+      ${streak > 0 ? `<div class="streak-chip">🔥 ${streak} ${streak === 1 ? 'Tag' : 'Tage'} Streak</div>` : ''}
       <div class="ring-hero-greet">${greeting}</div>
       <div class="ring-hero-status ${allDone ? 'done' : ''}">${statusLine}</div>
       <input type="file" id="photo-input" accept="image/*" hidden>
     </div>
+
+    <!-- Fokus: was ist JETZT dran -->
+    ${focusCard(current, next, key)}
 
     <!-- Wasser (hochzählen – füllt den Ring anteilig) -->
     <div class="card">
@@ -209,6 +215,12 @@ function renderToday() {
       <div class="nutri-sub">Essentials, Wasser & Supplements tracken</div>
     </button>
 
+    <!-- Tagesabschluss -->
+    <button class="card review-card ${review ? 'done' : ''}" id="review-btn">
+      <div class="card-head"><span>🌙 Tagesabschluss</span><span class="train-arrow">›</span></div>
+      <div class="nutri-sub">${review ? `Abgeschlossen · ${esc(review.mood || '')} ${review.note ? '· „' + esc(review.note) + '"' : ''}` : 'Tag kurz reflektieren & abschließen'}</div>
+    </button>
+
     <div class="spacer"></div>
   `;
 
@@ -237,9 +249,65 @@ function renderToday() {
   });
   const gt = $('#go-training'); if (gt) gt.onclick = () => setTab('training');
   const gf = $('#go-food'); if (gf) gf.onclick = () => setTab('food');
+  const fd = $('#focus-done');
+  if (fd && current) fd.onclick = () => { store.toggleCheck(key, 'block:' + current.id); rerender(); };
+  const rb = $('#review-btn'); if (rb) rb.onclick = () => openReviewSheet(key);
   const ringPhoto = $('#ring-photo-tap'); const photoInput = $('#photo-input');
   if (ringPhoto) ringPhoto.onclick = () => photoInput.click();
   if (photoInput) photoInput.onchange = (e) => handlePhoto(e.target.files[0]);
+}
+
+// Fokus-Modus: der eine Block, der JETZT dran ist
+function focusCard(current, next, key) {
+  if (!current && !next) return '';
+  if (!current) {
+    return `<div class="card focus-card upcoming">
+      <div class="focus-label">Gleich dran</div>
+      <div class="focus-title">${esc(next.icon)} ${esc(next.title)}</div>
+      <div class="focus-time">ab ${esc(next.time)}</div>
+    </div>`;
+  }
+  const done = store.isChecked(key, 'block:' + current.id);
+  return `<div class="card focus-card ${done ? 'done' : ''}">
+    <div class="focus-label">${done ? 'Erledigt ✓ · als Nächstes' : 'Jetzt dran'}</div>
+    <div class="focus-row">
+      <div class="focus-main">
+        <div class="focus-title">${esc(current.icon)} ${esc(current.title)}</div>
+        <div class="focus-time">${esc(current.time)}${next ? ` · dann ${esc(next.time)} ${esc(next.title)}` : ''}</div>
+      </div>
+      <button class="focus-check ${done ? 'on' : ''}" id="focus-done" aria-label="erledigt">${done ? '✓' : ''}</button>
+    </div>
+  </div>`;
+}
+
+// Tagesabschluss-Sheet
+function openReviewSheet(key) {
+  const r = store.getReview(key) || {};
+  const ring = store.ringSummary(key);
+  const moods = ['😤', '💪', '🙂', '😐', '😮‍💨'];
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet">
+      <div class="sheet-head"><strong>🌙 Tagesabschluss</strong>
+        <button class="sheet-close" id="sheet-close">✕</button></div>
+      <div class="review-ring">Heute: <strong>${ring.pct}%</strong> ${ring.pct >= (store.getState().profile.dayGoal||80) ? '— Tag geschafft 🔥' : 'geschafft'}</div>
+      <div class="review-q">Wie war dein Tag?</div>
+      <div class="mood-row">
+        ${moods.map(m => `<button class="mood ${r.mood === m ? 'sel' : ''}" data-mood="${m}">${m}</button>`).join('')}
+      </div>
+      <label class="edit-field wide"><span>Kurze Reflexion (optional)</span>
+        <input type="text" id="review-note" value="${esc(r.note || '')}" placeholder="z.B. Training stark, Ernährung top"></label>
+      <button class="btn-primary" id="review-save">Tag abschließen</button>
+    </div></div>`;
+  let mood = r.mood || '';
+  $('#sheet-close').onclick = closeSheet;
+  modalRoot.querySelectorAll('[data-mood]').forEach(b => b.onclick = () => {
+    mood = b.dataset.mood;
+    modalRoot.querySelectorAll('.mood').forEach(x => x.classList.toggle('sel', x.dataset.mood === mood));
+  });
+  $('#review-save').onclick = () => {
+    store.setReview(key, { mood, note: $('#review-note').value.trim(), closed: true });
+    closeSheet(); rerender(); toast('Tag abgeschlossen 🌙');
+  };
 }
 
 // Foto im Fortschritts-Ring (Ring füllt sich mit den Must-Dos)
