@@ -1,7 +1,7 @@
 // ============================================================================
 // Mikromaxxing – App-Logik & UI
 // ============================================================================
-import { NUTRIENTS, NUTRIENT_BY_KEY, WEEKDAYS, WEEKDAYS_LONG, BODYCOMP_METRICS } from './data.js';
+import { NUTRIENTS, NUTRIENT_BY_KEY, NUTRIENT_INFO, WEEKDAYS, WEEKDAYS_LONG, BODYCOMP_METRICS } from './data.js';
 import * as store from './store.js';
 
 // --- Zustand der Oberfläche ---------------------------------------------------
@@ -35,6 +35,60 @@ function amountLabel(food, grams) {
     return `${count}× ${food.piece.name}`;
   }
   return `${Math.round(grams)} g`;
+}
+
+// Haupt-Boost eines Lebensmittels: welcher Essential-Nährstoff wird am meisten gedeckt
+function mainBoost(food) {
+  const t = store.getState().profile.targets;
+  const g = food.piece ? food.piece.g * (food.piece.def || 1)
+    : (food.servings && food.servings[0] ? food.servings[0].grams : 100);
+  let best = null;
+  for (const k of store.GAP_KEYS) {
+    if (!t[k]) continue;
+    const v = (food.per100[k] || 0) * g / 100;
+    if (v <= 0) continue;
+    const pct = Math.round((v / t[k]) * 100);
+    if (!best || pct > best.pct) best = { key: k, pct };
+  }
+  return best;
+}
+function shortNutrient(key) {
+  return NUTRIENT_BY_KEY[key].label
+    .replace('Vitamin ', 'Vit. ').replace(' (B7)', '').replace(' (B9)', '').replace(' (EPA+DHA/ALA)', '');
+}
+function boostBadge(food) {
+  const b = mainBoost(food);
+  if (!b) return '';
+  return `<span class="boost-badge">💥 ${esc(shortNutrient(b.key))} ${Math.min(999, b.pct)}%</span>`;
+}
+
+// Info-Popover: was bringt dieser Nährstoff + bester Lieferant
+function openNutrientInfo(key) {
+  const nt = NUTRIENT_BY_KEY[key];
+  const info = NUTRIENT_INFO[key] || '';
+  // bester Lieferant aus der Bibliothek
+  const t = store.getState().profile.targets[key];
+  let bestFood = null;
+  if (t) {
+    for (const f of store.getState().foods) {
+      if (f.whole === false) continue;
+      const g = f.piece ? f.piece.g * (f.piece.def || 1) : (f.servings && f.servings[0] ? f.servings[0].grams : 100);
+      const v = (f.per100[key] || 0) * g / 100;
+      if (v <= 0) continue;
+      const pct = Math.round((v / t) * 100);
+      if (!bestFood || pct > bestFood.pct) bestFood = { food: f, pct, g };
+    }
+  }
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet info-sheet">
+      <div class="sheet-head"><strong>${esc(nt.label)}</strong>
+        <button class="sheet-close" id="sheet-close">✕</button></div>
+      <div class="info-body">${esc(info)}</div>
+      ${bestFood ? `<div class="info-best">💥 Bester Lieferant: <strong>${esc(bestFood.food.name)}</strong>
+        (${esc(amountLabel(bestFood.food, bestFood.g))}) → +${Math.min(999, bestFood.pct)}%</div>` : ''}
+    </div></div>`;
+  $('#sheet-close').onclick = closeSheet;
+  $('.sheet-overlay').onclick = (e) => { if (e.target.classList.contains('sheet-overlay')) closeSheet(); };
 }
 
 // ============================================================================
@@ -199,8 +253,10 @@ function mustDoRow(h, key) {
     <button class="mustdo ${done ? 'done' : ''}" data-habit="${h.id}">
       <span class="mustdo-check">${done ? '✓' : ''}</span>
       <span class="mustdo-ico">${esc(h.icon || '•')}</span>
-      <span class="mustdo-name">${esc(h.name)}</span>
-      ${streak > 0 ? `<span class="mustdo-streak">🔥 ${streak}</span>` : ''}
+      <span class="mustdo-body">
+        <span class="mustdo-name">${esc(h.name)}${streak > 0 ? ` <span class="mustdo-streak">🔥 ${streak}</span>` : ''}</span>
+        ${h.why ? `<span class="mustdo-why">${esc(h.why)}</span>` : ''}
+      </span>
     </button>`;
 }
 
@@ -455,6 +511,9 @@ function renderNutrition() {
   const wInput = $('#weight-input');
   wInput.onchange = () => store.setWeight(currentDate, wInput.value);
   $('#add-food-btn').onclick = openAddFoodSheet;
+  app.querySelectorAll('[data-info]').forEach(b => b.onclick = (e) => {
+    e.stopPropagation(); openNutrientInfo(b.dataset.info);
+  });
 
   // Schnellzugriff & Coach: One-Tap-Logging
   app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
@@ -640,9 +699,10 @@ function microRow(nt, value, target) {
   if (isLimit) cls = value > target ? 'over' : 'ok';
   else if (p >= 100) cls = 'full';
   else if (p >= 66) cls = 'mid';
+  const hasInfo = !!NUTRIENT_INFO[nt.key];
   return `
     <div class="micro-row">
-      <div class="micro-name">${esc(nt.label)}</div>
+      <div class="micro-name">${esc(nt.label)}${hasInfo ? ` <button class="info-dot" data-info="${nt.key}" aria-label="Info">i</button>` : ''}</div>
       <div class="micro-bar"><div class="micro-fill ${cls}" style="width:${Math.min(100, p)}%"></div></div>
       <div class="micro-val">${fmt(value, nt.unit)}<span class="micro-unit">/${target}${nt.unit}</span></div>
     </div>`;
@@ -695,7 +755,7 @@ function openAddFoodSheet() {
               ? '<div class="empty">Nichts gefunden. Neues Lebensmittel im Tab „Bibliothek" anlegen.</div>'
               : filtered.map(f => `
                 <button class="food-opt ${selected && selected.id === f.id ? 'sel' : ''}" data-food="${f.id}">
-                  <span class="food-opt-name">${esc(f.name)}</span>
+                  <span class="food-opt-name">${esc(f.name)} ${f.whole !== false ? boostBadge(f) : ''}</span>
                   <span class="food-opt-meta">${Math.round(f.per100.kcal)} kcal · ${f.per100.protein} P <em>/100g</em></span>
                 </button>`).join('')}
           </div>
@@ -852,11 +912,14 @@ function renderTraining() {
       ${t.exercises && t.exercises.length ? `
         <div class="ex-list">
           ${t.exercises.map((ex, i) => {
+            const name = typeof ex === 'string' ? ex : ex.n;
+            const tag = typeof ex === 'string' ? '' : ex.t;
             const ck = `ex:${selectedTrainDay}:${i}`;
             const dn = isToday && store.isChecked(key, ck);
             return `<button class="ex-item ${dn?'on':''}" ${isToday?`data-ex="${ck}"`:''}>
               <span class="ex-box">${dn?'✓':''}</span>
-              <span class="ex-name">${esc(ex)}</span>
+              <span class="ex-name">${esc(name)}</span>
+              ${tag ? `<span class="ex-tag tag-${esc(tag.toLowerCase())}">${esc(tag)}</span>` : ''}
             </button>`;
           }).join('')}
         </div>
@@ -912,7 +975,10 @@ function renderLibrary() {
         <div class="cat-title">${esc(cat)}</div>
         ${foods.filter(f => (f.cat||'Sonstige') === cat).map(f => `
           <button class="lib-item" data-edit="${f.id}">
-            <span class="lib-name">${esc(f.name)}${f.whole === false ? ' <span class="meal-tag">Mahlzeit</span>' : ''}</span>
+            <span class="lib-main">
+              <span class="lib-name">${esc(f.name)}${f.whole === false ? ' <span class="meal-tag">Mahlzeit</span>' : ''}</span>
+              ${f.whole !== false ? boostBadge(f) : ''}
+            </span>
             <span class="lib-meta">${Math.round(f.per100.kcal)} kcal · ${f.per100.protein}P/${f.per100.carbs}C/${f.per100.fat}F</span>
           </button>`).join('')}
       </div>`).join('')}
@@ -1587,8 +1653,9 @@ function openTrainingEditor() {
             <input type="text" id="tr-title" value="${esc(t.title||'')}" placeholder="z.B. Push"></label>
           <label class="edit-field wide"><span>Fokus</span>
             <input type="text" id="tr-focus" value="${esc(t.focus||'')}" placeholder="z.B. Brust · Schulter · Trizeps"></label>
-          <label class="edit-field wide"><span>Übungen (eine pro Zeile)</span>
-            <textarea id="tr-ex" class="blk-steps" style="min-height:160px">${esc((t.exercises||[]).join('\n'))}</textarea></label>
+          <label class="edit-field wide"><span>Übungen (eine pro Zeile, optional „Name :: Tag")</span>
+            <textarea id="tr-ex" class="blk-steps" style="min-height:160px">${esc((t.exercises||[]).map(ex => typeof ex === 'string' ? ex : (ex.t ? `${ex.n} :: ${ex.t}` : ex.n)).join('\n'))}</textarea></label>
+          <p class="hint" style="margin:0 2px">Tags: Kraft · Funktion · Ausdauer · Explosiv · Reha · Skill · Routine · Mobility</p>
         </div>
         <div class="editor-actions"><span></span>
           <button class="btn-primary" id="tr-save">Speichern</button></div>
@@ -1600,7 +1667,11 @@ function openTrainingEditor() {
   function commit() {
     const title = $('#tr-title').value.trim();
     const focus = $('#tr-focus').value.trim();
-    const exercises = $('#tr-ex').value.split('\n').map(s => s.trim()).filter(Boolean);
+    const exercises = $('#tr-ex').value.split('\n').map(s => s.trim()).filter(Boolean).map(line => {
+      const idx = line.indexOf('::');
+      if (idx >= 0) return { n: line.slice(0, idx).trim(), t: line.slice(idx + 2).trim() };
+      return { n: line, t: '' };
+    });
     store.setTrainingDay(wd, { title, focus, exercises });
   }
   draw();

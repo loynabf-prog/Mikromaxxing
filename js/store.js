@@ -56,8 +56,10 @@ function freshState() {
     _habitsV2: true,
     _habitsV3: true,
     _habitsV4: true,
+    _habitsV5: true,
     _planV3: true,
     _planV4: true,
+    _planV5: true,
     _gamesV1: true,
     _bodyseed1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
@@ -171,6 +173,19 @@ function migrate(parsed) {
   }
   if (merged.profile.targetBodyfat == null) merged.profile.targetBodyfat = 15;
   if (!('photo' in merged.profile)) merged.profile.photo = null;
+  // "Warum"-Texte in bestehende Gewohnheiten mergen (nach id)
+  if (!merged._habitsV5) {
+    const byId = Object.fromEntries(DEFAULT_HABITS.map(h => [h.id, h]));
+    for (const h of merged.habits) {
+      if (!h.why && byId[h.id] && byId[h.id].why) h.why = byId[h.id].why;
+    }
+    merged._habitsV5 = true;
+  }
+  // Trainingsplan mit Zweck-Tags (Übungen jetzt als {n,t}) neu setzen
+  if (!merged._planV5) {
+    merged.training = structuredClone(DEFAULT_TRAINING);
+    merged._planV5 = true;
+  }
   if (!Array.isArray(merged.measurements)) merged.measurements = [];
   // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
   if (!merged._planV3) {

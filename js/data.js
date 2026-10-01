@@ -54,6 +54,42 @@ export const NUTRIENTS = [
 
 export const NUTRIENT_BY_KEY = Object.fromEntries(NUTRIENTS.map(n => [n.key, n]));
 
+// --- Was bringt dir der Nährstoff? (für das ⓘ-Infopünktchen) ----------------
+export const NUTRIENT_INFO = {
+  kcal:    'Energie für Training & Alltag. Zu viel = Fettaufbau, zu wenig = Muskelverlust.',
+  protein: 'Baustoff für Muskelaufbau & -erhalt. Hält satt. Dein wichtigster Makro beim Recomp.',
+  carbs:   'Haupt-Treibstoff für intensives Training, Sprints & Basketball. Füllt die Glykogenspeicher.',
+  fat:     'Nötig für Hormone (u.a. Testosteron) und die Aufnahme der Vitamine A, D, E, K.',
+  fiber:   'Darmgesundheit, lange Sättigung, stabiler Blutzucker (weniger Heißhunger).',
+  sugar:   'Schnelle Energie – in Maßen, am besten rund ums Training.',
+  satfat:  'Gesättigtes Fett in Maßen halten (Herz-Kreislauf).',
+  vitA:    'Augen, Haut, Immunsystem und Zellwachstum.',
+  vitC:    'Immunsystem, Kollagen für Sehnen/Haut (wichtig fürs Knie!), bessere Eisenaufnahme, Antioxidans.',
+  vitD:    'Kraft, Testosteron, Knochen & Immunsystem. Kaum übers Essen – dein D3-Supp deckt das.',
+  vitE:    'Starkes Antioxidans: schützt Zellen & unterstützt die Regeneration.',
+  vitK:    'Blutgerinnung und Knochengesundheit (arbeitet mit Vitamin D/K2 zusammen).',
+  vitB1:   'Verwertung von Kohlenhydraten zu Energie, Nervenfunktion.',
+  vitB2:   'Energieproduktion in den Zellen, Haut & Augen.',
+  vitB3:   'Energiestoffwechsel, Haut, Nervensystem.',
+  vitB5:   'Energiegewinnung und Hormonbildung.',
+  vitB6:   'Protein-Stoffwechsel (wichtig bei viel Eiweiß), Nerven & Stimmung.',
+  vitB7:   'Biotin: Haare, Haut, Nägel und Stoffwechsel.',
+  vitB9:   'Folat: Zellteilung & Blutbildung – wichtig bei hartem Training.',
+  vitB12:  'Energie, Blutbildung & Nervensystem. Kommt fast nur aus Tier/Supp.',
+  calcium: 'Knochen & Muskelkontraktion. Wichtig bei viel Belastung.',
+  iron:    'Sauerstofftransport im Blut → Ausdauer & Energie. Mangel macht müde.',
+  magnesium:'Muskelfunktion, besserer Schlaf & Regeneration, weniger Krämpfe.',
+  zinc:    'Testosteron, Immunsystem & Wundheilung/Regeneration.',
+  potassium:'Muskel- & Nervenfunktion, reguliert den Blutdruck.',
+  sodium:  'Flüssigkeitshaushalt & Leistung – nicht übertreiben.',
+  phosphorus:'Knochen und Energiewährung der Zellen (ATP).',
+  selenium:'Antioxidans, Schilddrüse & Immunsystem (1–2 Paranüsse decken den Tag).',
+  copper:  'Hilft dem Körper, Eisen zu verwerten; Bindegewebe.',
+  manganese:'Knochen, Stoffwechsel & Antioxidans-Schutz.',
+  iodine:  'Treibstoff der Schilddrüse → steuert deinen Stoffwechsel & Energie.',
+  omega3:  'Entzündungshemmend: gut für Gelenke, Herz & Regeneration nach dem Training.',
+};
+
 // --- Persönliches Profil & Zielwerte ----------------------------------------
 // Berechnet für: 26 J, männlich, 181 cm, 93 kg, 5x Training/Woche,
 // Ziel Recomp (Fettabbau + Muskelaufbau). Mifflin-St Jeor BMR ~1936 kcal,
@@ -453,21 +489,63 @@ export const DEFAULT_SCHEDULE = {
 // --- Trainingsplan (pro Wochentag) ------------------------------------------
 // Knie-sicher: Oberkörper frei/Calisthenics, Hinge leicht, Sprints submaximal,
 // KEINE Sprünge/Beinstrecker bis schmerzfrei. Viel Abwechslung, freie Übungen.
+// Übungen als { n: Name, t: Zweck-Tag }
+// Tags: Kraft · Funktion · Ausdauer · Explosiv · Reha · Skill · Routine · Mobility
 export const DEFAULT_TRAINING = {
   1: { title: 'Oberkörper A (frei)', focus: 'Rücken · Brust · Arme · Calisthenics',
-       exercises: ['Klimmzüge (oder Negative/assistiert)', 'Schrägbankdrücken', 'Inverted Rows (horizontal an der Stange)', 'Dips (oder Bank-Dips)', 'Face Pulls / Band Pull-Aparts', 'Knie-Isometrie: Wall Sit 5×30–45s'] },
+       exercises: [
+         { n: 'Klimmzüge (oder Negative/assistiert)', t: 'Kraft' },
+         { n: 'Schrägbankdrücken', t: 'Kraft' },
+         { n: 'Inverted Rows (horizontal an der Stange)', t: 'Funktion' },
+         { n: 'Dips (oder Bank-Dips)', t: 'Kraft' },
+         { n: 'Face Pulls / Band Pull-Aparts', t: 'Reha' },
+         { n: 'Knie-Isometrie: Wall Sit 5×30–45s', t: 'Reha' },
+       ] },
   2: { title: 'Basketball (Training)', focus: 'Skills · Spiel · 19:00',
-       exercises: ['Dynamisches Warm-up', 'Ballhandling', 'Shooting', 'Spiel', 'Cool-down / Dehnen'] },
+       exercises: [
+         { n: 'Dynamisches Warm-up', t: 'Mobility' },
+         { n: 'Ballhandling', t: 'Skill' },
+         { n: 'Shooting', t: 'Skill' },
+         { n: 'Spiel', t: 'Ausdauer' },
+         { n: 'Cool-down / Dehnen', t: 'Mobility' },
+       ] },
   3: { title: 'Yoga & Mobility', focus: 'Beweglichkeit · Recovery',
-       exercises: ['Yoga-Flow 45–60 min', 'Hüft-/Schulter-Mobility', 'Optional: Schwimmen 20–30 min', 'Sauna'] },
+       exercises: [
+         { n: 'Yoga-Flow 45–60 min', t: 'Mobility' },
+         { n: 'Hüft-/Schulter-Mobility', t: 'Mobility' },
+         { n: 'Optional: Schwimmen 20–30 min', t: 'Ausdauer' },
+         { n: 'Sauna', t: 'Routine' },
+       ] },
   4: { title: 'Aktiv (flexibel)', focus: 'Basketball ODER Gym B ODER Sprints',
-       exercises: ['Wenn Basketball-Training: hin (Vorrang)', 'Sonst A: Gym Oberkörper (frei) – Klimmzüge, Dips, Rows', 'Sonst B: Sprints 6–8× submaximal', 'Ziel: einfach aktiv bleiben'] },
+       exercises: [
+         { n: 'Wenn Basketball-Training: hin (Vorrang)', t: 'Skill' },
+         { n: 'Sonst A: Gym Oberkörper (frei)', t: 'Kraft' },
+         { n: 'Sonst B: Sprints 6–8× submaximal', t: 'Explosiv' },
+         { n: 'Hauptsache aktiv bleiben', t: 'Routine' },
+       ] },
   5: { title: 'Oberkörper B + Kreuzheben', focus: 'Rücken · Schulter · Hinge (knieschonend)',
-       exercises: ['Chin-ups / enge Klimmzüge', 'Überkopfdrücken (frei)', 'Australian Pull-ups / Inverted Rows', 'Dips oder Liegestütz-Varianten', 'Kreuzheben LEICHT (Technik, hüftdominant)', 'Langsame Wadenheben + Knie-Reha'] },
+       exercises: [
+         { n: 'Chin-ups / enge Klimmzüge', t: 'Kraft' },
+         { n: 'Überkopfdrücken (frei)', t: 'Kraft' },
+         { n: 'Australian Pull-ups / Inverted Rows', t: 'Funktion' },
+         { n: 'Dips oder Liegestütz-Varianten', t: 'Kraft' },
+         { n: 'Kreuzheben LEICHT (Technik, hüftdominant)', t: 'Kraft' },
+         { n: 'Langsame Wadenheben + Knie-Reha', t: 'Reha' },
+       ] },
   6: { title: 'Sprints + Schwimmen + Sauna', focus: 'Speed · Wachstumshormon · Gelenke · Recovery',
-       exercises: ['Dynamisches Warm-up + Steigerungen', 'Sprints 6–8× 40–60 m (submaximal → steigern)', 'Lange Pausen (voll erholen)', 'Schwimmen 20–30 min', 'Sauna nach dem Schwimmen'] },
+       exercises: [
+         { n: 'Dynamisches Warm-up + Steigerungen', t: 'Mobility' },
+         { n: 'Sprints 6–8× 40–60 m (submaximal → steigern)', t: 'Explosiv' },
+         { n: 'Lange Pausen (voll erholen)', t: 'Routine' },
+         { n: 'Schwimmen 20–30 min', t: 'Ausdauer' },
+         { n: 'Sauna nach dem Schwimmen', t: 'Routine' },
+       ] },
   0: { title: 'Ruhetag', focus: 'Mobility · Spaziergang · Wochenplanung',
-       exercises: ['Lockere Mobility', 'Spaziergang an der frischen Luft', 'Woche planen'] },
+       exercises: [
+         { n: 'Lockere Mobility', t: 'Mobility' },
+         { n: 'Spaziergang an der frischen Luft', t: 'Ausdauer' },
+         { n: 'Woche planen', t: 'Routine' },
+       ] },
 };
 
 // --- Basketball-Spielplan (TSC Münster, LL07H 2026/27) ----------------------
@@ -498,21 +576,21 @@ export const GAMES = [
 // --- Gewohnheiten (Streaks) --------------------------------------------------
 export const DEFAULT_HABITS = [
   // Die täglichen Must-Dos (füllen den Ring auf 100%)
-  { id: 'h_train',      name: 'Training / Bewegung heute',      icon: '🏋️' },
+  { id: 'h_train',      name: 'Training / Bewegung heute',      icon: '🏋️', why: 'Reiz zum Muskel-/Kraftaufbau – der Motor Richtung Athlet.' },
   // Tägliches Athletik-/Reha-Volumen (unabhängig vom Trainingstag)
-  { id: 'h_knee',       name: 'Knie-Reha (Isometrie 5×30–45s)', icon: '🦵' },
-  { id: 'h_core',       name: 'Core-Training',                  icon: '🧱' },
-  { id: 'h_cali_am',    name: 'Calisthenics morgens (Push/Pull/Dips)', icon: '🌅' },
-  { id: 'h_cali_pm',    name: 'Calisthenics abends (Push/Pull/Dips)',  icon: '🌙' },
-  { id: 'h_weigh',      name: 'Morgens wiegen',                        icon: '⚖️' },
+  { id: 'h_knee',       name: 'Knie-Reha (Isometrie 5×30–45s)', icon: '🦵', why: 'Baut die Patellasehne wieder belastbar auf – schützt vor erneuter Verletzung.' },
+  { id: 'h_core',       name: 'Core-Training',                  icon: '🧱', why: 'Verbindet Ober- & Unterkörper, Basis für Calisthenics-Skills & Explosivität.' },
+  { id: 'h_cali_am',    name: 'Calisthenics morgens (Push/Pull/Dips)', icon: '🌅', why: 'Greasing the Groove: viel Volumen submaximal → stark an Klimmzug/Dip/Push-up.' },
+  { id: 'h_cali_pm',    name: 'Calisthenics abends (Push/Pull/Dips)',  icon: '🌙', why: 'Zweite Volumen-Dosis am Tag, ohne dich auszubrennen.' },
+  { id: 'h_weigh',      name: 'Morgens wiegen',                        icon: '⚖️', why: 'Täglich → 7-Tage-Schnitt zeigt den echten Fettabbau-Trend.' },
   // Lifestyle
-  { id: 'h_water',     name: '3,5 L Wasser',            icon: '💧' },
-  { id: 'h_nophone',   name: 'Kein Handy 1. Stunde',    icon: '📵' },
-  { id: 'h_sun',       name: 'Morgens Tageslicht',      icon: '☀️' },
-  { id: 'h_steps',     name: '10.000 Schritte',         icon: '👟' },
-  { id: 'h_read',      name: '10 Min lesen',            icon: '📖' },
-  { id: 'h_supps',     name: 'Alle Supplements',        icon: '💊' },
-  { id: 'h_phoneoff',  name: 'Handy weg 22:30',         icon: '🌙' },
+  { id: 'h_water',     name: '3,5 L Wasser',            icon: '💧', why: 'Leistung, Konzentration & Regeneration – schon leichte Dehydrierung kostet Kraft.' },
+  { id: 'h_nophone',   name: 'Kein Handy 1. Stunde',    icon: '📵', why: 'Startet den Tag fokussiert statt reaktiv – weniger Stress, mehr Kontrolle.' },
+  { id: 'h_sun',       name: 'Morgens Tageslicht',      icon: '☀️', why: 'Stellt den Schlaf-Wach-Rhythmus ein → mehr Energie tags, besserer Schlaf nachts.' },
+  { id: 'h_steps',     name: '10.000 Schritte',         icon: '👟', why: 'Grundlagen-Aktivität verbrennt Fett ohne Gelenkbelastung – gut fürs Knie.' },
+  { id: 'h_read',      name: '10 Min lesen',            icon: '📖', why: 'Diszipliniert den Geist & ersetzt sinnloses Scrollen.' },
+  { id: 'h_supps',     name: 'Alle Supplements',        icon: '💊', why: 'Deckt die Essentials, die über Essen kaum reinkommen (D3, Omega-3, B12 …).' },
+  { id: 'h_phoneoff',  name: 'Handy weg 22:30',         icon: '🌙', why: 'Blaulicht-Stopp → schnelleres Einschlafen & bessere Erholung/Testosteron.' },
 ];
 
 // --- Ernährungs-Autopilot (fester Tages-Grundplan) --------------------------
