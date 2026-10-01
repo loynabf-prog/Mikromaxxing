@@ -561,6 +561,24 @@ export const SNACKS = [
 ];
 
 // ============================================================================
+// MEINE MAHLZEITEN – gespeicherte Gerichte (mehrere Zutaten, 1-Tap loggen)
+// ============================================================================
+export const DEFAULT_MEALS = [
+  { id: 'meal_pokebowl', name: 'Poke Bowl (Lachs)', emoji: '🍣',
+    why: 'Lachs + Ei + Edamame = viel Protein & Omega-3, Brokkoli + Süßkartoffel = Mikros & Ballaststoffe.',
+    items: [
+      { foodId: 'salmon', grams: 150 },
+      { foodId: 'white_rice', grams: 200 },
+      { foodId: 'egg', grams: 55 },
+      { foodId: 'sweet_potato', grams: 80 },
+      { foodId: 'broccoli', grams: 80 },
+      { foodId: 'edamame', grams: 60 },
+      { foodId: 'peanuts', grams: 15 },
+      { foodId: 'feldsalat', grams: 40 },
+    ] },
+];
+
+// ============================================================================
 // TAGESSTRUKTUR – Essens-Empfehlungen nach Tageszeit
 // Jeder Slot: Prinzip (why) + passende Lebensmittel (foods) & Kombis (snacks).
 // Die freie Hauptmahlzeit bleibt frei – das hier ist Struktur & Inspiration.

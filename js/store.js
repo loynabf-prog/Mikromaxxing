@@ -5,7 +5,7 @@
 import {
   NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS,
   DEFAULT_SCHEDULE, DEFAULT_TRAINING, DEFAULT_HABITS, DEFAULT_AUTOPILOT, GAMES,
-  DEFAULT_MEASUREMENTS, SNACKS,
+  DEFAULT_MEASUREMENTS, SNACKS, DEFAULT_MEALS,
 } from './data.js';
 
 const STORAGE_KEY = 'mikromaxxing_v1';
@@ -53,7 +53,9 @@ function freshState() {
     lifts: [],
     favorites: [],
     dayTemplate: [],
+    meals: structuredClone(DEFAULT_MEALS),
     _onboarded: false,
+    _mealsSeed1: true,
     _seedTrimV1: true,
     _athleteV1: true,
     _athleteV2: true,
@@ -253,6 +255,13 @@ function migrate(parsed) {
   if (!Array.isArray(merged.lifts)) merged.lifts = [];
   if (!Array.isArray(merged.favorites)) merged.favorites = [];
   if (!Array.isArray(merged.dayTemplate)) merged.dayTemplate = [];
+  if (!Array.isArray(merged.meals)) merged.meals = [];
+  // Erste gespeicherte Mahlzeit (Poke Bowl) einmalig ergänzen
+  if (!merged._mealsSeed1) {
+    const have = new Set(merged.meals.map(m => m.id));
+    for (const m of DEFAULT_MEALS) if (!have.has(m.id)) merged.meals.push(structuredClone(m));
+    merged._mealsSeed1 = true;
+  }
   // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
   if (!merged._planV3) {
     merged.schedule = structuredClone(DEFAULT_SCHEDULE);
@@ -647,6 +656,44 @@ export function logSnack(key, snackId) {
   }
   save();
   return added;
+}
+
+// --- Meine Mahlzeiten (gespeicherte Gerichte) -------------------------------
+export function getMeals() { return load().meals || []; }
+export function mealById(id) { return (load().meals || []).find(m => m.id === id) || null; }
+export function upsertMeal(meal) {
+  const s = load();
+  if (!Array.isArray(s.meals)) s.meals = [];
+  const i = s.meals.findIndex(m => m.id === meal.id);
+  if (i >= 0) s.meals[i] = meal; else s.meals.push(meal);
+  save();
+}
+export function deleteMeal(id) {
+  const s = load();
+  s.meals = (s.meals || []).filter(m => m.id !== id);
+  save();
+}
+export function logMeal(key, mealId) {
+  const meal = mealById(mealId);
+  if (!meal) return 0;
+  const day = getDay(key);
+  let added = 0;
+  for (const it of meal.items) {
+    if (!foodById(it.foodId)) continue;
+    day.entries.push({ foodId: it.foodId, grams: it.grams, ts: Date.now() });
+    added++;
+  }
+  save();
+  return added;
+}
+// Kalorien einer Mahlzeit (Summe der Zutaten)
+export function mealKcal(meal) {
+  let kcal = 0;
+  for (const it of meal.items) {
+    const f = foodById(it.foodId);
+    if (f) kcal += (f.per100.kcal || 0) * it.grams / 100;
+  }
+  return Math.round(kcal);
 }
 
 export function lastGramsFor(foodId) {

@@ -876,3 +876,27 @@ button { -webkit-tap-highlight-color: transparent; }
 .tl-hint { font-size: 12px; color: var(--text-dim); margin-top: 3px; }
 .tl-block.tl-routine .tl-time { opacity: .6; }
 .tl-block.tl-meal.done .tl-hint, .tl-block.done .tl-hint { color: var(--accent); }
+
+/* --- Meine Mahlzeiten --- */
+.meal-list { display: flex; flex-direction: column; gap: 8px; }
+.meal-row { display: flex; align-items: stretch; gap: 8px; }
+.meal-main { flex: 1; min-width: 0; text-align: left; background: var(--card-2); border: 1px solid var(--line);
+  border-radius: 12px; padding: 11px 13px; cursor: pointer; color: var(--text); display: flex; flex-direction: column; gap: 2px; }
+.meal-name { font-weight: 700; font-size: 14px; }
+.meal-meta { font-size: 12px; color: var(--text-dim); }
+.meal-log { flex: 0 0 auto; width: 48px; background: var(--accent); color: var(--accent-ink); border: none;
+  border-radius: 12px; font-size: 24px; font-weight: 700; cursor: pointer; line-height: 1; }
+.meal-log:active { transform: scale(.95); }
+.meal-name-row { display: flex; gap: 8px; margin-bottom: 12px; }
+.emoji-input { width: 54px; text-align: center; font-size: 20px; }
+.meal-name-input { flex: 1; }
+.meal-name-row input { background: var(--card-2); border: 1px solid var(--line); color: var(--text);
+  border-radius: 10px; padding: 11px; font-size: 15px; }
+.meal-items { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.meal-item { display: flex; align-items: center; gap: 8px; background: var(--card-2); border-radius: 10px; padding: 8px 10px; font-size: 13px; }
+.mi-name { flex: 1; min-width: 0; font-weight: 600; }
+.mi-g { width: 62px; background: var(--card); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 6px; text-align: right; }
+.mi-del { background: none; border: none; color: var(--text-faint); font-size: 14px; cursor: pointer; }
+.meal-add-row { display: flex; gap: 8px; align-items: center; }
+.meal-add-row select { flex: 1; min-width: 0; background: var(--card-2); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 10px; font-size: 14px; }
+.meal-add-row input { width: 64px; background: var(--card-2); border: 1px solid var(--line); color: var(--text); border-radius: 10px; padding: 10px; font-size: 14px; }

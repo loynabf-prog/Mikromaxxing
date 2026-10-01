@@ -700,6 +700,9 @@ function renderNutrition() {
     <!-- Tagesstruktur: was wann essen -->
     ${mealSlotsCard()}
 
+    <!-- Meine Mahlzeiten -->
+    ${myMealsCard()}
+
     <!-- Wasser -->
     <div class="card">
       <div class="card-head"><span>💧 Wasser</span>
@@ -812,6 +815,12 @@ function renderNutrition() {
     pendingSlotScroll = null;
     if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
   }
+  const mn = $('#meal-new'); if (mn) mn.onclick = () => openMealEditor(null);
+  app.querySelectorAll('[data-editmeal]').forEach(b => b.onclick = () => openMealEditor(b.dataset.editmeal));
+  app.querySelectorAll('[data-logmeal]').forEach(b => b.onclick = () => {
+    const n = store.logMeal(currentDate, b.dataset.logmeal);
+    rerender(); toast(`Mahlzeit geloggt (${n} Zutaten) ✓`);
+  });
 
   // Schnellzugriff & Coach: One-Tap-Logging
   app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
@@ -947,6 +956,94 @@ function mealSlotsCard() {
         <span class="card-head-val">was wann essen</span></div>
       <div class="slot-list">${slots}</div>
     </div>`;
+}
+
+// --- Meine Mahlzeiten --------------------------------------------------------
+function myMealsCard() {
+  const meals = store.getMeals();
+  return `
+    <div class="card">
+      <div class="card-head"><span>🍲 Meine Mahlzeiten</span>
+        <button class="btn-primary small" id="meal-new">＋ Neu</button></div>
+      ${meals.length ? `<div class="meal-list">
+        ${meals.map(m => `
+          <div class="meal-row">
+            <button class="meal-main" data-editmeal="${m.id}">
+              <span class="meal-name">${m.emoji || '🍽️'} ${esc(m.name)}</span>
+              <span class="meal-meta">${store.mealKcal(m)} kcal · ${m.items.length} Zutaten</span>
+            </button>
+            <button class="meal-log" data-logmeal="${m.id}" aria-label="loggen">＋</button>
+          </div>`).join('')}
+      </div>` : '<div class="empty">Noch keine Mahlzeit gespeichert. Leg deine festen Gerichte an – dann loggst du sie mit einem Tap.</div>'}
+    </div>`;
+}
+
+function openMealEditor(mealId) {
+  const existing = mealId ? store.mealById(mealId) : null;
+  const meal = existing ? structuredClone(existing)
+    : { id: 'meal_' + Date.now().toString(36), name: '', emoji: '🍽️', why: '', items: [] };
+  const foods = [...store.getState().foods].sort((a, b) => a.name.localeCompare(b.name));
+
+  function draw() {
+    modalRoot.innerHTML = `
+      <div class="sheet-overlay"><div class="sheet tall">
+        <div class="sheet-head"><strong>${existing ? 'Mahlzeit bearbeiten' : 'Neue Mahlzeit'}</strong>
+          <button class="sheet-close" id="sheet-close">✕</button></div>
+        <div class="editor-scroll">
+          <div class="meal-name-row">
+            <input type="text" id="m-emoji" value="${esc(meal.emoji)}" maxlength="2" class="emoji-input">
+            <input type="text" id="m-name" value="${esc(meal.name)}" placeholder="Name (z.B. Poke Bowl)" class="meal-name-input">
+          </div>
+          <div class="meal-items">
+            ${meal.items.length ? meal.items.map((it, i) => {
+              const f = store.foodById(it.foodId);
+              return `<div class="meal-item">
+                <span class="mi-name">${f ? esc(f.name) : '??'}</span>
+                <input type="number" inputmode="numeric" class="mi-g" data-mi="${i}" value="${it.grams}"> g
+                <button class="mi-del" data-midel="${i}">✕</button>
+              </div>`;
+            }).join('') : '<div class="hint">Noch keine Zutaten – unten hinzufügen.</div>'}
+          </div>
+          <div class="meal-add-row">
+            <select id="m-food">${foods.map(f => `<option value="${f.id}">${esc(f.name)}</option>`).join('')}</select>
+            <input type="number" inputmode="numeric" id="m-grams" value="100" placeholder="g">
+            <button class="btn-secondary small" id="m-additem">＋</button>
+          </div>
+        </div>
+        <div class="editor-actions">
+          ${existing ? '<button class="btn-danger" id="m-del">Löschen</button>' : '<span></span>'}
+          <button class="btn-primary" id="m-save">Speichern</button>
+        </div>
+      </div></div>`;
+    $('#sheet-close').onclick = closeSheet;
+    modalRoot.querySelectorAll('[data-mi]').forEach(inp => inp.onchange = () => {
+      meal.items[+inp.dataset.mi].grams = Number(inp.value) || 0;
+    });
+    modalRoot.querySelectorAll('[data-midel]').forEach(b => b.onclick = () => {
+      commitFields(); meal.items.splice(+b.dataset.midel, 1); draw();
+    });
+    $('#m-additem').onclick = () => {
+      commitFields();
+      const fid = $('#m-food').value, g = Number($('#m-grams').value) || 0;
+      if (fid && g > 0) meal.items.push({ foodId: fid, grams: g });
+      draw();
+    };
+    $('#m-save').onclick = () => {
+      commitFields();
+      if (!meal.name) { toast('Name fehlt'); return; }
+      if (!meal.items.length) { toast('Mindestens eine Zutat'); return; }
+      store.upsertMeal(meal); closeSheet(); rerender(); toast('Mahlzeit gespeichert 🍲');
+    };
+    const del = $('#m-del');
+    if (del) del.onclick = () => { if (confirm('Mahlzeit löschen?')) { store.deleteMeal(meal.id); closeSheet(); rerender(); } };
+  }
+  function commitFields() {
+    const nameEl = $('#m-name'), emojiEl = $('#m-emoji');
+    if (nameEl) meal.name = nameEl.value.trim();
+    if (emojiEl) meal.emoji = emojiEl.value.trim() || '🍽️';
+    modalRoot.querySelectorAll('[data-mi]').forEach(inp => { meal.items[+inp.dataset.mi].grams = Number(inp.value) || 0; });
+  }
+  draw();
 }
 
 // --- Autopilot-Leiste --------------------------------------------------------
