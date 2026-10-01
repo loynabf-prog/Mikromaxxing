@@ -66,6 +66,7 @@ function freshState() {
     _planV5: true,
     _planV6: true,
     _planV7: true,
+    _planV8: true,
     _gamesV1: true,
     _bodyseed1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
@@ -227,6 +228,11 @@ function migrate(parsed) {
   if (!merged._planV7) {
     merged.schedule = structuredClone(DEFAULT_SCHEDULE);
     merged._planV7 = true;
+  }
+  // Basketball ohne Unterpunkte (nur die Einheit)
+  if (!merged._planV8) {
+    merged.training = structuredClone(DEFAULT_TRAINING);
+    merged._planV8 = true;
   }
   if (!Array.isArray(merged.measurements)) merged.measurements = [];
   // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)

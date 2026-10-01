@@ -996,7 +996,7 @@ function renderTraining() {
           }).join('')}
         </div>
         ${!isToday ? '<p class="hint">Übungen abhaken kannst du am jeweiligen Tag.</p>' : ''}
-      ` : '<div class="empty">Ruhetag – keine Übungen.</div>'}
+      ` : `<div class="empty">Keine Einzelübungen – einfach durchziehen & im Tagesplan abhaken.</div>`}
     </div>
 
     <div class="card">
