@@ -55,6 +55,7 @@ function freshState() {
     _variety1: true,
     _habitsV2: true,
     _habitsV3: true,
+    _habitsV4: true,
     _planV3: true,
     _planV4: true,
     _gamesV1: true,
@@ -161,6 +162,15 @@ function migrate(parsed) {
     for (const h of DEFAULT_HABITS) if (!haveH.has(h.id)) merged.habits.push(structuredClone(h));
     merged._habitsV3 = true;
   }
+  // Must-Do "Training / Bewegung" ganz nach vorne (und neue Defaults ergänzen)
+  if (!merged._habitsV4) {
+    const haveH = new Set(merged.habits.map(h => h.id));
+    const additions = DEFAULT_HABITS.filter(h => !haveH.has(h.id));
+    merged.habits = [...additions, ...merged.habits];
+    merged._habitsV4 = true;
+  }
+  if (merged.profile.targetBodyfat == null) merged.profile.targetBodyfat = 15;
+  if (!('photo' in merged.profile)) merged.profile.photo = null;
   if (!Array.isArray(merged.measurements)) merged.measurements = [];
   // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
   if (!merged._planV3) {
@@ -612,6 +622,16 @@ export function getTrainingFor(key) {
 
 // --- Gewohnheiten & Streaks --------------------------------------------------
 export function getHabits() { return load().habits; }
+
+// Tages-Ring: wie viele Must-Dos (Gewohnheiten) sind heute erledigt
+export function mustDoSummary(key) {
+  const s = load();
+  const day = s.log[key];
+  const done = day && day.done ? day.done : {};
+  const total = s.habits.length;
+  const doneN = s.habits.filter(h => done['habit:' + h.id]).length;
+  return { done: doneN, total, pct: total ? Math.round((doneN / total) * 100) : 0 };
+}
 
 export function habitStreak(habitId, todayKeyStr = todayKey()) {
   const s = load();

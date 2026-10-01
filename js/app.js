@@ -74,13 +74,12 @@ function rerender() {
 // View: HEUTE (Kommandozentrale / Tages-Timeline)
 // ============================================================================
 const expandedBlocks = new Set();
+let planOpen = false;
 
 function renderToday() {
   const key = store.todayKey();
   const now = new Date();
-  const wd = now.getDay();
   let blocks = store.getDaySchedule(key);
-  // Heutige Spiele als Blöcke einblenden
   const todaysGames = store.gamesForDate(key);
   if (todaysGames.length) {
     const gameBlocks = todaysGames.map((g, i) => ({
@@ -89,43 +88,47 @@ function renderToday() {
     }));
     blocks = [...blocks, ...gameBlocks].sort((a, b) => a.time.localeCompare(b.time));
   }
-  const { current, next } = store.currentBlock(key, now);
+  const { current } = store.currentBlock(key, now);
   const training = store.getTrainingFor(key);
   const habits = store.getHabits();
-
-  // Ernährungs-Kurzstatus (heute)
-  const targets = store.getState().profile.targets;
-  const totals = store.computeTotals(key);
-  const day = store.getDay(key);
-  const remainKcal = Math.round(targets.kcal - (totals.kcal || 0));
-  const suppTotal = store.getState().supplements.length;
-  const suppDone = store.getState().supplements.filter(s => day.supps[s.id]).length;
-  const rec = store.getRecommendations(key);
-  const openGaps = rec.openGaps.length;
-  const ess = store.essentialsSummary(key);
+  const md = store.mustDoSummary(key);
+  const profile = store.getState().profile;
 
   const hour = now.getHours();
   const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
+  const allDone = md.total > 0 && md.done === md.total;
+  const statusLine = allDone
+    ? '🌙 Alles erledigt – du hast dir den Schlaf verdient.'
+    : `Noch ${md.total - md.done} von ${md.total} erledigen`;
 
   app.innerHTML = `
-    <div class="hero">
-      <div class="hero-greet">${greeting}</div>
-      <div class="hero-date">${WEEKDAYS_LONG[wd]} · ${now.getDate()}.${now.getMonth()+1}.</div>
+    <div class="ring-hero">
+      ${progressPhotoRing(md.pct, profile.photo)}
+      <div class="ring-hero-greet">${greeting}</div>
+      <div class="ring-hero-status ${allDone ? 'done' : ''}">${statusLine}</div>
+      <input type="file" id="photo-input" accept="image/*" hidden>
     </div>
 
-    ${nowCard(current, next, key)}
-    ${nextGameCard()}
-
-    <!-- Timeline -->
+    <!-- Must-Dos: der Ring füllt sich damit auf 100% -->
     <div class="card">
-      <div class="card-head"><span>🗓️ Tagesplan</span>
-        <span class="card-head-val">${blocks.filter(b=>store.isChecked(key,'block:'+b.id)).length}/${blocks.length}</span></div>
-      <div class="timeline">
-        ${blocks.map(b => timelineBlock(b, key, current && b.id === current.id)).join('')}
+      <div class="card-head"><span>✅ Tägliche Must-Dos</span>
+        <span class="card-head-val ${allDone ? 'good' : ''}">${md.done}/${md.total}</span></div>
+      <div class="mustdo-list">
+        ${habits.map(h => mustDoRow(h, key)).join('')}
       </div>
     </div>
 
-    <!-- Training heute -->
+    <!-- Tagesplan (einklappbar) -->
+    <div class="card">
+      <button class="plan-toggle" id="plan-toggle">
+        <span>🗓️ Tagesplan${current ? ` · jetzt: ${esc(current.icon)} ${esc(current.title)}` : ''}</span>
+        <span class="train-arrow">${planOpen ? '▾' : '▸'}</span>
+      </button>
+      ${planOpen ? `<div class="timeline">
+        ${blocks.map(b => timelineBlock(b, key, current && b.id === current.id)).join('')}
+      </div>` : ''}
+    </div>
+
     ${training ? `
       <button class="card train-card" id="go-training">
         <div class="train-head"><span>🏋️ Training heute</span><span class="train-arrow">›</span></div>
@@ -133,29 +136,21 @@ function renderToday() {
         <div class="train-focus">${esc(training.focus || '')}</div>
       </button>` : ''}
 
-    <!-- Gewohnheiten -->
-    <div class="card">
-      <div class="card-head"><span>🔥 Gewohnheiten</span></div>
-      <div class="habit-grid">
-        ${habits.map(h => habitChip(h, key)).join('')}
-      </div>
-    </div>
+    ${nextGameCard()}
 
-    <!-- Ernährung Kurzstatus -->
     <button class="card nutri-mini" id="go-food">
       <div class="card-head"><span>🍽️ Ernährung</span><span class="train-arrow">›</span></div>
-      <div class="nutri-row">
-        <div class="nutri-stat"><div class="nutri-val ${ess.done===ess.total?'good':''}">${ess.done}/${ess.total}</div><div class="nutri-lbl">Essentials</div></div>
-        <div class="nutri-stat"><div class="nutri-val">${(day.water/1000).toFixed(1)}L</div><div class="nutri-lbl">Wasser</div></div>
-        <div class="nutri-stat"><div class="nutri-val">${suppDone}/${suppTotal}</div><div class="nutri-lbl">Supps</div></div>
-        <div class="nutri-stat"><div class="nutri-val ${openGaps===0?'good':''}">${openGaps===0?'✓':openGaps}</div><div class="nutri-lbl">${openGaps===0?'erreicht':'offen'}</div></div>
-      </div>
+      <div class="nutri-sub">Essentials, Wasser & Supplements tracken</div>
     </button>
 
     <div class="spacer"></div>
   `;
 
   // Events
+  app.querySelectorAll('[data-habit]').forEach(b => b.onclick = () => {
+    store.toggleCheck(key, 'habit:' + b.dataset.habit); rerender();
+  });
+  $('#plan-toggle').onclick = () => { planOpen = !planOpen; rerender(); };
   app.querySelectorAll('[data-block]').forEach(b => b.onclick = () => {
     store.toggleCheck(key, 'block:' + b.dataset.block); rerender();
   });
@@ -169,16 +164,68 @@ function renderToday() {
     e.stopPropagation();
     store.toggleCheck(key, b.dataset.step); rerender();
   });
-  app.querySelectorAll('[data-habit]').forEach(b => b.onclick = () => {
-    store.toggleCheck(key, 'habit:' + b.dataset.habit); rerender();
-  });
   const gt = $('#go-training'); if (gt) gt.onclick = () => setTab('training');
   const gf = $('#go-food'); if (gf) gf.onclick = () => setTab('food');
-  const nowDone = $('#now-done');
-  if (nowDone && current) nowDone.onclick = (e) => {
-    e.stopPropagation();
-    store.toggleCheck(key, 'block:' + current.id); rerender();
+  const ringPhoto = $('#ring-photo-tap'); const photoInput = $('#photo-input');
+  if (ringPhoto) ringPhoto.onclick = () => photoInput.click();
+  if (photoInput) photoInput.onchange = (e) => handlePhoto(e.target.files[0]);
+}
+
+// Foto im Fortschritts-Ring (Ring füllt sich mit den Must-Dos)
+function progressPhotoRing(pct, photo) {
+  const r = 70, c = 2 * Math.PI * r;
+  const off = c * (1 - Math.min(100, pct) / 100);
+  const center = photo
+    ? `<image href="${photo}" x="18" y="18" width="124" height="124" clip-path="url(#ringclip)" preserveAspectRatio="xMidYMid slice"/>`
+    : `<circle cx="80" cy="80" r="62" fill="var(--card-2)"/><text x="80" y="94" text-anchor="middle" font-size="34">📷</text>`;
+  return `
+    <button class="ring-photo" id="ring-photo-tap" aria-label="Foto ändern">
+      <svg viewBox="0 0 160 160" class="ring-photo-svg">
+        <defs><clipPath id="ringclip"><circle cx="80" cy="80" r="62"/></clipPath></defs>
+        ${center}
+        <circle cx="80" cy="80" r="${r}" fill="none" stroke="var(--card-2)" stroke-width="9"/>
+        <circle cx="80" cy="80" r="${r}" fill="none" stroke="var(--accent)" stroke-width="9"
+          stroke-linecap="round" stroke-dasharray="${c}" stroke-dashoffset="${off}"
+          transform="rotate(-90 80 80)"/>
+      </svg>
+      <div class="ring-photo-pct ${pct >= 100 ? 'full' : ''}">${pct}%</div>
+    </button>`;
+}
+
+function mustDoRow(h, key) {
+  const done = store.isChecked(key, 'habit:' + h.id);
+  const streak = store.habitStreak(h.id, key);
+  return `
+    <button class="mustdo ${done ? 'done' : ''}" data-habit="${h.id}">
+      <span class="mustdo-check">${done ? '✓' : ''}</span>
+      <span class="mustdo-ico">${esc(h.icon || '•')}</span>
+      <span class="mustdo-name">${esc(h.name)}</span>
+      ${streak > 0 ? `<span class="mustdo-streak">🔥 ${streak}</span>` : ''}
+    </button>`;
+}
+
+function handlePhoto(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 360;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const scale = Math.max(size / img.width, size / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      let url;
+      try { url = canvas.toDataURL('image/jpeg', 0.82); } catch (e) { url = reader.result; }
+      store.updateProfile({ photo: url });
+      rerender();
+      toast('Foto gesetzt ✓');
+    };
+    img.src = reader.result;
   };
+  reader.readAsDataURL(file);
 }
 
 function nextGameCard() {
@@ -280,8 +327,6 @@ function renderNutrition() {
       <div class="date-label">${esc(store.formatDateLabel(currentDate))}</div>
       <button class="date-nav" id="next-day" aria-label="Nächster Tag">›</button>
     </div>
-
-    ${autopilotBar()}
 
     <!-- Essentials-Hauptkarte -->
     <div class="card calorie-card">
@@ -410,12 +455,6 @@ function renderNutrition() {
   const wInput = $('#weight-input');
   wInput.onchange = () => store.setWeight(currentDate, wInput.value);
   $('#add-food-btn').onclick = openAddFoodSheet;
-  const apBtn = $('#autopilot-load');
-  if (apBtn) apBtn.onclick = () => {
-    const added = store.loadAutopilot(currentDate);
-    rerender();
-    toast(`Autopilot: ${added} Lebensmittel geladen ✓`);
-  };
 
   // Schnellzugriff & Coach: One-Tap-Logging
   app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
@@ -1221,7 +1260,6 @@ function renderProfile() {
       <div class="setup-links">
         <button class="setup-link" id="edit-schedule"><span>🗓️ Tagesplan / Timeline</span><span class="train-arrow">›</span></button>
         <button class="setup-link" id="edit-training"><span>🏋️ Trainingsplan (Split)</span><span class="train-arrow">›</span></button>
-        <button class="setup-link" id="edit-autopilot"><span>🍽️ Ernährungs-Autopilot</span><span class="train-arrow">›</span></button>
         <button class="setup-link" id="open-library"><span>📚 Lebensmittel-Bibliothek</span><span class="train-arrow">›</span></button>
       </div>
     </div>
@@ -1363,7 +1401,6 @@ function renderProfile() {
   // Setup-Links
   $('#edit-schedule').onclick = openScheduleEditor;
   $('#edit-training').onclick = openTrainingEditor;
-  $('#edit-autopilot').onclick = openAutopilotEditor;
   $('#open-library').onclick = () => setTab('library');
 
   // Gewohnheiten
@@ -1629,7 +1666,6 @@ function openAutopilotEditor() {
 // ============================================================================
 function init() {
   store.load();
-  store.ensureAutopilot(store.todayKey()); // Essential-Stack automatisch für heute laden
   document.querySelectorAll('.nav-btn').forEach(btn => {
     btn.onclick = () => setTab(btn.dataset.tab);
   });

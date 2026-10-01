@@ -82,9 +82,10 @@ export const DEFAULT_PROFILE = {
     // Sonstiges
     omega3: 1000,
   },
-  water: 3500, // ml
-  autopilotAuto: true, // Essential-Stack automatisch jeden Tag laden
-  targetWeight: 85,    // Zielgewicht (kg) – Fettabbau-Ziel, editierbar
+  water: 3500,        // ml
+  targetWeight: 84,   // Zielgewicht (kg) – Fettabbau-Ziel, editierbar
+  targetBodyfat: 15,  // Ziel-Körperfett % (Stretch: 12 %)
+  photo: null,        // Profilfoto (Data-URL) für den Tages-Ring
 };
 
 // --- Körperanalyse-Metriken (InBody & Co.) ----------------------------------
@@ -496,6 +497,8 @@ export const GAMES = [
 
 // --- Gewohnheiten (Streaks) --------------------------------------------------
 export const DEFAULT_HABITS = [
+  // Die täglichen Must-Dos (füllen den Ring auf 100%)
+  { id: 'h_train',      name: 'Training / Bewegung heute',      icon: '🏋️' },
   // Tägliches Athletik-/Reha-Volumen (unabhängig vom Trainingstag)
   { id: 'h_knee',       name: 'Knie-Reha (Isometrie 5×30–45s)', icon: '🦵' },
   { id: 'h_core',       name: 'Core-Training',                  icon: '🧱' },
