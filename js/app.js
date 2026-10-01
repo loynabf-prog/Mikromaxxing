@@ -1876,10 +1876,14 @@ function renderProfile() {
         <button class="btn-secondary" id="import-btn">⬆︎ Import</button>
         <input type="file" id="import-file" accept="application/json" hidden>
       </div>
+      <button class="btn-secondary" id="replay-ob">👋 Einführung nochmal zeigen</button>
       <button class="btn-danger" id="reset-btn">Alle Daten zurücksetzen</button>
     </div>
     <div class="spacer"></div>
   `;
+
+  const robt = $('#replay-ob');
+  if (robt) robt.onclick = () => openOnboarding();
 
   // Profil-Felder direkt speichern
   const bind = (id, key, num = false) => {
@@ -2178,6 +2182,116 @@ function openAutopilotEditor() {
 }
 
 // ============================================================================
+// Onboarding (Erststart)
+// ============================================================================
+function openOnboarding() {
+  let step = 0;
+  const p = store.getState().profile;
+
+  function draw() {
+    const photo = store.getState().profile.photo;
+    const steps = [
+      // 0 – Willkommen
+      `<div class="ob-emoji">🏀</div>
+       <h2 class="ob-title">Willkommen bei<br>Mikromaxxing</h2>
+       <p class="ob-text">Deine Kommandozentrale für Training, Ernährung, Schlaf & Disziplin – ein Betriebssystem für deinen Körper. So wenig Entscheidungen wie möglich, so viel Fortschritt wie möglich.</p>`,
+      // 1 – Foto
+      `<div class="ob-emoji">📷</div>
+       <h2 class="ob-title">Dein Ring, dein Gesicht</h2>
+       <p class="ob-text">Jeden Tag füllst du den Ring um dein Foto auf 100 % – mit Wasser, Supplements und deinem Tagesplan. Erst dann hast du dir den Schlaf verdient.</p>
+       <div class="ob-ring">${progressPhotoRing(66, photo)}</div>
+       <button class="btn-secondary" id="ob-photo-btn">${photo ? 'Foto ändern' : '＋ Foto hinzufügen'}</button>
+       <input type="file" id="ob-photo-input" accept="image/*" hidden>`,
+      // 2 – Ziele
+      `<div class="ob-emoji">🎯</div>
+       <h2 class="ob-title">Deine Ziele</h2>
+       <p class="ob-text">Ich hab dir schon sinnvolle Ziele gesetzt – du kannst sie anpassen. Alles andere (Kalorien, Protein, Mikros) läuft automatisch im Hintergrund.</p>
+       <div class="ob-fields">
+         <label class="edit-field"><span>Zielgewicht (kg)</span>
+           <input type="number" inputmode="decimal" step="0.1" id="ob-tw" value="${p.targetWeight ?? ''}"></label>
+         <label class="edit-field"><span>Ziel-Körperfett (%)</span>
+           <input type="number" inputmode="decimal" step="0.1" id="ob-tbf" value="${p.targetBodyfat ?? ''}"></label>
+       </div>`,
+      // 3 – Los geht's
+      `<div class="ob-emoji">🔥</div>
+       <h2 class="ob-title">Los geht's</h2>
+       <p class="ob-text">Hak deinen Tag ab, log deine Sätze, mach alle paar Wochen ein Foto. Bleib dran – die Veränderung kommt von der Konstanz, nicht von einzelnen Tagen.</p>
+       <ul class="ob-list">
+         <li>🗓️ <b>Heute</b> – dein Tagesplan & Ring</li>
+         <li>🍽️ <b>Essen</b> – Essentials, Wasser, Supplements</li>
+         <li>🏋️ <b>Training</b> – Split & Kraft-Log</li>
+         <li>📈 <b>Fortschritt</b> – Streak, Ziele, Fotos</li>
+       </ul>`,
+    ];
+    const last = step === steps.length - 1;
+    modalRoot.innerHTML = `
+      <div class="onboard">
+        <div class="ob-card">
+          <div class="ob-body">${steps[step]}</div>
+          <div class="ob-dots">${steps.map((_, i) => `<span class="ob-dot ${i === step ? 'on' : ''}"></span>`).join('')}</div>
+          <div class="ob-nav">
+            ${step > 0 ? '<button class="btn-secondary" id="ob-back">Zurück</button>' : '<button class="btn-secondary" id="ob-skip">Überspringen</button>'}
+            <button class="btn-primary" id="ob-next">${last ? 'Loslegen 💪' : 'Weiter'}</button>
+          </div>
+        </div>
+      </div>`;
+
+    const photoBtn = $('#ob-photo-btn'); const photoInput = $('#ob-photo-input');
+    if (photoBtn && photoInput) {
+      photoBtn.onclick = () => photoInput.click();
+      photoInput.onchange = () => { handlePhotoOnboard(photoInput.files[0], draw); };
+    }
+    const back = $('#ob-back'); if (back) back.onclick = () => { commitGoals(); step--; draw(); };
+    const skip = $('#ob-skip'); if (skip) skip.onclick = finish;
+    $('#ob-next').onclick = () => {
+      commitGoals();
+      if (last) finish(); else { step++; draw(); }
+    };
+  }
+
+  function commitGoals() {
+    const tw = $('#ob-tw'), tbf = $('#ob-tbf');
+    const patch = {};
+    if (tw && tw.value !== '') patch.targetWeight = Number(tw.value);
+    if (tbf && tbf.value !== '') patch.targetBodyfat = Number(tbf.value);
+    if (Object.keys(patch).length) store.updateProfile(patch);
+  }
+
+  function finish() {
+    store.setOnboarded(true);
+    modalRoot.innerHTML = '';
+    currentTab = 'today';
+    render();
+  }
+
+  draw();
+}
+
+// Foto im Onboarding setzen (ohne vollen rerender, nur Overlay neu zeichnen)
+function handlePhotoOnboard(file, after) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const size = 360;
+      const canvas = document.createElement('canvas');
+      canvas.width = size; canvas.height = size;
+      const scale = Math.max(size / img.width, size / img.height);
+      const w = img.width * scale, h = img.height * scale;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, (size - w) / 2, (size - h) / 2, w, h);
+      let url;
+      try { url = canvas.toDataURL('image/jpeg', 0.82); } catch (e) { url = reader.result; }
+      store.updateProfile({ photo: url });
+      if (after) after();
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// ============================================================================
 // Init
 // ============================================================================
 function init() {
@@ -2186,6 +2300,7 @@ function init() {
     btn.onclick = () => setTab(btn.dataset.tab);
   });
   render();
+  if (!store.isOnboarded()) openOnboarding();
 
   // Service Worker (Offline / installierbar)
   if ('serviceWorker' in navigator) {

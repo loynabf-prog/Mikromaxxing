@@ -53,6 +53,7 @@ function freshState() {
     lifts: [],
     favorites: [],
     dayTemplate: [],
+    _onboarded: false,
     _seedTrimV1: true,
     _athleteV1: true,
     _athleteV2: true,
@@ -103,6 +104,8 @@ function migrate(parsed) {
   // Fehlende Felder mit Defaults auffüllen (vorwärtskompatibel).
   const base = freshState();
   const merged = Object.assign(base, parsed);
+  // Bestehende Installs gelten als eingerichtet – Onboarding nicht aufdrängen.
+  if (!('_onboarded' in parsed)) merged._onboarded = true;
   if (!merged.profile) merged.profile = base.profile;
   if (!merged.profile.targets) merged.profile.targets = base.profile.targets;
   if (!Array.isArray(merged.foods) || merged.foods.length === 0) merged.foods = base.foods;
@@ -1179,5 +1182,15 @@ export function loadDayTemplate(key = todayKey()) {
 export function clearDayTemplate() {
   const s = load();
   s.dayTemplate = [];
+  save();
+}
+
+// --- Onboarding --------------------------------------------------------------
+export function isOnboarded() {
+  return !!load()._onboarded;
+}
+export function setOnboarded(v = true) {
+  const s = load();
+  s._onboarded = !!v;
   save();
 }

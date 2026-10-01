@@ -759,3 +759,41 @@ select { appearance: none; -webkit-appearance: none; }
 .tpl-row span:last-child { color: var(--text-dim); flex: 0 0 auto; }
 .tpl-actions { display: flex; flex-direction: column; gap: 8px; }
 .tpl-actions button { width: 100%; }
+
+/* --- Onboarding (Erststart) --- */
+.onboard { position: fixed; inset: 0; z-index: 300; background: linear-gradient(170deg, var(--bg-2), var(--bg));
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  padding-top: calc(24px + var(--safe-t)); padding-bottom: calc(24px + var(--safe-b));
+  animation: ob-fade .3s ease; }
+@keyframes ob-fade { from { opacity: 0; } to { opacity: 1; } }
+.ob-card { width: 100%; max-width: 420px; display: flex; flex-direction: column; min-height: 0; }
+.ob-body { text-align: center; animation: ob-slide .35s ease; }
+@keyframes ob-slide { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
+.ob-emoji { font-size: 58px; line-height: 1; margin-bottom: 14px; }
+.ob-title { font-size: 28px; font-weight: 800; line-height: 1.15; margin: 0 0 12px; }
+.ob-text { color: var(--text-dim); font-size: 15px; line-height: 1.55; margin: 0 auto 18px; max-width: 340px; }
+.ob-ring { display: flex; justify-content: center; margin: 6px 0 16px; }
+.ob-ring .ring-photo { width: 150px; }
+.ob-fields { display: flex; flex-direction: column; gap: 12px; text-align: left; max-width: 300px; margin: 0 auto; }
+.ob-list { list-style: none; padding: 0; margin: 4px auto 0; max-width: 320px; text-align: left; display: flex; flex-direction: column; gap: 10px; }
+.ob-list li { background: var(--card); border-radius: 12px; padding: 12px 14px; font-size: 14px; color: var(--text-dim); }
+.ob-list b { color: var(--text); }
+.ob-dots { display: flex; justify-content: center; gap: 7px; margin: 22px 0 16px; }
+.ob-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); transition: all .2s ease; }
+.ob-dot.on { background: var(--accent); width: 20px; border-radius: 4px; }
+.ob-nav { display: flex; gap: 10px; }
+.ob-nav button { flex: 1; padding: 14px; font-size: 15px; }
+#ob-photo-btn { margin: 0 auto; display: block; }
+
+/* --- Design-Politur --- */
+#app > .card, #app > .ring-hero, #app > button.card { animation: card-in .28s ease both; }
+@keyframes card-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+button { -webkit-tap-highlight-color: transparent; }
+.btn-primary, .btn-secondary, .chip, .quick-chip, .supp-item, .mustdo, .lift-row, .badge, .week-day, .focus-check {
+  transition: transform .08s ease, background .15s ease, opacity .15s ease; }
+.btn-primary:active, .btn-secondary:active, .chip:active, .quick-chip:active, .lift-row:active { transform: scale(.97); }
+.card { transition: background .15s ease; }
+@media (prefers-reduced-motion: reduce) {
+  #app > .card, #app > .ring-hero, #app > button.card, .onboard, .ob-body { animation: none; }
+  * { transition: none !important; }
+}
