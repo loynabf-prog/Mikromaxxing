@@ -807,23 +807,101 @@ export function getTrainingFor(key) {
 export function getHabits() { return load().habits; }
 
 // Tages-Ring: anteiliger Fortschritt aus Tagesplan-Blöcken + Wasser + Supplements
-export function ringSummary(key) {
+// ============================================================================
+// 3-Säulen-Wertung: Ernährung · Aktivität · Arbeit
+// ============================================================================
+export const STEP_GOAL = 10000;
+
+// Zählt ein Block als echte Aktivität? (Einheiten + Reha/Core/Calisthenics)
+export function isActivityBlock(b) {
+  if (!b) return false;
+  if (b.kind === 'gym') return true;                               // Gym, Basketball, Sprints, Spiele
+  if (b.id && (b.id.endsWith('-rc') || b.id.endsWith('-pm'))) return true; // Reha/Core + Calisthenics
+  if (b.kind === 'move' && /schwimm|yoga|sprint|mobil/i.test(b.title || '')) return true;
+  return false;
+}
+
+export function getSteps(key = todayKey()) {
+  const s = load(); const day = s.log[key];
+  return day && day.steps ? day.steps : 0;
+}
+export function setSteps(key, n) {
+  const day = getDay(key);
+  day.steps = Math.max(0, Math.round(Number(n) || 0));
+  save();
+}
+export function isWorkDone(key = todayKey()) {
+  const s = load(); const day = s.log[key];
+  return !!(day && day.workDone);
+}
+export function toggleWork(key = todayKey()) {
+  const day = getDay(key); day.workDone = !day.workDone; save();
+  return !!day.workDone;
+}
+export function isActivityManual(key = todayKey()) {
+  const s = load(); const day = s.log[key];
+  return !!(day && day.activityManual);
+}
+export function toggleActivity(key = todayKey()) {
+  const day = getDay(key); day.activityManual = !day.activityManual; save();
+  return !!day.activityManual;
+}
+
+// Mindestens eine Aktivität an diesem Tag? (manuell, Aktiv-Block oder Spiel abgehakt)
+export function activityDone(key = todayKey()) {
+  const s = load(); const day = s.log[key];
+  if (day && day.activityManual) return true;
+  const done = day && day.done ? day.done : {};
+  for (const b of getDaySchedule(key)) {
+    if (isActivityBlock(b) && done['block:' + b.id]) return true;
+  }
+  for (const k in done) { if (done[k] && k.startsWith('block:game')) return true; }
+  return false;
+}
+
+// Die 3 Säulen (je 0–100) + Gesamt
+export function dayPillars(key = todayKey()) {
   const s = load();
   const day = s.log[key];
-  const done = day && day.done ? day.done : {};
-  let sum = 0, count = 0;
-  // Tagesplan-Blöcke abgehakt
-  for (const b of getDaySchedule(key)) { count++; if (done['block:' + b.id]) sum++; }
-  // Wasser anteilig
+  // 🥗 Ernährung = Ø(Essentials-Abdeckung, Wasser, Supplements)
+  const ess = essentialsSummary(key).coverage;
   const water = day ? (day.water || 0) : 0;
   const wTarget = s.profile.water || 1;
-  sum += Math.min(1, water / wTarget); count++;
-  // Supplements anteilig
-  if (s.supplements.length) {
-    const sd = s.supplements.filter(x => day && day.supps && day.supps[x.id]).length;
-    sum += sd / s.supplements.length; count++;
+  const waterPct = Math.min(100, (water / wTarget) * 100);
+  const suppPct = s.supplements.length
+    ? (s.supplements.filter(x => day && day.supps && day.supps[x.id]).length / s.supplements.length) * 100
+    : 100;
+  const nutrition = Math.round((ess + waterPct + suppPct) / 3);
+
+  // 🏃 Aktivität = 100 wenn Einheit, sonst Schritte/10k
+  const steps = getSteps(key);
+  const act = activityDone(key);
+  const activity = act ? 100 : Math.min(100, Math.round((steps / STEP_GOAL) * 100));
+
+  // 💼 Arbeit = Toggle
+  const work = isWorkDone(key) ? 100 : 0;
+
+  const overall = Math.round((nutrition + activity + work) / 3);
+  return { nutrition, activity, work, overall, steps, activityDone: act, ess: Math.round(ess), waterPct: Math.round(waterPct), suppPct: Math.round(suppPct) };
+}
+
+export function ringSummary(key) {
+  const p = dayPillars(key);
+  return { pct: p.overall, nutrition: p.nutrition, activity: p.activity, work: p.work };
+}
+
+// Wurde im Zeitfenster [fromMin, toMin) an diesem Tag etwas gegessen?
+export function entriesInWindow(key, fromMin, toMin) {
+  const s = load(); const day = s.log[key];
+  if (!day || !day.entries) return 0;
+  let c = 0;
+  for (const e of day.entries) {
+    if (!e.ts) continue;
+    const d = new Date(e.ts);
+    const m = d.getHours() * 60 + d.getMinutes();
+    if (m >= fromMin && m < toMin) c++;
   }
-  return { pct: count ? Math.round((sum / count) * 100) : 0 };
+  return c;
 }
 
 // Gilt der Tag als "geschafft"? (Ring >= Tagesziel)

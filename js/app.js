@@ -146,11 +146,28 @@ function renderToday() {
   const { current, next } = store.currentBlock(key, now);
   const training = store.getTrainingFor(key);
   const ring = store.ringSummary(key);
+  const pills = store.dayPillars(key);
   const day = store.getDay(key);
   const profile = store.getState().profile;
   const supps = store.getState().supplements;
   const streak = store.currentStreak();
   const review = store.getReview(key);
+
+  // Pro Block: Kategorie (meal/activity/work/routine) + Auto-Status für Mahlzeiten
+  const blockMins = blocks.map(b => tmin(b.time));
+  const blockMeta = blocks.map((b, i) => {
+    const cat = b.kind === 'meal' ? 'meal'
+      : store.isActivityBlock(b) ? 'activity'
+      : b.kind === 'work' ? 'work' : 'routine';
+    let autoDone = false, slot = '';
+    if (cat === 'meal') {
+      const from = blockMins[i];
+      const to = i < blocks.length - 1 ? blockMins[i + 1] : from + 180;
+      autoDone = store.entriesInWindow(key, from, to) > 0;
+      slot = slotForHour(Math.floor(from / 60));
+    }
+    return { category: cat, autoDone, slot };
+  });
 
   const hour = now.getHours();
   const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
@@ -170,8 +187,16 @@ function renderToday() {
       ${streak > 0 ? `<div class="streak-chip">🔥 ${streak} ${streak === 1 ? 'Tag' : 'Tage'} Streak</div>` : ''}
       <div class="ring-hero-greet">${greeting}${wake ? ` · auf seit ${esc(wake.wake)}` : ''}</div>
       <div class="ring-hero-status ${allDone ? 'done' : ''}">${statusLine}</div>
+      <div class="hero-pillars">
+        <span class="${pills.nutrition>=100?'full':''}">🥗 ${pills.nutrition}%</span>
+        <span class="${pills.activity>=100?'full':''}">🏃 ${pills.activity}%</span>
+        <span class="${pills.work>=100?'full':''}">💼 ${pills.work}%</span>
+      </div>
       <input type="file" id="photo-input" accept="image/*" hidden>
     </div>
+
+    <!-- 3 Säulen: Ernährung · Aktivität · Arbeit -->
+    ${pillarCards(pills, key)}
 
     <!-- Fokus: was ist JETZT dran -->
     ${focusCard(current, next, key)}
@@ -203,7 +228,7 @@ function renderToday() {
         <span class="train-arrow">${planOpen ? '▾' : '▸'}</span>
       </button>
       ${planOpen ? `<div class="timeline">
-        ${blocks.map(b => timelineBlock(b, key, current && b.id === current.id)).join('')}
+        ${blocks.map((b, i) => timelineBlock(b, key, current && b.id === current.id, blockMeta[i])).join('')}
       </div>` : ''}
     </div>
 
@@ -215,11 +240,6 @@ function renderToday() {
       </button>` : ''}
 
     ${nextGameCard()}
-
-    <button class="card nutri-mini" id="go-food">
-      <div class="card-head"><span>🍽️ Ernährung</span><span class="train-arrow">›</span></div>
-      <div class="nutri-sub">Essentials, Wasser & Supplements tracken</div>
-    </button>
 
     <!-- Tagesabschluss -->
     <button class="card review-card ${review ? 'done' : ''}" id="review-btn">
@@ -243,6 +263,10 @@ function renderToday() {
   app.querySelectorAll('[data-block]').forEach(b => b.onclick = () => {
     store.toggleCheck(key, 'block:' + b.dataset.block); rerender();
   });
+  app.querySelectorAll('[data-work]').forEach(b => b.onclick = () => { store.toggleWork(key); rerender(); });
+  app.querySelectorAll('[data-goslot]').forEach(b => b.onclick = (e) => {
+    e.stopPropagation(); goToSlot(b.dataset.goslot);
+  });
   app.querySelectorAll('[data-expand]').forEach(b => b.onclick = (e) => {
     e.stopPropagation();
     const id = b.dataset.expand;
@@ -254,9 +278,18 @@ function renderToday() {
     store.toggleCheck(key, b.dataset.step); rerender();
   });
   const gt = $('#go-training'); if (gt) gt.onclick = () => setTab('training');
-  const gf = $('#go-food'); if (gf) gf.onclick = () => setTab('food');
+  const gfp = $('#go-food-pillar'); if (gfp) gfp.onclick = () => setTab('food');
+  const at = $('#act-toggle'); if (at) at.onclick = () => { store.toggleActivity(key); rerender(); };
+  const sa = $('#steps-add'); if (sa) sa.onclick = () => openStepsSheet(key);
+  const wt = $('#work-toggle'); if (wt) wt.onclick = () => { store.toggleWork(key); rerender(); };
   const fd = $('#focus-done');
-  if (fd && current) fd.onclick = () => { store.toggleCheck(key, 'block:' + current.id); rerender(); };
+  if (fd && current) fd.onclick = () => {
+    const idx = blocks.findIndex(x => x.id === current.id);
+    const cat = idx >= 0 ? blockMeta[idx].category : 'routine';
+    if (cat === 'meal') { goToSlot(idx >= 0 ? blockMeta[idx].slot : slotForHour(now.getHours())); return; }
+    if (cat === 'work') { store.toggleWork(key); rerender(); return; }
+    store.toggleCheck(key, 'block:' + current.id); rerender();
+  };
   const rb = $('#review-btn'); if (rb) rb.onclick = () => openReviewSheet(key);
   const ringPhoto = $('#ring-photo-tap'); const photoInput = $('#photo-input');
   if (ringPhoto) ringPhoto.onclick = () => photoInput.click();
@@ -482,19 +515,39 @@ function nowCard(current, next, key) {
   </div>`;
 }
 
-function timelineBlock(b, key, isCurrent) {
-  const done = store.isChecked(key, 'block:' + b.id);
+function timelineBlock(b, key, isCurrent, meta) {
+  const cat = (meta && meta.category) || 'routine';
+  let done;
+  if (cat === 'meal') done = meta.autoDone;
+  else if (cat === 'work') done = store.isWorkDone(key);
+  else done = store.isChecked(key, 'block:' + b.id);
+
   const hasSteps = b.steps && b.steps.length;
   const expanded = expandedBlocks.has(b.id);
   const stepsDone = hasSteps ? b.steps.filter((_, i) => store.isChecked(key, `step:${b.id}:${i}`)).length : 0;
+
+  // Check-Verhalten je Kategorie
+  let checkAttr, checkGlyph;
+  if (cat === 'meal') { checkAttr = `data-goslot="${meta.slot}"`; checkGlyph = done ? '✓' : '›'; }
+  else if (cat === 'work') { checkAttr = `data-work="1"`; checkGlyph = done ? '✓' : ''; }
+  else { checkAttr = `data-block="${b.id}"`; checkGlyph = done ? '✓' : ''; }
+
+  const catBadge = cat === 'meal' ? '<span class="tl-cat nut">🥗</span>'
+    : cat === 'activity' ? '<span class="tl-cat act">🏃</span>'
+    : cat === 'work' ? '<span class="tl-cat wrk">💼</span>' : '';
+
+  // Body-Tap: Mahlzeit → Essen; mit Steps → ausklappen
+  const bodyAttr = hasSteps ? `data-expand="${b.id}"` : (cat === 'meal' ? `data-goslot="${meta.slot}"` : '');
+
   return `
-    <div class="tl-block ${isCurrent ? 'current' : ''} ${done ? 'done' : ''}">
+    <div class="tl-block ${isCurrent ? 'current' : ''} ${done ? 'done' : ''} tl-${cat}">
       <div class="tl-time">${esc(b.time)}</div>
-      <button class="tl-check ${done ? 'on' : ''}" data-block="${b.id}">${done ? '✓' : ''}</button>
-      <div class="tl-body ${hasSteps ? 'has-steps' : ''}" ${hasSteps ? `data-expand="${b.id}"` : ''}>
-        <div class="tl-title">${esc(b.icon)} ${esc(b.title)}
+      <button class="tl-check ${done ? 'on' : ''} ${cat === 'meal' ? 'nav' : ''}" ${checkAttr}>${checkGlyph}</button>
+      <div class="tl-body ${hasSteps ? 'has-steps' : ''}" ${bodyAttr}>
+        <div class="tl-title">${esc(b.icon)} ${esc(b.title)} ${catBadge}
           ${hasSteps ? `<span class="tl-steps-badge">${stepsDone}/${b.steps.length} ${expanded ? '▾' : '▸'}</span>` : ''}
         </div>
+        ${cat === 'meal' && !hasSteps ? `<div class="tl-hint">${done ? 'gegessen ✓' : 'Tippen → Empfehlungen & loggen'}</div>` : ''}
         ${hasSteps && expanded ? `<div class="tl-steps">
           ${b.steps.map((st, i) => {
             const sk = `step:${b.id}:${i}`;
@@ -505,6 +558,63 @@ function timelineBlock(b, key, isCurrent) {
         </div>` : ''}
       </div>
     </div>`;
+}
+
+// --- 3-Säulen-Karten ---------------------------------------------------------
+function pillarCards(p, key) {
+  const steps = p.steps || 0;
+  const actLabel = p.activityDone ? 'Aktivität erledigt ✓'
+    : (steps > 0 ? `${steps.toLocaleString('de-DE')} / 10.000 Schritte` : 'Noch keine Aktivität – 1 Einheit oder 10k Schritte');
+  return `
+    <div class="pillars">
+      <button class="pillar ${p.nutrition >= 100 ? 'full' : ''}" id="go-food-pillar">
+        <div class="pil-top"><span class="pil-ico">🥗</span><span class="pil-name">Ernährung</span><span class="pil-pct">${p.nutrition}%</span></div>
+        <div class="pil-bar"><i style="width:${p.nutrition}%"></i></div>
+        <div class="pil-sub">Essentials ${p.ess}% · Wasser ${p.waterPct}% · Supps ${p.suppPct}% ›</div>
+      </button>
+      <div class="pillar ${p.activity >= 100 ? 'full' : ''}">
+        <div class="pil-top"><span class="pil-ico">🏃</span><span class="pil-name">Aktivität</span><span class="pil-pct">${p.activity}%</span></div>
+        <div class="pil-bar"><i style="width:${p.activity}%"></i></div>
+        <div class="pil-sub">${actLabel}</div>
+        <div class="pil-actions">
+          <button class="pil-btn ${p.activityDone ? 'on' : ''}" id="act-toggle">${p.activityDone ? '✓ Aktiv gewesen' : 'Ich war aktiv'}</button>
+          <button class="pil-btn" id="steps-add">👟 Schritte</button>
+        </div>
+      </div>
+      <button class="pillar ${p.work >= 100 ? 'full' : ''}" id="work-toggle">
+        <div class="pil-top"><span class="pil-ico">💼</span><span class="pil-name">Arbeit</span><span class="pil-pct">${p.work}%</span></div>
+        <div class="pil-bar"><i style="width:${p.work}%"></i></div>
+        <div class="pil-sub">${p.work >= 100 ? 'Erledigt ✓ – tippen zum Zurücksetzen' : 'Tippen, wenn du heute gearbeitet hast'}</div>
+      </button>
+    </div>`;
+}
+
+function openStepsSheet(key) {
+  const cur = store.getSteps(key);
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet">
+      <div class="sheet-head"><strong>👟 Schritte heute</strong><button class="sheet-close" id="sheet-close">✕</button></div>
+      <div class="gram-row">
+        <input type="number" inputmode="numeric" id="steps-input" value="${cur || ''}" placeholder="0" step="100">
+        <span class="unit-suffix">Schritte</span>
+      </div>
+      <div class="serving-chips" style="margin-top:12px">
+        <button class="chip" data-stp="2000">+2.000</button>
+        <button class="chip" data-stp="5000">+5.000</button>
+        <button class="chip" data-stp="10000">10.000 ✓</button>
+      </div>
+      <button class="btn-primary" id="steps-save" style="margin-top:14px">Speichern</button>
+    </div></div>`;
+  $('#sheet-close').onclick = closeSheet;
+  modalRoot.querySelectorAll('[data-stp]').forEach(b => b.onclick = () => {
+    const v = Number(b.dataset.stp);
+    const inp = $('#steps-input');
+    inp.value = v >= 10000 ? 10000 : (Number(inp.value) || 0) + v;
+  });
+  $('#steps-save').onclick = () => {
+    store.setSteps(key, $('#steps-input').value);
+    closeSheet(); rerender(); toast('Schritte gespeichert 👟');
+  };
 }
 
 function habitChip(h, key) {
@@ -697,6 +807,11 @@ function renderNutrition() {
     if (openSlots.has(id)) openSlots.delete(id); else openSlots.add(id);
     rerender();
   });
+  if (pendingSlotScroll) {
+    const el = app.querySelector(`[data-slot="${pendingSlotScroll}"]`);
+    pendingSlotScroll = null;
+    if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 60);
+  }
 
   // Schnellzugriff & Coach: One-Tap-Logging
   app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
@@ -766,6 +881,16 @@ function quickLog(foodId, grams) {
 // --- Tagesstruktur: Essens-Empfehlungen nach Tageszeit ----------------------
 const openSlots = new Set();
 let slotsInit = false;
+let pendingSlotScroll = null;
+
+// Vom Tagesplan zur passenden Essens-Tageszeit springen
+function goToSlot(slotId) {
+  slotsInit = true;
+  openSlots.clear();
+  if (slotId) openSlots.add(slotId);
+  pendingSlotScroll = slotId;
+  setTab('food');
+}
 
 function servingG(food) {
   if (food.piece) return food.piece.g * (food.piece.def || 1);
@@ -777,6 +902,11 @@ function currentSlotId() {
   const s = MEAL_SLOTS.find(sl => h >= sl.from && h < sl.to);
   return s ? s.id : null;
 }
+function slotForHour(h) {
+  const s = MEAL_SLOTS.find(sl => h >= sl.from && h < sl.to);
+  return s ? s.id : MEAL_SLOTS[0].id;
+}
+function tmin(t) { const [h, m] = (t || '0:0').split(':').map(Number); return h * 60 + m; }
 
 function mealSlotsCard() {
   const nowId = currentSlotId();
