@@ -445,29 +445,27 @@ function renderNutrition() {
       </div>
     </div>
 
-    <!-- Mikros: Vitamine -->
+    <!-- Alle Werte (eingeklappt) -->
     <div class="card">
-      <div class="card-head"><span>Vitamine</span></div>
-      <div class="micro-grid">
-        ${NUTRIENTS.filter(nt => nt.group === 'vitamin').map(nt => microRow(nt, totals[nt.key], targets[nt.key])).join('')}
-      </div>
-    </div>
-
-    <!-- Mikros: Mineralstoffe -->
-    <div class="card">
-      <div class="card-head"><span>Mineralstoffe & Spurenelemente</span></div>
-      <div class="micro-grid">
-        ${NUTRIENTS.filter(nt => nt.group === 'mineral').map(nt => microRow(nt, totals[nt.key], targets[nt.key])).join('')}
-      </div>
-    </div>
-
-    <!-- Weitere Makros + Omega3 -->
-    <div class="card">
-      <div class="card-head"><span>Weitere Werte</span></div>
-      <div class="micro-grid">
-        ${['fiber','sugar','satfat'].map(k => microRow(NUTRIENT_BY_KEY[k], totals[k], targets[k])).join('')}
-        ${microRow(NUTRIENT_BY_KEY['omega3'], totals.omega3, targets.omega3)}
-      </div>
+      <button class="plan-toggle" id="nutri-details-toggle">
+        <span>🔬 Alle Nährwerte im Detail</span>
+        <span class="train-arrow">${nutriDetails ? '▾' : '▸'}</span>
+      </button>
+      ${nutriDetails ? `
+        <div class="nutri-detail-group">Vitamine</div>
+        <div class="micro-grid">
+          ${NUTRIENTS.filter(nt => nt.group === 'vitamin').map(nt => microRow(nt, totals[nt.key], targets[nt.key])).join('')}
+        </div>
+        <div class="nutri-detail-group">Mineralstoffe & Spurenelemente</div>
+        <div class="micro-grid">
+          ${NUTRIENTS.filter(nt => nt.group === 'mineral').map(nt => microRow(nt, totals[nt.key], targets[nt.key])).join('')}
+        </div>
+        <div class="nutri-detail-group">Weitere Werte</div>
+        <div class="micro-grid">
+          ${['fiber','sugar','satfat'].map(k => microRow(NUTRIENT_BY_KEY[k], totals[k], targets[k])).join('')}
+          ${microRow(NUTRIENT_BY_KEY['omega3'], totals.omega3, targets.omega3)}
+        </div>
+      ` : ''}
     </div>
 
     <!-- Heutige Einträge -->
@@ -514,6 +512,8 @@ function renderNutrition() {
   app.querySelectorAll('[data-info]').forEach(b => b.onclick = (e) => {
     e.stopPropagation(); openNutrientInfo(b.dataset.info);
   });
+  const ndt = $('#nutri-details-toggle');
+  if (ndt) ndt.onclick = () => { nutriDetails = !nutriDetails; rerender(); };
 
   // Schnellzugriff & Coach: One-Tap-Logging
   app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
@@ -552,6 +552,7 @@ function autopilotBar() {
 
 // --- Coach-Karte -------------------------------------------------------------
 let coachExpanded = false;
+let nutriDetails = false;
 
 function coachCard(rec) {
   if (rec.allDone) {

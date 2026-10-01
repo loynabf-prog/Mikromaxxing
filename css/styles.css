@@ -456,6 +456,9 @@ select { appearance: none; -webkit-appearance: none; }
 .ex-item { gap: 10px; }
 .ex-name { flex: 1; }
 
+.nutri-detail-group { font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-faint); font-weight: 700; margin: 14px 0 8px; }
+.nutri-detail-group:first-of-type { margin-top: 12px; }
+
 /* Tagesplan-Toggle */
 .plan-toggle { display: flex; justify-content: space-between; align-items: center; width: 100%;
   background: none; border: none; color: var(--text); font-weight: 700; font-size: 14px; cursor: pointer; padding: 0; }

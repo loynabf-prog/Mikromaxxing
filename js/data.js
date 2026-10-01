@@ -501,13 +501,9 @@ export const DEFAULT_TRAINING = {
          { n: 'Face Pulls / Band Pull-Aparts', t: 'Reha' },
          { n: 'Knie-Isometrie: Wall Sit 5×30–45s', t: 'Reha' },
        ] },
-  2: { title: 'Basketball (Training)', focus: 'Skills · Spiel · 19:00',
+  2: { title: 'Basketball (Training)', focus: '19:00 · einfach dabei sein',
        exercises: [
-         { n: 'Dynamisches Warm-up', t: 'Mobility' },
-         { n: 'Ballhandling', t: 'Skill' },
-         { n: 'Shooting', t: 'Skill' },
-         { n: 'Spiel', t: 'Ausdauer' },
-         { n: 'Cool-down / Dehnen', t: 'Mobility' },
+         { n: 'Basketballtraining – dabei gewesen', t: 'Skill' },
        ] },
   3: { title: 'Yoga & Mobility', focus: 'Beweglichkeit · Recovery',
        exercises: [

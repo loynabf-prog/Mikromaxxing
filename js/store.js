@@ -60,6 +60,7 @@ function freshState() {
     _planV3: true,
     _planV4: true,
     _planV5: true,
+    _planV6: true,
     _gamesV1: true,
     _bodyseed1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
@@ -185,6 +186,11 @@ function migrate(parsed) {
   if (!merged._planV5) {
     merged.training = structuredClone(DEFAULT_TRAINING);
     merged._planV5 = true;
+  }
+  // Basketball auf einen einzigen Check vereinfacht
+  if (!merged._planV6) {
+    merged.training = structuredClone(DEFAULT_TRAINING);
+    merged._planV6 = true;
   }
   if (!Array.isArray(merged.measurements)) merged.measurements = [];
   // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
