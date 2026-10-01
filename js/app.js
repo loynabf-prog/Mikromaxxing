@@ -1232,13 +1232,21 @@ function renderTrends() {
   const weightSeries = days.map(d => d.day?.weight ?? null);
 
   app.innerHTML = `
-    <div class="view-head"><h2>Trends</h2></div>
-    <p class="hint">Letzte 14 Tage</p>
+    <div class="view-head"><h2>Fortschritt</h2></div>
 
+    ${projectionCard()}
+    ${streakCard()}
+    ${checkinCard()}
+    ${progressPhotosCard()}
+    ${badgesCard()}
+
+    ${weightCard(weightSeries, days)}
+    ${bodyCompCard()}
+
+    <p class="hint">Nährwerte · letzte 14 Tage</p>
     ${trendCard('Kalorien', kcalSeries, days, targets.kcal, 'var(--carbs)', 'kcal')}
     ${trendCard('Protein', protSeries, days, targets.protein, 'var(--protein)', 'g')}
     ${trendCard('Wasser', waterSeries, days, store.getState().profile.water/1000, 'var(--water)', 'L')}
-    ${weightCard(weightSeries, days)}
 
     <div class="card">
       <div class="card-head"><span>Ø der letzten 14 Tage</span></div>
@@ -1250,12 +1258,196 @@ function renderTrends() {
       </div>
     </div>
 
-    ${bodyCompCard()}
     <div class="spacer"></div>
   `;
 
   app.querySelectorAll('[data-measure-edit]').forEach(b => b.onclick = () =>
     openMeasurementEditor(b.dataset.measureEdit || null));
+
+  const addBtn = $('#pphoto-add'); const pin = $('#pphoto-input');
+  if (addBtn && pin) { addBtn.onclick = () => pin.click(); pin.onchange = () => handleProgressPhoto(pin.files[0]); }
+  const cmp = $('#pphoto-compare'); if (cmp) cmp.onclick = openPhotoCompare;
+  app.querySelectorAll('[data-pphoto]').forEach(b => b.onclick = () => openPhotoView(b.dataset.pphoto));
+}
+
+// --- Ziel-Projektion ---------------------------------------------------------
+function projectionCard() {
+  const prof = store.getState().profile;
+  const proj = store.goalProjection();
+  const cur = proj.current;
+  if (cur == null) return '';
+  const target = proj.target;
+  const first = store.firstMeasurement();
+  const startW = first && first.values.weight != null ? first.values.weight : (prof.weight || cur);
+  let barPct = 0;
+  if (target != null && startW != null && startW !== target) {
+    barPct = Math.max(0, Math.min(100, ((startW - cur) / (startW - target)) * 100));
+  }
+  let projLine;
+  if (proj.date) {
+    const [y, m, d] = proj.date.split('-').map(Number);
+    const dd = new Date(y, m - 1, d).toLocaleDateString('de-DE', { day: 'numeric', month: 'short', year: 'numeric' });
+    projLine = `📉 ${proj.rate} kg/Woche → Ziel ca. <strong>${dd}</strong> <em>(${proj.weeks} Wochen)</em>`;
+  } else if (target != null && cur <= target) {
+    projLine = `🏆 Zielgewicht erreicht – stark!`;
+  } else if (proj.rate != null) {
+    projLine = `Trend aktuell ${proj.rate > 0 ? '+' : ''}${proj.rate} kg/Woche – bleib dran, dann kommt das Zieldatum.`;
+  } else {
+    projLine = `Wieg dich täglich (Tab „Heute"), dann projiziere ich dein Zieldatum.`;
+  }
+  const latest = store.latestMeasurement();
+  const bf = latest && latest.values.bodyfat != null ? latest.values.bodyfat : null;
+  const bfRow = (bf != null && prof.targetBodyfat)
+    ? `<div class="proj-bf">Körperfett <strong>${bf}%</strong> → Ziel <strong>${prof.targetBodyfat}%</strong></div>` : '';
+
+  return `
+    <div class="card proj-card">
+      <div class="card-head"><span>🎯 Ziel-Projektion</span></div>
+      <div class="proj-nums">
+        <div class="proj-col"><div class="proj-k">Jetzt</div><div class="proj-v">${cur.toFixed(1)}<span>kg</span></div></div>
+        <div class="proj-arrow">→</div>
+        <div class="proj-col"><div class="proj-k">Ziel</div><div class="proj-v">${target != null ? target : '–'}<span>kg</span></div></div>
+      </div>
+      <div class="proj-bar"><div class="proj-bar-fill" style="width:${barPct.toFixed(0)}%"></div></div>
+      <div class="proj-line">${projLine}</div>
+      ${bfRow}
+    </div>`;
+}
+
+// --- Streak + 28-Tage-Kalender ----------------------------------------------
+function streakCard() {
+  const cur = store.currentStreak();
+  const best = store.bestStreak();
+  const hist = store.ringHistory(28);
+  const cells = hist.map(h => {
+    const lvl = h.pct >= 100 ? 'full' : h.complete ? 'done' : h.pct > 0 ? 'part' : 'none';
+    const dd = h.key.split('-')[2];
+    return `<div class="cal-cell ${lvl}" title="${h.key}: ${h.pct}%">${dd}</div>`;
+  }).join('');
+  return `
+    <div class="card streak-card">
+      <div class="streak-top">
+        <div class="streak-flame">🔥<span>${cur}</span></div>
+        <div class="streak-meta">
+          <div class="streak-cur">Tage-Streak</div>
+          <div class="streak-best">Rekord: ${best} Tage</div>
+        </div>
+      </div>
+      <div class="cal-grid">${cells}</div>
+      <div class="cal-legend">
+        <span class="cal-cell full"></span>100%
+        <span class="cal-cell done"></span>Ziel
+        <span class="cal-cell part"></span>teils
+      </div>
+    </div>`;
+}
+
+// --- Wochen-Check-in ---------------------------------------------------------
+function checkinCard() {
+  const w = store.weeklySummary();
+  const sug = store.kcalSuggestion();
+  const deltaTxt = w.delta == null ? '–' : `${w.delta > 0 ? '+' : ''}${w.delta} kg`;
+  const deltaCls = w.delta == null ? '' : w.delta <= 0 ? 'good' : 'bad';
+  return `
+    <div class="card">
+      <div class="card-head"><span>📅 Wochen-Check-in</span></div>
+      <div class="checkin-grid">
+        <div class="ci-tile"><div class="ci-v">${w.avgRing}%</div><div class="ci-l">Ø Tagesziel</div></div>
+        <div class="ci-tile"><div class="ci-v">${w.complete}/7</div><div class="ci-l">Tage geschafft</div></div>
+        <div class="ci-tile"><div class="ci-v ${deltaCls}">${deltaTxt}</div><div class="ci-l">Gewicht/Wo</div></div>
+      </div>
+      <div class="checkin-tip">💡 ${esc(sug.text)}</div>
+    </div>`;
+}
+
+// --- Meilensteine / Badges ---------------------------------------------------
+function badgesCard() {
+  const badges = store.getBadges();
+  const earned = badges.filter(b => b.earned).length;
+  const cells = badges.map(b => `
+    <div class="badge ${b.earned ? 'on' : ''}" title="${esc(b.desc)}">
+      <div class="badge-ico">${b.icon}</div>
+      <div class="badge-lbl">${esc(b.label)}</div>
+    </div>`).join('');
+  return `
+    <div class="card">
+      <div class="card-head"><span>🏅 Meilensteine</span><span class="card-head-val">${earned}/${badges.length}</span></div>
+      <div class="badge-grid">${cells}</div>
+    </div>`;
+}
+
+// --- Fortschritts-Fotos ------------------------------------------------------
+function progressPhotosCard() {
+  const photos = store.getProgressPhotos();
+  const thumbs = photos.map(p => `
+    <button class="pphoto" data-pphoto="${esc(p.date)}">
+      <img src="${p.url}" alt="${esc(p.date)}">
+      <span class="pphoto-date">${esc(p.date.slice(5))}</span>
+    </button>`).join('');
+  return `
+    <div class="card">
+      <div class="card-head"><span>📸 Fortschritts-Fotos</span>
+        <button class="btn-primary small" id="pphoto-add">＋ Foto</button></div>
+      ${photos.length ? `
+        <div class="pphoto-row">${thumbs}</div>
+        ${photos.length >= 2 ? '<button class="btn-secondary small" id="pphoto-compare">Vorher / Nachher vergleichen</button>' : ''}`
+        : '<div class="empty">Mach alle 1–2 Wochen ein Foto – gleiches Licht, gleiche Pose. Die Veränderung sieht man im Vergleich am deutlichsten.</div>'}
+      <input type="file" id="pphoto-input" accept="image/*" hidden>
+    </div>`;
+}
+
+function handleProgressPhoto(file) {
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    const img = new Image();
+    img.onload = () => {
+      const maxW = 480, maxH = 640;
+      let w = img.width, h = img.height;
+      const scale = Math.min(maxW / w, maxH / h, 1);
+      w = Math.round(w * scale); h = Math.round(h * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      let url;
+      try { url = canvas.toDataURL('image/jpeg', 0.78); } catch (e) { url = reader.result; }
+      store.addProgressPhoto(url);
+      renderTrends();
+      toast('Foto gespeichert 📸');
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function openPhotoView(date) {
+  const p = store.getProgressPhotos().find(x => x.date === date);
+  if (!p) return;
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet">
+      <div class="sheet-head"><strong>📸 ${esc(date)}</strong><button class="sheet-close" id="sheet-close">✕</button></div>
+      <img class="pphoto-full" src="${p.url}" alt="${esc(date)}">
+      <button class="btn-danger" id="pphoto-del">Foto löschen</button>
+    </div></div>`;
+  $('#sheet-close').onclick = closeSheet;
+  $('#pphoto-del').onclick = () => {
+    if (confirm('Dieses Foto löschen?')) { store.deleteProgressPhoto(date); closeSheet(); renderTrends(); }
+  };
+}
+
+function openPhotoCompare() {
+  const ph = store.getProgressPhotos();
+  if (ph.length < 2) return;
+  const a = ph[0], b = ph[ph.length - 1];
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet">
+      <div class="sheet-head"><strong>Vorher / Nachher</strong><button class="sheet-close" id="sheet-close">✕</button></div>
+      <div class="pcompare">
+        <figure><img src="${a.url}"><figcaption>${esc(a.date)}</figcaption></figure>
+        <figure><img src="${b.url}"><figcaption>${esc(b.date)}</figcaption></figure>
+      </div>
+    </div></div>`;
+  $('#sheet-close').onclick = closeSheet;
 }
 
 function bodyCompCard() {

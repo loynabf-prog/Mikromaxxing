@@ -49,6 +49,10 @@ function freshState() {
     autopilot: structuredClone(DEFAULT_AUTOPILOT),
     games: structuredClone(GAMES),
     measurements: structuredClone(DEFAULT_MEASUREMENTS),
+    photos: [],
+    lifts: [],
+    favorites: [],
+    dayTemplate: [],
     _seedTrimV1: true,
     _athleteV1: true,
     _athleteV2: true,
@@ -236,6 +240,10 @@ function migrate(parsed) {
     merged._planV8 = true;
   }
   if (!Array.isArray(merged.measurements)) merged.measurements = [];
+  if (!Array.isArray(merged.photos)) merged.photos = [];
+  if (!Array.isArray(merged.lifts)) merged.lifts = [];
+  if (!Array.isArray(merged.favorites)) merged.favorites = [];
+  if (!Array.isArray(merged.dayTemplate)) merged.dayTemplate = [];
   // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
   if (!merged._planV3) {
     merged.schedule = structuredClone(DEFAULT_SCHEDULE);
@@ -936,4 +944,112 @@ export function weightTrend(key = todayKey(), windowDays = 7) {
   }
   if (!vals.length) return null;
   return vals.reduce((a, b) => a + b, 0) / vals.length;
+}
+
+// Aktuelles Gewicht: letzter Tageswert, sonst letzte Messung, sonst Profil
+function currentWeight() {
+  const s = load();
+  const keys = Object.keys(s.log).sort().reverse();
+  for (const k of keys) { if (s.log[k].weight != null) return s.log[k].weight; }
+  const m = latestMeasurement();
+  if (m && m.values.weight != null) return m.values.weight;
+  return s.profile.weight || null;
+}
+
+// --- Wochen-Check-in ---------------------------------------------------------
+export function weeklySummary(todayKeyStr = todayKey()) {
+  let ringSum = 0, days = 0, complete = 0;
+  for (let i = 0; i < 7; i++) {
+    const k = shiftDate(todayKeyStr, -i);
+    ringSum += ringSummary(k).pct; days++;
+    if (dayComplete(k)) complete++;
+  }
+  const avgRing = Math.round(ringSum / days);
+  const wNow = weightTrend(todayKeyStr, 7);
+  const wPrev = weightTrend(shiftDate(todayKeyStr, -7), 7);
+  const delta = (wNow != null && wPrev != null) ? +(wNow - wPrev).toFixed(1) : null;
+  return { avgRing, complete, days, wNow, wPrev, delta };
+}
+
+// --- Ziel-Projektion ---------------------------------------------------------
+export function goalProjection(todayKeyStr = todayKey()) {
+  const s = load();
+  const cur = currentWeight();
+  const target = s.profile.targetWeight;
+  if (cur == null || !target) return { current: cur, target, rate: null };
+  // Rate aus 14-Tage-Vergleich der 7-Tage-Schnitte
+  const wNow = weightTrend(todayKeyStr, 7);
+  const wThen = weightTrend(shiftDate(todayKeyStr, -14), 7);
+  let rate = null, weeks = null, date = null;
+  if (wNow != null && wThen != null) {
+    rate = +((wNow - wThen) / 2).toFixed(2); // kg pro Woche
+    if (rate < -0.05 && cur > target) {
+      weeks = Math.ceil((cur - target) / -rate);
+      const d = new Date(); d.setDate(d.getDate() + weeks * 7);
+      date = todayKey(d);
+    }
+  }
+  return { current: cur, target, rate, weeks, date };
+}
+
+// Adaptive Kalorien-Empfehlung
+export function kcalSuggestion(todayKeyStr = todayKey()) {
+  const proj = goalProjection(todayKeyStr);
+  const s = load();
+  const kcal = s.profile.targets.kcal;
+  if (proj.rate == null) return { text: 'Noch zu wenig Gewichtsdaten – wieg dich täglich, dann rechne ich den Trend.', delta: 0 };
+  if (proj.current <= proj.target) return { text: 'Zielgewicht erreicht – auf Erhalt umstellen? 🎉', delta: 0 };
+  if (proj.rate > -0.2) return { text: `Abnahme stockt (${proj.rate} kg/Wo). Vorschlag: ~150 kcal weniger → ${kcal - 150} kcal.`, delta: -150 };
+  if (proj.rate < -0.9) return { text: `Du verlierst schnell (${proj.rate} kg/Wo) – Muskelschutz! Vorschlag: ~100 kcal mehr → ${kcal + 100} kcal.`, delta: 100 };
+  return { text: `Perfektes Tempo (${proj.rate} kg/Wo). Weiter so – nichts ändern.`, delta: 0 };
+}
+
+// --- Badges / Meilensteine ---------------------------------------------------
+export function getBadges() {
+  const streak = currentStreak();
+  const best = bestStreak();
+  const perfect = perfectDays();
+  const first = firstMeasurement();
+  const latest = latestMeasurement();
+  const cur = currentWeight();
+  const startW = first && first.values.weight != null ? first.values.weight : null;
+  const lostW = (startW != null && cur != null) ? startW - cur : 0;
+  const startBf = first && first.values.bodyfat != null ? first.values.bodyfat : null;
+  const curBf = latest && latest.values.bodyfat != null ? latest.values.bodyfat : null;
+  const lostBf = (startBf != null && curBf != null) ? startBf - curBf : 0;
+  const s = load();
+  const loggedDays = Object.keys(s.log).length;
+
+  const B = (icon, label, earned, desc) => ({ icon, label, earned, desc });
+  return [
+    B('🔥', '3 Tage Streak', best >= 3 || streak >= 3, 'Drei Tage in Folge dein Tagesziel.'),
+    B('🔥', '7 Tage Streak', best >= 7 || streak >= 7, 'Eine ganze Woche durchgezogen.'),
+    B('⚡', '14 Tage Streak', best >= 14 || streak >= 14, 'Zwei Wochen am Stück.'),
+    B('👑', '30 Tage Streak', best >= 30 || streak >= 30, 'Ein ganzer Monat Disziplin.'),
+    B('💯', '10 perfekte Tage', perfect >= 10, 'Zehn Tage mit 100%-Ring.'),
+    B('🏆', '50 perfekte Tage', perfect >= 50, 'Fünfzig perfekte Tage.'),
+    B('📅', '30 Tage dabei', loggedDays >= 30, 'Seit 30 Tagen am Tracken.'),
+    B('⚖️', '-2 kg', lostW >= 2, 'Zwei Kilo runter seit Start.'),
+    B('⚖️', '-5 kg', lostW >= 5, 'Fünf Kilo runter.'),
+    B('🎯', 'Zielgewicht', cur != null && s.profile.targetWeight && cur <= s.profile.targetWeight, 'Zielgewicht erreicht.'),
+    B('📉', '-2% KFA', lostBf >= 2, 'Zwei Prozent Körperfett weg.'),
+    B('🥗', '100% erreicht', perfect >= 1, 'Mindestens ein 100%-Tag.'),
+  ];
+}
+
+// --- Fortschritts-Fotos ------------------------------------------------------
+export function getProgressPhotos() {
+  return (load().photos || []).slice().sort((a, b) => a.date.localeCompare(b.date));
+}
+export function addProgressPhoto(url, date = todayKey()) {
+  const s = load();
+  if (!s.photos) s.photos = [];
+  const i = s.photos.findIndex(p => p.date === date);
+  if (i >= 0) s.photos[i] = { date, url }; else s.photos.push({ date, url });
+  save();
+}
+export function deleteProgressPhoto(date) {
+  const s = load();
+  s.photos = (s.photos || []).filter(p => p.date !== date);
+  save();
 }
