@@ -466,6 +466,9 @@ function renderNutrition() {
     <!-- 100%-Coach -->
     ${coachCard(rec)}
 
+    <!-- Snack-Ideen -->
+    ${snacksCard()}
+
     <!-- Wasser -->
     <div class="card">
       <div class="card-head"><span>💧 Wasser</span>
@@ -563,6 +566,13 @@ function renderNutrition() {
   });
   const ndt = $('#nutri-details-toggle');
   if (ndt) ndt.onclick = () => { nutriDetails = !nutriDetails; rerender(); };
+  app.querySelectorAll('[data-snack]').forEach(b => b.onclick = () => {
+    const added = store.logSnack(currentDate, b.dataset.snack);
+    rerender();
+    toast(`Snack geloggt (${added} Zutaten) ✓`);
+  });
+  const st = $('#snacks-toggle');
+  if (st) st.onclick = () => { snacksOpen = !snacksOpen; rerender(); };
 
   // Schnellzugriff & Coach: One-Tap-Logging
   app.querySelectorAll('[data-quick]').forEach(b => b.onclick = () =>
@@ -584,6 +594,32 @@ function quickLog(foodId, grams) {
   toast(`${food.name} (${grams} g) hinzugefügt`, 'Rückgängig', () => {
     store.removeEntry(currentDate, index); rerender();
   });
+}
+
+// --- Snack-Ideen -------------------------------------------------------------
+let snacksOpen = false;
+function snacksCard() {
+  const snacks = store.getSnacks();
+  const shown = snacksOpen ? snacks : snacks.slice(0, 3);
+  return `
+    <div class="card">
+      <div class="card-head"><span>🍓 Gesunde Snack-Ideen</span></div>
+      <div class="snack-list">
+        ${shown.map(sn => {
+          let kcal = 0;
+          for (const it of sn.items) { const f = store.foodById(it.foodId); if (f) kcal += (f.per100.kcal || 0) * it.grams / 100; }
+          return `
+            <div class="snack">
+              <div class="snack-main">
+                <div class="snack-name">${sn.emoji} ${esc(sn.name)} <span class="snack-kcal">${Math.round(kcal)} kcal</span></div>
+                <div class="snack-why">${esc(sn.why)}</div>
+              </div>
+              <button class="snack-add" data-snack="${sn.id}">＋</button>
+            </div>`;
+        }).join('')}
+      </div>
+      ${snacks.length > 3 ? `<button class="coach-more" id="snacks-toggle">${snacksOpen ? 'Weniger' : `Alle ${snacks.length} Snacks`}</button>` : ''}
+    </div>`;
 }
 
 // --- Autopilot-Leiste --------------------------------------------------------

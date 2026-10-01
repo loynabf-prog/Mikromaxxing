@@ -5,7 +5,7 @@
 import {
   NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS,
   DEFAULT_SCHEDULE, DEFAULT_TRAINING, DEFAULT_HABITS, DEFAULT_AUTOPILOT, GAMES,
-  DEFAULT_MEASUREMENTS,
+  DEFAULT_MEASUREMENTS, SNACKS,
 } from './data.js';
 
 const STORAGE_KEY = 'mikromaxxing_v1';
@@ -53,6 +53,7 @@ function freshState() {
     _athleteV1: true,
     _athleteV2: true,
     _variety1: true,
+    _variety2: true,
     _habitsV2: true,
     _habitsV3: true,
     _habitsV4: true,
@@ -152,6 +153,12 @@ function migrate(parsed) {
     const have = new Set(merged.foods.map(f => f.id));
     for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
     merged._variety1 = true;
+  }
+  // Snack-Zutaten (Wassermelone, Feta, Hummus …) ergänzen
+  if (!merged._variety2) {
+    const have = new Set(merged.foods.map(f => f.id));
+    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
+    merged._variety2 = true;
   }
   // Neue tägliche Gewohnheiten (Knie-Reha, Core, Calisthenics AM/PM) ergänzen
   if (!merged._habitsV2) {
@@ -587,6 +594,22 @@ export function ensureAutopilot(key) {
   if (day.autopilotLoaded) return false;
   loadAutopilot(key);
   return true;
+}
+
+// --- Snack-Kombis ------------------------------------------------------------
+export function getSnacks() { return SNACKS; }
+export function logSnack(key, snackId) {
+  const snack = SNACKS.find(s => s.id === snackId);
+  if (!snack) return 0;
+  const day = getDay(key);
+  let added = 0;
+  for (const it of snack.items) {
+    if (!foodById(it.foodId)) continue;
+    day.entries.push({ foodId: it.foodId, grams: it.grams, ts: Date.now() });
+    added++;
+  }
+  save();
+  return added;
 }
 
 export function lastGramsFor(foodId) {

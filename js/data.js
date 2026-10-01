@@ -396,6 +396,66 @@ export const SEED_FOODS = [
     servings: [{ label: 'EL (15 g)', grams: 15 }],
     per100: n({ kcal:534, protein:18, carbs:29, fat:42, satfat:3.7, fiber:27, omega3:22800, magnesium:392, manganese:2.5, vitB1:1.6, copper:1.2, phosphorus:642, potassium:813 }) },
 
+  // --- Snack-Zutaten ---
+  { id: 'watermelon', name: 'Wassermelone', cat: 'Obst',
+    servings: [{ label: 'Stück (200 g)', grams: 200 }],
+    per100: n({ kcal:30, protein:0.6, carbs:8, fat:0.2, fiber:0.4, sugar:6, vitC:8, vitA:28, potassium:112 }) },
+
+  { id: 'feta', name: 'Feta / Schafskäse', cat: 'Milchprodukte',
+    servings: [{ label: 'Portion (40 g)', grams: 40 }],
+    per100: n({ kcal:264, protein:14, carbs:4, fat:21, satfat:14, calcium:493, sodium:917, vitB12:1.7, phosphorus:337, zinc:2.9 }) },
+
+  { id: 'hummus', name: 'Hummus', cat: 'Hülsenfrüchte',
+    servings: [{ label: 'Portion (50 g)', grams: 50 }],
+    per100: n({ kcal:166, protein:8, carbs:14, fat:10, satfat:1.4, fiber:6, iron:2.4, vitB9:83, magnesium:71, phosphorus:180, zinc:1.6, copper:0.4 }) },
+
+  { id: 'dates', name: 'Datteln (Medjool)', cat: 'Obst',
+    servings: [{ label: '2 Datteln (40 g)', grams: 40 }],
+    per100: n({ kcal:277, protein:1.8, carbs:75, fat:0.2, fiber:7, sugar:66, potassium:696, magnesium:54, copper:0.4, manganese:0.3 }) },
+
+  { id: 'rice_cakes', name: 'Reiswaffeln', cat: 'Getreide',
+    servings: [{ label: '2 Waffeln (18 g)', grams: 18 }],
+    per100: n({ kcal:387, protein:8, carbs:82, fat:2.8, fiber:4, manganese:3, magnesium:60 }) },
+
+  { id: 'dark_choc', name: 'Zartbitter 85%', cat: 'Snacks',
+    servings: [{ label: '2 Stück (20 g)', grams: 20 }],
+    per100: n({ kcal:600, protein:8, carbs:46, fat:46, satfat:27, fiber:11, iron:8, magnesium:228, copper:1.8, manganese:2, potassium:715 }) },
+
+  { id: 'cucumber', name: 'Gurke', cat: 'Gemüse',
+    servings: [{ label: 'Portion (150 g)', grams: 150 }],
+    per100: n({ kcal:15, protein:0.7, carbs:3.6, fat:0.1, fiber:0.5, vitK:16, potassium:147, vitC:2.8 }) },
+
+];
+
+// --- Gesunde Snack-Kombinationen (boosten 2 Bereiche auf einmal) -------------
+export const SNACKS = [
+  { id: 'melon_feta',   name: 'Wassermelone + Feta',        emoji: '🍉',
+    items: [{ foodId: 'watermelon', grams: 200 }, { foodId: 'feta', grams: 40 }],
+    why: 'Hydration & Vitamin C + Protein, Calcium und Salz – perfekt nach dem Schwitzen.' },
+  { id: 'apple_pb',     name: 'Apfel + Erdnussbutter',      emoji: '🍏',
+    items: [{ foodId: 'apple', grams: 180 }, { foodId: 'peanut_butter', grams: 16 }],
+    why: 'Ballaststoffe & langsame Energie + Protein und gesunde Fette = lange satt.' },
+  { id: 'skyr_berry',   name: 'Skyr + Beeren + Walnüsse',   emoji: '🫐',
+    items: [{ foodId: 'magerquark', grams: 200 }, { foodId: 'blueberries', grams: 80 }, { foodId: 'walnuts', grams: 15 }],
+    why: 'Protein + Antioxidantien + Omega-3 → Muskelaufbau & Regeneration.' },
+  { id: 'pepper_cottage', name: 'Paprika + Hüttenkäse',     emoji: '🫑',
+    items: [{ foodId: 'bell_pepper', grams: 120 }, { foodId: 'cottage_cheese', grams: 100 }],
+    why: 'Vitamin-C-Bombe + Protein & Calcium – knackig und sättigend.' },
+  { id: 'orange_brazil', name: 'Orange + Paranüsse',        emoji: '🍊',
+    items: [{ foodId: 'orange', grams: 130 }, { foodId: 'brazil_nuts', grams: 10 }],
+    why: 'Vitamin C + dein kompletter Selen-Tagesbedarf (2 Nüsse reichen).' },
+  { id: 'banana_pb',    name: 'Banane + Erdnussbutter',     emoji: '🍌',
+    items: [{ foodId: 'banana', grams: 120 }, { foodId: 'peanut_butter', grams: 16 }],
+    why: 'Kalium & schnelle Carbs + Protein → ideal ums Training.' },
+  { id: 'carrot_hummus', name: 'Karotten + Hummus',         emoji: '🥕',
+    items: [{ foodId: 'carrot', grams: 130 }, { foodId: 'hummus', grams: 50 }],
+    why: 'Vitamin A + Protein, Ballaststoffe & Eisen.' },
+  { id: 'dates_almonds', name: 'Datteln + Mandeln',         emoji: '🌰',
+    items: [{ foodId: 'dates', grams: 40 }, { foodId: 'almonds', grams: 20 }],
+    why: 'Schnelle Energie + Magnesium & Vitamin E – guter Pre-Workout-Snack.' },
+  { id: 'kiwi_skyr',    name: 'Kiwi + Skyr',                emoji: '🥝',
+    items: [{ foodId: 'kiwi', grams: 150 }, { foodId: 'magerquark', grams: 150 }],
+    why: 'Vitamin C + Protein für Immunsystem & Muskeln.' },
 ];
 
 // ============================================================================
