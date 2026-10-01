@@ -72,6 +72,7 @@ function freshState() {
     _planV6: true,
     _planV7: true,
     _planV8: true,
+    _planV9: true,
     _gamesV1: true,
     _bodyseed1: true,
     log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
@@ -241,6 +242,11 @@ function migrate(parsed) {
   if (!merged._planV8) {
     merged.training = structuredClone(DEFAULT_TRAINING);
     merged._planV8 = true;
+  }
+  // Do-Training fix 19:00 Basketball (Anker für dynamischen Tagesplan)
+  if (!merged._planV9) {
+    merged.schedule = structuredClone(DEFAULT_SCHEDULE);
+    merged._planV9 = true;
   }
   if (!Array.isArray(merged.measurements)) merged.measurements = [];
   if (!Array.isArray(merged.photos)) merged.photos = [];
@@ -668,6 +674,89 @@ function timeToMin(t) {
   const [h, m] = (t || '00:00').split(':').map(Number);
   return h * 60 + m;
 }
+function minToTime(min) {
+  min = Math.max(0, Math.round(min));
+  const h = Math.floor(min / 60) % 24;
+  const m = min % 60;
+  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+// --- Aufsteh-Zeit (Anker für den dynamischen Tagesplan) ---------------------
+export function getWake(key = todayKey()) {
+  const s = load();
+  const day = s.log[key];
+  if (day && day.wake) return { wake: day.wake, wakeTs: day.wakeTs || null };
+  return null;
+}
+export function setWake(key = todayKey(), now = new Date()) {
+  const day = getDay(key);
+  day.wake = minToTime(now.getHours() * 60 + now.getMinutes());
+  day.wakeTs = Date.now();
+  save();
+  return day.wake;
+}
+export function clearWake(key = todayKey()) {
+  const day = getDay(key);
+  day.wake = null; day.wakeTs = null;
+  save();
+}
+// Dauer des Aufsteh-Rituals (ms)
+export const WAKE_RITUAL_MS = 30 * 60 * 1000;
+// Ritual vorzeitig beenden (Aufsteh-Zeit bleibt als Plan-Anker erhalten)
+export function endRitual(key = todayKey()) {
+  const day = getDay(key);
+  if (day.wakeTs) { day.wakeTs = Date.now() - WAKE_RITUAL_MS - 1000; save(); }
+}
+// Verbleibende Ritual-Sekunden (0 wenn vorbei / nicht gestartet)
+export function ritualRemaining(key = todayKey()) {
+  const w = getWake(key);
+  if (!w || !w.wakeTs) return 0;
+  const left = Math.ceil((w.wakeTs + WAKE_RITUAL_MS - Date.now()) / 1000);
+  return Math.max(0, left);
+}
+
+// Fixe Anker: externe/zeitgebundene Termine (Abendtraining, Kurse, Schlaf)
+function isFixedAnchor(b, mi) {
+  if (b.kind === 'sleep') return true;
+  if ((b.kind === 'gym' || b.kind === 'move') && mi >= 840) return true; // ab 14:00
+  return false;
+}
+
+// Legt den Plan ab der Aufsteh-Zeit neu: flexible Blöcke fließen & stauchen,
+// feste Anker (Basketball 19:00, Schlaf …) bleiben auf ihrer Uhrzeit.
+function reflowSchedule(blocks, wakeMin) {
+  const n = blocks.length;
+  if (!n) return blocks;
+  const m = blocks.map(b => timeToMin(b.time));
+  const dur = m.map((mi, i) => (i < n - 1 ? Math.max(5, m[i + 1] - mi) : 30));
+  const fixed = blocks.map((b, i) => isFixedAnchor(b, m[i]));
+  const outMin = new Array(n);
+  let buf = [];
+  let segStart = wakeMin;
+  const flush = (anchorMin) => {
+    const idealSum = buf.reduce((a, i) => a + dur[i], 0);
+    let scale = 1;
+    if (anchorMin != null && idealSum > 0) {
+      const avail = anchorMin - segStart;
+      if (idealSum > avail) scale = Math.max(0.4, avail / idealSum);
+    }
+    let c = segStart;
+    for (const i of buf) { outMin[i] = Math.round(c); c += dur[i] * scale; }
+    buf = [];
+    return c;
+  };
+  for (let i = 0; i < n; i++) {
+    if (fixed[i]) {
+      flush(m[i]);
+      outMin[i] = m[i];
+      segStart = m[i] + dur[i];
+    } else {
+      buf.push(i);
+    }
+  }
+  if (buf.length) flush(null);
+  return blocks.map((b, i) => ({ ...b, time: minToTime(outMin[i]) }));
+}
 
 // --- Tagesplan / Timeline ----------------------------------------------------
 export function getDaySchedule(key) {
@@ -675,7 +764,10 @@ export function getDaySchedule(key) {
   const wd = weekdayOf(key);
   const blocks = (s.schedule[wd] || []).slice();
   blocks.sort((a, b) => timeToMin(a.time) - timeToMin(b.time));
-  return blocks;
+  if (!blocks.length) return blocks;
+  const day = s.log[key];
+  const wakeMin = (day && day.wake) ? timeToMin(day.wake) : timeToMin(blocks[0].time);
+  return reflowSchedule(blocks, wakeMin);
 }
 
 // Aktueller & nächster Block anhand der Uhrzeit

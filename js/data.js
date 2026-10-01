@@ -689,8 +689,9 @@ export const DEFAULT_SCHEDULE = {
   ],
   4: [
     ...deskMorning('do'),
-    blk('do-7', '18:30', 'Aktiv (flexibel): Basketball / Gym / Sprints', '🔄', 'gym'),
-    blk('do-8', '20:00', 'Abendessen', '🍽️', 'meal'),
+    blk('do-6b', '17:30', 'Snack (Pre-Basketball)', '🍌', 'meal'),
+    blk('do-7', '19:00', 'Basketball (Training)', '🏀', 'gym'),
+    blk('do-8', '21:15', 'Abendessen', '🍽️', 'meal'),
     caliEvening('do'),
     blk('do-9', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Licht dimmen']),
     blk('do-10', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),

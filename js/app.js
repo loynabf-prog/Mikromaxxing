@@ -95,6 +95,7 @@ function openNutrientInfo(key) {
 // Navigation
 // ============================================================================
 function render() {
+  stopRitualTick();
   if (currentTab === 'today') renderToday();
   else if (currentTab === 'food') renderNutrition();
   else if (currentTab === 'training') renderTraining();
@@ -158,11 +159,16 @@ function renderToday() {
     ? '🌙 Alles erledigt – du hast dir den Schlaf verdient.'
     : `${ring.pct}% geschafft – weiter geht's 💪`;
 
+  const wake = store.getWake(key);
+  const ritualLeft = store.ritualRemaining(key);
+
   app.innerHTML = `
+    ${wakeSection(key, wake, ritualLeft)}
+
     <div class="ring-hero">
       ${progressPhotoRing(ring.pct, profile.photo)}
       ${streak > 0 ? `<div class="streak-chip">🔥 ${streak} ${streak === 1 ? 'Tag' : 'Tage'} Streak</div>` : ''}
-      <div class="ring-hero-greet">${greeting}</div>
+      <div class="ring-hero-greet">${greeting}${wake ? ` · auf seit ${esc(wake.wake)}` : ''}</div>
       <div class="ring-hero-status ${allDone ? 'done' : ''}">${statusLine}</div>
       <input type="file" id="photo-input" accept="image/*" hidden>
     </div>
@@ -255,6 +261,54 @@ function renderToday() {
   const ringPhoto = $('#ring-photo-tap'); const photoInput = $('#photo-input');
   if (ringPhoto) ringPhoto.onclick = () => photoInput.click();
   if (photoInput) photoInput.onchange = (e) => handlePhoto(e.target.files[0]);
+
+  const wakeBtn = $('#wake-btn');
+  if (wakeBtn) wakeBtn.onclick = () => { store.setWake(key); rerender(); toast('Guten Morgen ☀️ Timer läuft – Handy weg.'); };
+  const ritualSkip = $('#ritual-skip');
+  if (ritualSkip) ritualSkip.onclick = () => { store.endRitual(key); stopRitualTick(); rerender(); };
+  startRitualTick(key);
+}
+
+// --- Aufsteh-Ritual: Knopf + 30-Min-Timer -----------------------------------
+function wakeSection(key, wake, ritualLeft) {
+  if (!wake) {
+    return `<button class="card wake-card" id="wake-btn">
+      <div class="wake-emoji">☀️</div>
+      <div class="wake-main">
+        <div class="wake-title">Aufstehen</div>
+        <div class="wake-sub">Starte deinen Tag. 30 Min Handy weg – danach richtet sich dein Plan nach jetzt.</div>
+      </div>
+    </button>`;
+  }
+  if (ritualLeft > 0) {
+    return `<div class="card ritual-card">
+      <div class="ritual-label">🌅 Aufsteh-Ritual läuft</div>
+      <div class="ritual-time" id="ritual-time">${fmtMMSS(ritualLeft)}</div>
+      <div class="ritual-hint">Leg das Handy weg. Raus an die frische Luft, Wasser trinken, fertig machen – komm an.</div>
+      <button class="btn-secondary small" id="ritual-skip">Ritual beenden</button>
+    </div>`;
+  }
+  return '';
+}
+
+function fmtMMSS(sec) {
+  const m = Math.floor(sec / 60), s = sec % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+let ritualTimer = null;
+function stopRitualTick() { if (ritualTimer) { clearInterval(ritualTimer); ritualTimer = null; } }
+function startRitualTick(key) {
+  stopRitualTick();
+  const el = $('#ritual-time');
+  if (!el) return;
+  ritualTimer = setInterval(() => {
+    const left = store.ritualRemaining(key);
+    const t = $('#ritual-time');
+    if (!t) { stopRitualTick(); return; }
+    if (left <= 0) { stopRitualTick(); toast('Ritual fertig – jetzt durchstarten 💪'); if (currentTab === 'today') rerender(); return; }
+    t.textContent = fmtMMSS(left);
+  }, 1000);
 }
 
 // Fokus-Modus: der eine Block, der JETZT dran ist
