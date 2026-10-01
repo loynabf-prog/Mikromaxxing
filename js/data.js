@@ -162,18 +162,36 @@ export const DEFAULT_MEASUREMENTS = [
 // --- Supplemente (Start-Checkliste) -----------------------------------------
 // Empfohlener Athleten-Stack. `nutrients` = Nährwerte pro Dosis; werden in die
 // Tagesbilanz eingerechnet, sobald das Supplement abgehakt ist.
+// time: 'morgens' | 'mittags' | 'pre' (ums Training) | 'abends' | 'egal'
+// takeWith: konkreter Umsetzungs-Tipp (womit nehmen)
 export const DEFAULT_SUPPLEMENTS = [
-  { id: 'creatine',    name: 'Creatin Monohydrat', dose: '5 g täglich' },
-  { id: 'whey',        name: 'Whey Protein',       dose: '1–2 Scoops (Protein-Ziel)' },
-  { id: 'omega3',      name: 'Omega-3 (EPA+DHA)',  dose: '2 g', nutrients: { omega3: 2000 } },
-  { id: 'vitd3',       name: 'Vitamin D3',         dose: '3000 IU', nutrients: { vitD: 75 } },
-  { id: 'vitk2',       name: 'Vitamin K2 (MK-7)',  dose: '100 µg', nutrients: { vitK: 100 } },
-  { id: 'magnesium',   name: 'Magnesium (Glycinat)', dose: '350 mg (abends)', nutrients: { magnesium: 350 } },
-  { id: 'vitb12',      name: 'Vitamin B12',        dose: '500 µg', nutrients: { vitB12: 500 } },
-  { id: 'iodine',      name: 'Jod (oder jodiertes Salz)', dose: '150 µg', nutrients: { iodine: 150 } },
-  { id: 'betaalanin',  name: 'Beta-Alanin',        dose: '4 g (Explosivität/Ausdauer)' },
-  { id: 'ashwagandha', name: 'Ashwagandha',        dose: '600 mg (Schlaf/Stress)' },
+  { id: 'vitd3',       name: 'Vitamin D3',         dose: '3000 IU', time: 'morgens',
+    takeWith: 'Mit etwas Fett – z.B. Eier, Avocado, Nüsse oder Olivenöl.', nutrients: { vitD: 75 } },
+  { id: 'vitk2',       name: 'Vitamin K2 (MK-7)',  dose: '100 µg', time: 'morgens',
+    takeWith: 'Zusammen mit D3 (beide fettlöslich – gleiche Mahlzeit).', nutrients: { vitK: 100 } },
+  { id: 'vitb12',      name: 'Vitamin B12',        dose: '500 µg', time: 'morgens',
+    takeWith: 'Morgens, nüchtern oder zum Frühstück.', nutrients: { vitB12: 500 } },
+  { id: 'iodine',      name: 'Jod',                dose: '150 µg', time: 'morgens',
+    takeWith: 'Zum Frühstück (oder jodiertes Salz übers Essen).', nutrients: { iodine: 150 } },
+  { id: 'omega3',      name: 'Omega-3 (EPA+DHA)',  dose: '2 g', time: 'mittags',
+    takeWith: 'Zu einer fetthaltigen Mahlzeit (bessere Aufnahme, kein Aufstoßen).', nutrients: { omega3: 2000 } },
+  { id: 'creatine',    name: 'Creatin Monohydrat', dose: '5 g', time: 'egal',
+    takeWith: 'Timing egal – Hauptsache jeden Tag. Z.B. in den Shake.' },
+  { id: 'betaalanin',  name: 'Beta-Alanin',        dose: '4 g', time: 'pre',
+    takeWith: 'Vor dem Training (leichtes Kribbeln ist harmlos).' },
+  { id: 'whey',        name: 'Whey Protein',       dose: '1–2 Scoops', time: 'pre',
+    takeWith: 'Nach dem Training oder als Snack, um das Protein-Ziel zu treffen.' },
+  { id: 'magnesium',   name: 'Magnesium (Glycinat)', dose: '350 mg', time: 'abends',
+    takeWith: 'Abends vor dem Schlaf – entspannt Muskeln & fördert den Schlaf.', nutrients: { magnesium: 350 } },
+  { id: 'ashwagandha', name: 'Ashwagandha',        dose: '600 mg', time: 'abends',
+    takeWith: 'Abends zum Essen – für Stress-Abbau & besseren Schlaf.' },
 ];
+
+export const SUPP_TIME_LABELS = {
+  morgens: '🌅 Morgens', mittags: '☀️ Mittags', pre: '🏋️ Ums Training',
+  abends: '🌙 Abends', egal: '🕐 Egal wann',
+};
+export const SUPP_TIME_ORDER = ['morgens', 'mittags', 'pre', 'abends', 'egal'];
 
 // --- Hilfsfunktion: leeres Nährstoffobjekt ----------------------------------
 function n(values) {
@@ -579,13 +597,11 @@ export const DEFAULT_HABITS = [
   { id: 'h_cali_am',    name: 'Calisthenics morgens (Push/Pull/Dips)', icon: '🌅', why: 'Greasing the Groove: viel Volumen submaximal → stark an Klimmzug/Dip/Push-up.' },
   { id: 'h_cali_pm',    name: 'Calisthenics abends (Push/Pull/Dips)',  icon: '🌙', why: 'Zweite Volumen-Dosis am Tag, ohne dich auszubrennen.' },
   { id: 'h_weigh',      name: 'Morgens wiegen',                        icon: '⚖️', why: 'Täglich → 7-Tage-Schnitt zeigt den echten Fettabbau-Trend.' },
-  // Lifestyle
-  { id: 'h_water',     name: '3,5 L Wasser',            icon: '💧', why: 'Leistung, Konzentration & Regeneration – schon leichte Dehydrierung kostet Kraft.' },
+  // Lifestyle (Wasser & Supplements haben eigene Widgets und zählen anteilig)
   { id: 'h_nophone',   name: 'Kein Handy 1. Stunde',    icon: '📵', why: 'Startet den Tag fokussiert statt reaktiv – weniger Stress, mehr Kontrolle.' },
   { id: 'h_sun',       name: 'Morgens Tageslicht',      icon: '☀️', why: 'Stellt den Schlaf-Wach-Rhythmus ein → mehr Energie tags, besserer Schlaf nachts.' },
   { id: 'h_steps',     name: '10.000 Schritte',         icon: '👟', why: 'Grundlagen-Aktivität verbrennt Fett ohne Gelenkbelastung – gut fürs Knie.' },
   { id: 'h_read',      name: '10 Min lesen',            icon: '📖', why: 'Diszipliniert den Geist & ersetzt sinnloses Scrollen.' },
-  { id: 'h_supps',     name: 'Alle Supplements',        icon: '💊', why: 'Deckt die Essentials, die über Essen kaum reinkommen (D3, Omega-3, B12 …).' },
   { id: 'h_phoneoff',  name: 'Handy weg 22:30',         icon: '🌙', why: 'Blaulicht-Stopp → schnelleres Einschlafen & bessere Erholung/Testosteron.' },
 ];
 

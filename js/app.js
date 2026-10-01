@@ -1,7 +1,7 @@
 // ============================================================================
 // Mikromaxxing – App-Logik & UI
 // ============================================================================
-import { NUTRIENTS, NUTRIENT_BY_KEY, NUTRIENT_INFO, WEEKDAYS, WEEKDAYS_LONG, BODYCOMP_METRICS } from './data.js';
+import { NUTRIENTS, NUTRIENT_BY_KEY, NUTRIENT_INFO, WEEKDAYS, WEEKDAYS_LONG, BODYCOMP_METRICS, SUPP_TIME_LABELS, SUPP_TIME_ORDER } from './data.js';
 import * as store from './store.js';
 
 // --- Zustand der Oberfläche ---------------------------------------------------
@@ -128,7 +128,7 @@ function rerender() {
 // View: HEUTE (Kommandozentrale / Tages-Timeline)
 // ============================================================================
 const expandedBlocks = new Set();
-let planOpen = false;
+let planOpen = true;
 
 function renderToday() {
   const key = store.todayKey();
@@ -146,18 +146,21 @@ function renderToday() {
   const training = store.getTrainingFor(key);
   const habits = store.getHabits();
   const md = store.mustDoSummary(key);
+  const ring = store.ringSummary(key);
+  const day = store.getDay(key);
   const profile = store.getState().profile;
+  const supps = store.getState().supplements;
 
   const hour = now.getHours();
   const greeting = hour < 11 ? 'Guten Morgen' : hour < 18 ? 'Guten Tag' : 'Guten Abend';
-  const allDone = md.total > 0 && md.done === md.total;
+  const allDone = ring.pct >= 100;
   const statusLine = allDone
     ? '🌙 Alles erledigt – du hast dir den Schlaf verdient.'
-    : `Noch ${md.total - md.done} von ${md.total} erledigen`;
+    : `${ring.pct}% geschafft – weiter geht's 💪`;
 
   app.innerHTML = `
     <div class="ring-hero">
-      ${progressPhotoRing(md.pct, profile.photo)}
+      ${progressPhotoRing(ring.pct, profile.photo)}
       <div class="ring-hero-greet">${greeting}</div>
       <div class="ring-hero-status ${allDone ? 'done' : ''}">${statusLine}</div>
       <input type="file" id="photo-input" accept="image/*" hidden>
@@ -170,6 +173,26 @@ function renderToday() {
       <div class="mustdo-list">
         ${habits.map(h => mustDoRow(h, key)).join('')}
       </div>
+    </div>
+
+    <!-- Wasser (hochzählen – füllt den Ring anteilig) -->
+    <div class="card">
+      <div class="card-head"><span>💧 Wasser</span>
+        <span class="card-head-val">${(day.water/1000).toFixed(2)} / ${(profile.water/1000).toFixed(1)} L</span></div>
+      <div class="progress"><div class="progress-fill water" style="width:${Math.min(100, pct(day.water, profile.water))}%"></div></div>
+      <div class="water-btns">
+        <button data-water="250" class="chip">+250 ml</button>
+        <button data-water="500" class="chip">+500 ml</button>
+        <button data-water="-250" class="chip subtle">−250 ml</button>
+        <button id="water-reset" class="chip subtle">Reset</button>
+      </div>
+    </div>
+
+    <!-- Supplements nach Tageszeit + womit nehmen -->
+    <div class="card">
+      <div class="card-head"><span>💊 Supplements</span>
+        <span class="card-head-val">${supps.filter(s => day.supps[s.id]).length}/${supps.length}</span></div>
+      ${suppByTime(supps, day)}
     </div>
 
     <!-- Tagesplan (einklappbar) -->
@@ -203,6 +226,14 @@ function renderToday() {
   // Events
   app.querySelectorAll('[data-habit]').forEach(b => b.onclick = () => {
     store.toggleCheck(key, 'habit:' + b.dataset.habit); rerender();
+  });
+  app.querySelectorAll('[data-water]').forEach(b => b.onclick = () => {
+    const d = store.getDay(key);
+    store.setWater(key, d.water + Number(b.dataset.water)); rerender();
+  });
+  const wr = $('#water-reset'); if (wr) wr.onclick = () => { store.setWater(key, 0); rerender(); };
+  app.querySelectorAll('[data-supp]').forEach(b => b.onclick = () => {
+    store.toggleSupp(key, b.dataset.supp); rerender();
   });
   $('#plan-toggle').onclick = () => { planOpen = !planOpen; rerender(); };
   app.querySelectorAll('[data-block]').forEach(b => b.onclick = () => {
@@ -244,6 +275,24 @@ function progressPhotoRing(pct, photo) {
       </svg>
       <div class="ring-photo-pct ${pct >= 100 ? 'full' : ''}">${pct}%</div>
     </button>`;
+}
+
+// Supplements nach Tageszeit gruppiert, mit "womit nehmen"-Tipp
+function suppByTime(supps, day) {
+  return SUPP_TIME_ORDER.map(tk => {
+    const group = supps.filter(s => (s.time || 'egal') === tk);
+    if (!group.length) return '';
+    return `
+      <div class="supp-time-label">${SUPP_TIME_LABELS[tk]}</div>
+      ${group.map(s => `
+        <button class="supp-item ${day.supps[s.id] ? 'done' : ''}" data-supp="${s.id}">
+          <span class="supp-check">${day.supps[s.id] ? '✓' : ''}</span>
+          <span class="supp-body">
+            <span class="supp-name">${esc(s.name)}${s.dose ? ` <em>${esc(s.dose)}</em>` : ''}</span>
+            ${s.takeWith ? `<span class="supp-with">${esc(s.takeWith)}</span>` : ''}
+          </span>
+        </button>`).join('')}`;
+  }).join('');
 }
 
 function mustDoRow(h, key) {

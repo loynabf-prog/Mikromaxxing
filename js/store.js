@@ -57,6 +57,8 @@ function freshState() {
     _habitsV3: true,
     _habitsV4: true,
     _habitsV5: true,
+    _habitsV6: true,
+    _suppV2: true,
     _planV3: true,
     _planV4: true,
     _planV5: true,
@@ -181,6 +183,20 @@ function migrate(parsed) {
       if (!h.why && byId[h.id] && byId[h.id].why) h.why = byId[h.id].why;
     }
     merged._habitsV5 = true;
+  }
+  // Wasser & Supplements aus der Must-Do-Liste entfernen (haben eigene Widgets)
+  if (!merged._habitsV6) {
+    merged.habits = merged.habits.filter(h => h.id !== 'h_water' && h.id !== 'h_supps');
+    merged._habitsV6 = true;
+  }
+  // Supplement-Timing & "womit nehmen" in bestehende Supplements mergen
+  if (!merged._suppV2) {
+    const byId = Object.fromEntries(DEFAULT_SUPPLEMENTS.map(s => [s.id, s]));
+    for (const s of merged.supplements) {
+      const d = byId[s.id];
+      if (d) { if (!s.time) s.time = d.time; if (!s.takeWith) s.takeWith = d.takeWith; }
+    }
+    merged._suppV2 = true;
   }
   // Trainingsplan mit Zweck-Tags (Übungen jetzt als {n,t}) neu setzen
   if (!merged._planV5) {
@@ -643,6 +659,25 @@ export function getTrainingFor(key) {
 
 // --- Gewohnheiten & Streaks --------------------------------------------------
 export function getHabits() { return load().habits; }
+
+// Tages-Ring: anteiliger Fortschritt aus Gewohnheiten + Wasser + Supplements
+export function ringSummary(key) {
+  const s = load();
+  const day = s.log[key];
+  const done = day && day.done ? day.done : {};
+  let sum = 0, count = 0;
+  for (const h of s.habits) { count++; if (done['habit:' + h.id]) sum++; }
+  // Wasser anteilig
+  const water = day ? (day.water || 0) : 0;
+  const wTarget = s.profile.water || 1;
+  sum += Math.min(1, water / wTarget); count++;
+  // Supplements anteilig
+  if (s.supplements.length) {
+    const sd = s.supplements.filter(x => day && day.supps && day.supps[x.id]).length;
+    sum += sd / s.supplements.length; count++;
+  }
+  return { pct: count ? Math.round((sum / count) * 100) : 0 };
+}
 
 // Tages-Ring: wie viele Must-Dos (Gewohnheiten) sind heute erledigt
 export function mustDoSummary(key) {
