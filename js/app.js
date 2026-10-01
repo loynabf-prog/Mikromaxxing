@@ -1067,6 +1067,8 @@ function renderTraining() {
       ` : `<div class="empty">Keine Einzelübungen – einfach durchziehen & im Tagesplan abhaken.</div>`}
     </div>
 
+    ${liftCard()}
+
     <div class="card">
       <div class="card-head"><span>🏀 Spielplan (TSC Münster)</span></div>
       <div class="game-list">
@@ -1093,6 +1095,98 @@ function renderTraining() {
   });
   app.querySelectorAll('[data-ex]').forEach(b => b.onclick = () => {
     store.toggleCheck(key, b.dataset.ex); renderTraining();
+  });
+  const la = $('#lift-add'); if (la) la.onclick = () => openLiftSheet('');
+  app.querySelectorAll('[data-lift-hist]').forEach(b =>
+    b.onclick = () => openLiftHistory(b.dataset.liftHist));
+}
+
+// --- Kraft-Log ---------------------------------------------------------------
+function liftCard() {
+  const ex = store.liftExercises();
+  const rows = ex.map(e => {
+    const [, mm, dd] = e.last.date.split('-');
+    const pr = e.pr ? `${Math.round(e.pr.e1rm)} kg` : '–';
+    return `<button class="lift-row" data-lift-hist="${esc(e.name)}">
+      <span class="lift-main">
+        <span class="lift-name">${esc(e.name)}</span>
+        <span class="lift-last">zuletzt ${e.last.weight} kg × ${e.last.reps} · ${dd}.${mm}.</span>
+      </span>
+      <span class="lift-pr">${pr}<small>1RM</small></span>
+    </button>`;
+  }).join('');
+  return `
+    <div class="card">
+      <div class="card-head"><span>🏋️ Kraft-Log</span>
+        <button class="btn-primary small" id="lift-add">＋ Satz</button></div>
+      ${ex.length ? `<div class="lift-list">${rows}</div>`
+        : '<div class="empty">Log deine schweren Sätze (Gewicht × Wdh). Ich zeige dir dein geschätztes 1RM und sage Bescheid bei neuem Rekord 🏆</div>'}
+    </div>`;
+}
+
+function openLiftSheet(prefill) {
+  const names = store.exerciseNames();
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet">
+      <div class="sheet-head"><strong>🏋️ Satz eintragen</strong>
+        <button class="sheet-close" id="sheet-close">✕</button></div>
+      <label class="edit-field wide"><span>Übung</span>
+        <input type="text" id="l-name" list="l-names" value="${esc(prefill || '')}" placeholder="z.B. Kniebeuge" autocomplete="off">
+        <datalist id="l-names">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist>
+      </label>
+      <div class="lift-inputs">
+        <label class="edit-field"><span>Gewicht (kg)</span>
+          <input type="number" inputmode="decimal" step="any" id="l-weight" placeholder="80"></label>
+        <label class="edit-field"><span>Wdh</span>
+          <input type="number" inputmode="numeric" id="l-reps" placeholder="5"></label>
+      </div>
+      ${names.length ? `<div class="lift-chips">${names.slice(0, 8).map(n =>
+        `<button class="lift-chip" data-pick="${esc(n)}">${esc(n)}</button>`).join('')}</div>` : ''}
+      <button class="btn-primary" id="l-save">Speichern</button>
+    </div></div>`;
+  $('#sheet-close').onclick = closeSheet;
+  modalRoot.querySelectorAll('[data-pick]').forEach(b => b.onclick = () => { $('#l-name').value = b.dataset.pick; $('#l-weight').focus(); });
+  $('#l-save').onclick = () => {
+    const name = $('#l-name').value.trim();
+    const w = Number($('#l-weight').value), r = Number($('#l-reps').value);
+    if (!name || !w || !r) { toast('Übung, Gewicht & Wdh ausfüllen'); return; }
+    store.logLift(name, w, r);
+    const last = store.getLiftsFor(name).slice(-1)[0];
+    const isPR = last && store.isLiftPR(last.id);
+    closeSheet(); renderTraining();
+    toast(isPR ? 'Neuer Rekord! 🏆' : 'Satz gespeichert ✓');
+  };
+}
+
+function openLiftHistory(name) {
+  const sets = store.getLiftsFor(name).slice().reverse();
+  const rows = sets.map(x => {
+    const [, mm, dd] = x.date.split('-');
+    const pr = store.isLiftPR(x.id);
+    return `<div class="lift-hist-row ${pr ? 'pr' : ''}">
+      <span class="lh-date">${dd}.${mm}.</span>
+      <span class="lh-set">${x.weight} kg × ${x.reps}</span>
+      <span class="lh-e1rm">${Math.round(store.e1rm(x.weight, x.reps))} kg${pr ? ' 🏆' : ''}</span>
+      <button class="lh-del" data-del="${x.id}" aria-label="löschen">✕</button>
+    </div>`;
+  }).join('');
+  modalRoot.innerHTML = `
+    <div class="sheet-overlay"><div class="sheet tall">
+      <div class="sheet-head"><strong>${esc(name)}</strong>
+        <button class="sheet-close" id="sheet-close">✕</button></div>
+      <div class="editor-scroll">
+        <div class="lift-hist-head"><span>Datum</span><span>Satz</span><span>e1RM</span><span></span></div>
+        ${rows || '<div class="empty">Noch keine Sätze.</div>'}
+      </div>
+      <div class="editor-actions">
+        <span></span>
+        <button class="btn-primary" id="lh-add">＋ Satz</button>
+      </div>
+    </div></div>`;
+  $('#sheet-close').onclick = closeSheet;
+  $('#lh-add').onclick = () => openLiftSheet(name);
+  modalRoot.querySelectorAll('[data-del]').forEach(b => b.onclick = () => {
+    store.deleteLift(b.dataset.del); openLiftHistory(name); renderTraining();
   });
 }
 

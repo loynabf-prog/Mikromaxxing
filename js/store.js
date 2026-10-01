@@ -1053,3 +1053,77 @@ export function deleteProgressPhoto(date) {
   s.photos = (s.photos || []).filter(p => p.date !== date);
   save();
 }
+
+// --- Kraft-Log (Sätze & PRs) -------------------------------------------------
+// Geschätztes 1RM nach Epley
+export function e1rm(weight, reps) {
+  if (!weight) return 0;
+  if (reps <= 1) return weight;
+  return weight * (1 + reps / 30);
+}
+
+// Alle Übungsnamen aus dem Split (für Vorschläge), Kraft-relevant zuerst
+export function exerciseNames() {
+  const s = load();
+  const strength = new Set(['kraft', 'explosiv', 'funktion']);
+  const named = [];
+  Object.values(s.training || {}).forEach(day => {
+    (day.exercises || []).forEach(ex => {
+      const n = typeof ex === 'string' ? ex : ex.n;
+      const t = (typeof ex === 'string' ? '' : (ex.t || '')).toLowerCase();
+      if (!n) return;
+      if (!named.some(x => x.name === n)) named.push({ name: n, strength: strength.has(t) });
+    });
+  });
+  named.sort((a, b) => (b.strength - a.strength) || a.name.localeCompare(b.name));
+  return named.map(x => x.name);
+}
+
+export function logLift(name, weight, reps, date = todayKey()) {
+  name = String(name || '').trim();
+  if (!name) return;
+  const s = load();
+  if (!Array.isArray(s.lifts)) s.lifts = [];
+  s.lifts.push({
+    id: 'lift_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    name, weight: Number(weight) || 0, reps: Number(reps) || 0, date,
+  });
+  save();
+}
+
+export function deleteLift(id) {
+  const s = load();
+  s.lifts = (s.lifts || []).filter(l => l.id !== id);
+  save();
+}
+
+export function getLiftsFor(name) {
+  return (load().lifts || []).filter(l => l.name === name)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+}
+
+// Übungen, zu denen es Einträge gibt – mit letztem Satz & PR
+export function liftExercises() {
+  const s = load();
+  const names = [...new Set((s.lifts || []).map(l => l.name))];
+  return names.map(name => {
+    const sets = getLiftsFor(name);
+    const last = sets[sets.length - 1];
+    let pr = null;
+    sets.forEach(x => { const e = e1rm(x.weight, x.reps); if (!pr || e > pr.e1rm) pr = { ...x, e1rm: e }; });
+    let maxW = null;
+    sets.forEach(x => { if (maxW == null || x.weight > maxW) maxW = x.weight; });
+    return { name, sets, last, pr, maxW, count: sets.length };
+  }).sort((a, b) => b.last.date.localeCompare(a.last.date) || b.last.id.localeCompare(a.last.id));
+}
+
+// Ist dieser Satz ein neuer e1RM-Rekord gegenüber allen früheren?
+export function isLiftPR(id) {
+  const all = load().lifts || [];
+  const lift = all.find(l => l.id === id);
+  if (!lift) return false;
+  const e = e1rm(lift.weight, lift.reps);
+  const earlier = getLiftsFor(lift.name).filter(x =>
+    x.date < lift.date || (x.date === lift.date && x.id < lift.id));
+  return earlier.every(x => e1rm(x.weight, x.reps) < e) && e > 0;
+}

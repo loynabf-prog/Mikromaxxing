@@ -1,5 +1,5 @@
 // Mikromaxxing – Service Worker (Offline-Cache)
-const CACHE = 'mikromaxxing-v24';
+const CACHE = 'mikromaxxing-v25';
 const ASSETS = [
   './',
   './index.html',
