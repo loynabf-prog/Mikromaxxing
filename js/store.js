@@ -1,101 +1,79 @@
 // ============================================================================
 // Mikromaxxing – State-Verwaltung (localStorage)
-// Hält Profil/Ziele, Lebensmittelbibliothek, Supplemente und das Tages-Log.
+// Drei Säulen: Ernährung · Sport · Regeneration. Alles bleibt lokal im Browser.
 // ============================================================================
 import {
-  NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS,
-  DEFAULT_SCHEDULE, DEFAULT_TRAINING, DEFAULT_HABITS, DEFAULT_AUTOPILOT, GAMES,
-  DEFAULT_MEASUREMENTS, SNACKS, DEFAULT_MEALS,
+  NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS, DEFAULT_TRAINING,
+  GAMES, DEFAULT_MEASUREMENTS, SNACKS, DEFAULT_MEALS, SPORT_TYPES,
 } from './data.js';
 
 const STORAGE_KEY = 'mikromaxxing_v1';
-const SCHEMA = 1;
+const SCHEMA = 3;
 
-// --- Datum-Helfer ------------------------------------------------------------
+// ============================================================================
+// Datum
+// ============================================================================
 export function todayKey(d = new Date()) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
-
 export function shiftDate(key, deltaDays) {
   const [y, m, d] = key.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() + deltaDays);
   return todayKey(dt);
 }
-
-export function formatDateLabel(key) {
+export function dateOf(key) {
   const [y, m, d] = key.split('-').map(Number);
-  const dt = new Date(y, m - 1, d);
+  return new Date(y, m - 1, d);
+}
+export function daysBetween(fromKey, toKey) {
+  const [a, b] = [dateOf(fromKey), dateOf(toKey)];
+  return Math.round((Date.UTC(b.getFullYear(), b.getMonth(), b.getDate()) -
+    Date.UTC(a.getFullYear(), a.getMonth(), a.getDate())) / 86400000);
+}
+export function weekdayOf(key) { return dateOf(key).getDay(); }
+export function formatDateLabel(key) {
   const today = todayKey();
   if (key === today) return 'Heute';
   if (key === shiftDate(today, -1)) return 'Gestern';
+  const dt = dateOf(key);
   const days = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-  return `${days[dt.getDay()]}, ${d}.${m}.`;
+  return `${days[dt.getDay()]}, ${dt.getDate()}.${dt.getMonth() + 1}.`;
 }
 
-// --- Default-Zustand ---------------------------------------------------------
+// ============================================================================
+// Laden · Migration · Speichern
+// ============================================================================
 function freshState() {
   return {
     schema: SCHEMA,
     profile: structuredClone(DEFAULT_PROFILE),
     foods: structuredClone(SEED_FOODS),
     supplements: structuredClone(DEFAULT_SUPPLEMENTS),
-    schedule: structuredClone(DEFAULT_SCHEDULE),
     training: structuredClone(DEFAULT_TRAINING),
-    habits: structuredClone(DEFAULT_HABITS),
-    autopilot: structuredClone(DEFAULT_AUTOPILOT),
     games: structuredClone(GAMES),
     measurements: structuredClone(DEFAULT_MEASUREMENTS),
-    photos: [],
-    lifts: [],
-    favorites: [],
-    dayTemplate: [],
     meals: structuredClone(DEFAULT_MEALS),
+    photos: [], lifts: [], favorites: [], dayTemplate: [],
+    workouts: [], activeWorkout: null,
+    log: {}, // key -> { entries, water, supps, weight, sleep, knee, reha, steps, sessions }
     _onboarded: false,
-    _mealsSeed1: true,
-    _seedTrimV1: true,
-    _athleteV1: true,
-    _athleteV2: true,
-    _variety1: true,
-    _variety2: true,
-    _foodsV3: true,
-    _habitsV2: true,
-    _habitsV3: true,
-    _habitsV4: true,
-    _habitsV5: true,
-    _habitsV6: true,
-    _suppV2: true,
-    _planV3: true,
-    _planV4: true,
-    _planV5: true,
-    _planV6: true,
-    _planV7: true,
-    _planV8: true,
-    _planV9: true,
-    _gamesV1: true,
-    _bodyseed1: true,
-    log: {}, // key -> { entries, water, supps, weight, note, done:{}, autopilotLoaded }
+    _ringV3Since: todayKey(),
+    _trainV2: true, _mealsSeed1: true, _gamesV1: true, _bodyseed1: true, _athleteV1: true, _suppV2: true,
   };
 }
 
-// --- Laden / Speichern -------------------------------------------------------
 let state = null;
 
 export function load() {
   if (state) return state;
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      state = migrate(parsed);
-      save(); // Migration (Normalisierung/Bereinigung) sofort persistieren
-    } else {
-      state = freshState();
-      save();
-    }
+    state = raw ? migrate(JSON.parse(raw)) : freshState();
+    save();
   } catch (e) {
     console.error('State konnte nicht geladen werden, starte neu:', e);
     state = freshState();
@@ -104,409 +82,312 @@ export function load() {
 }
 
 function migrate(parsed) {
-  // Fehlende Felder mit Defaults auffüllen (vorwärtskompatibel).
   const base = freshState();
-  const merged = Object.assign(base, parsed);
-  // Bestehende Installs gelten als eingerichtet – Onboarding nicht aufdrängen.
-  if (!('_onboarded' in parsed)) merged._onboarded = true;
-  if (!merged.profile) merged.profile = base.profile;
-  if (!merged.profile.targets) merged.profile.targets = base.profile.targets;
-  if (!Array.isArray(merged.foods) || merged.foods.length === 0) merged.foods = base.foods;
-  if (!Array.isArray(merged.supplements)) merged.supplements = base.supplements;
-  if (!merged.log) merged.log = {};
-  // Life-Planner-Felder (für bestehende Installs nachrüsten)
-  if (!merged.schedule) merged.schedule = base.schedule;
-  if (!merged.training) merged.training = base.training;
-  if (!Array.isArray(merged.habits)) merged.habits = base.habits;
-  if (!Array.isArray(merged.autopilot)) merged.autopilot = base.autopilot;
-  // Normalisierung: jedes Lebensmittel hat ein whole-Flag (Standard: unverarbeitet).
-  for (const f of merged.foods) if (typeof f.whole !== 'boolean') f.whole = true;
-  // Einmalige Bereinigung: verarbeitete Start-Lebensmittel entfernen (nur Obst/Gemüse
-  // bleiben im Startset). Bereits geloggte Einträge werden geschont.
-  if (!merged._seedTrimV1) {
-    const REMOVED = new Set([
-      'chicken_breast', 'egg', 'salmon', 'mackerel', 'sardines', 'tuna_can', 'cod',
-      'beef_lean', 'beef_liver', 'chicken_thigh', 'greek_yogurt', 'cottage_cheese',
-      'milk', 'kefir', 'oats', 'brown_rice', 'quinoa', 'ww_bread', 'lentils',
-      'kidney_beans', 'almonds', 'walnuts', 'pumpkin_seeds', 'chia', 'peanut_butter',
-      'olive_oil',
-    ]);
-    const usedIds = new Set();
-    for (const key of Object.keys(merged.log)) {
-      for (const e of (merged.log[key].entries || [])) usedIds.add(e.foodId);
-    }
-    merged.foods = merged.foods.filter(f => !(REMOVED.has(f.id) && !usedIds.has(f.id)));
-    merged._seedTrimV1 = true;
+  const m = Object.assign(base, parsed);
+  // Bestehende Installs gelten als eingerichtet
+  if (!('_onboarded' in parsed) || Object.keys(parsed.log || {}).length) m._onboarded = true;
+  // Wer vor dem 3-Säulen-Umbau Daten hatte: alte Tage ohne Regeneration werten
+  if (!('_ringV3Since' in parsed)) m._ringV3Since = todayKey();
+
+  if (!m.profile) m.profile = structuredClone(DEFAULT_PROFILE);
+  for (const k of Object.keys(DEFAULT_PROFILE)) {
+    if (m.profile[k] === undefined) m.profile[k] = structuredClone(DEFAULT_PROFILE[k]);
   }
-  // Einmalige Athleten-Einrichtung (Lebensmittel, Stack, Supplements, Training,
-  // Profil-Ziele). Log/gegessene Einträge bleiben erhalten.
-  if (!merged._athleteV1) {
-    const have = new Set(merged.foods.map(f => f.id));
-    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
-    merged.supplements = structuredClone(DEFAULT_SUPPLEMENTS);
-    merged.autopilot = structuredClone(DEFAULT_AUTOPILOT);
-    merged.training = structuredClone(DEFAULT_TRAINING);
-    merged.profile.height = 180;
-    merged.profile.weight = 95;
-    merged.profile.activity = 'high';
-    merged.profile.goal = 'recomp';
-    Object.assign(merged.profile.targets, { kcal: 2450, protein: 210, carbs: 210, fat: 85 });
-    merged._athleteV1 = true;
+  if (!m.profile.targets) m.profile.targets = structuredClone(DEFAULT_PROFILE.targets);
+  for (const k of Object.keys(DEFAULT_PROFILE.targets)) {
+    if (m.profile.targets[k] == null) m.profile.targets[k] = DEFAULT_PROFILE.targets[k];
   }
-  // Stack-Update (persönliche Auswahl): fehlende Lebensmittel ergänzen, neuen
-  // Essential-Stack setzen. Log bleibt erhalten.
-  if (!merged._athleteV2) {
-    const have = new Set(merged.foods.map(f => f.id));
-    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
-    merged.autopilot = structuredClone(DEFAULT_AUTOPILOT);
-    merged._athleteV2 = true;
+
+  if (!Array.isArray(m.foods) || !m.foods.length) m.foods = structuredClone(SEED_FOODS);
+  // Sehr alte Stände (vor der Athleten-Einrichtung): fehlende Basis-Lebensmittel ergänzen
+  if (!parsed._athleteV1) {
+    const have = new Set(m.foods.map(f => f.id));
+    for (const f of SEED_FOODS) if (!have.has(f.id)) m.foods.push(structuredClone(f));
+    m._athleteV1 = true;
   }
-  // Neue Lebensmittel für Abwechslung ergänzen (additiv, ändert Stack nicht)
-  if (!merged._variety1) {
-    const have = new Set(merged.foods.map(f => f.id));
-    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
-    merged._variety1 = true;
-  }
-  // Snack-Zutaten (Wassermelone, Feta, Hummus …) ergänzen
-  if (!merged._variety2) {
-    const have = new Set(merged.foods.map(f => f.id));
-    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
-    merged._variety2 = true;
-  }
-  // Große Lebensmittel-Erweiterung (Protein/Carbs/Obst/Gemüse/Snacks)
-  if (!merged._foodsV3) {
-    const have = new Set(merged.foods.map(f => f.id));
-    for (const f of SEED_FOODS) if (!have.has(f.id)) merged.foods.push(structuredClone(f));
-    merged._foodsV3 = true;
-  }
-  // Neue tägliche Gewohnheiten (Knie-Reha, Core, Calisthenics AM/PM) ergänzen
-  if (!merged._habitsV2) {
-    const haveH = new Set(merged.habits.map(h => h.id));
-    const additions = DEFAULT_HABITS.filter(h => !haveH.has(h.id));
-    // Neue Reha-/Athletik-Gewohnheiten nach vorne stellen
-    merged.habits = [...additions, ...merged.habits];
-    merged._habitsV2 = true;
-  }
-  // Weitere neue Standard-Gewohnheiten ergänzen (z.B. Wiegen)
-  if (!merged._habitsV3) {
-    const haveH = new Set(merged.habits.map(h => h.id));
-    for (const h of DEFAULT_HABITS) if (!haveH.has(h.id)) merged.habits.push(structuredClone(h));
-    merged._habitsV3 = true;
-  }
-  // Must-Do "Training / Bewegung" ganz nach vorne (und neue Defaults ergänzen)
-  if (!merged._habitsV4) {
-    const haveH = new Set(merged.habits.map(h => h.id));
-    const additions = DEFAULT_HABITS.filter(h => !haveH.has(h.id));
-    merged.habits = [...additions, ...merged.habits];
-    merged._habitsV4 = true;
-  }
-  if (merged.profile.targetBodyfat == null) merged.profile.targetBodyfat = 15;
-  if (!('photo' in merged.profile)) merged.profile.photo = null;
-  if (merged.profile.dayGoal == null) merged.profile.dayGoal = 80;
-  // "Warum"-Texte in bestehende Gewohnheiten mergen (nach id)
-  if (!merged._habitsV5) {
-    const byId = Object.fromEntries(DEFAULT_HABITS.map(h => [h.id, h]));
-    for (const h of merged.habits) {
-      if (!h.why && byId[h.id] && byId[h.id].why) h.why = byId[h.id].why;
-    }
-    merged._habitsV5 = true;
-  }
-  // Wasser & Supplements aus der Must-Do-Liste entfernen (haben eigene Widgets)
-  if (!merged._habitsV6) {
-    merged.habits = merged.habits.filter(h => h.id !== 'h_water' && h.id !== 'h_supps');
-    merged._habitsV6 = true;
-  }
-  // Supplement-Timing & "womit nehmen" in bestehende Supplements mergen
-  if (!merged._suppV2) {
+  for (const f of m.foods) if (typeof f.whole !== 'boolean') f.whole = true;
+
+  if (!Array.isArray(m.supplements)) m.supplements = structuredClone(DEFAULT_SUPPLEMENTS);
+  if (!parsed._suppV2) {
     const byId = Object.fromEntries(DEFAULT_SUPPLEMENTS.map(s => [s.id, s]));
-    for (const s of merged.supplements) {
+    for (const s of m.supplements) {
       const d = byId[s.id];
       if (d) { if (!s.time) s.time = d.time; if (!s.takeWith) s.takeWith = d.takeWith; }
     }
-    merged._suppV2 = true;
+    m._suppV2 = true;
   }
-  // Trainingsplan mit Zweck-Tags (Übungen jetzt als {n,t}) neu setzen
-  if (!merged._planV5) {
-    merged.training = structuredClone(DEFAULT_TRAINING);
-    merged._planV5 = true;
+
+  // Neuer Trainingsplan mit Sätzen/Wiederholungen für den Workout-Modus
+  if (!parsed._trainV2) { m.training = structuredClone(DEFAULT_TRAINING); m._trainV2 = true; }
+  if (!m.training) m.training = structuredClone(DEFAULT_TRAINING);
+
+  if (!parsed._gamesV1 || !Array.isArray(m.games)) { m.games = structuredClone(GAMES); m._gamesV1 = true; }
+  if (!Array.isArray(m.measurements)) m.measurements = [];
+  if (!parsed._bodyseed1) {
+    if (!m.measurements.length) m.measurements = structuredClone(DEFAULT_MEASUREMENTS);
+    m._bodyseed1 = true;
   }
-  // Basketball auf einen einzigen Check vereinfacht
-  if (!merged._planV6) {
-    merged.training = structuredClone(DEFAULT_TRAINING);
-    merged._planV6 = true;
+  for (const k of ['photos', 'lifts', 'favorites', 'dayTemplate', 'meals', 'workouts']) {
+    if (!Array.isArray(m[k])) m[k] = [];
   }
-  // Reha/Core/Calisthenics als feste Blöcke im Tagesplan
-  if (!merged._planV7) {
-    merged.schedule = structuredClone(DEFAULT_SCHEDULE);
-    merged._planV7 = true;
+  if (!parsed._mealsSeed1) {
+    const have = new Set(m.meals.map(x => x.id));
+    for (const x of DEFAULT_MEALS) if (!have.has(x.id)) m.meals.push(structuredClone(x));
+    m._mealsSeed1 = true;
   }
-  // Basketball ohne Unterpunkte (nur die Einheit)
-  if (!merged._planV8) {
-    merged.training = structuredClone(DEFAULT_TRAINING);
-    merged._planV8 = true;
+  if (m.activeWorkout === undefined) m.activeWorkout = null;
+  if (!m.log) m.log = {};
+
+  // Aufräumen: Bereiche, die es nicht mehr gibt (Tagesplan, Gewohnheiten, Autopilot)
+  for (const k of ['schedule', 'habits', 'autopilot']) delete m[k];
+  for (const k of Object.keys(m)) if (/^_(planV|habitsV|variety|foodsV|athleteV2|seedTrim)/.test(k)) delete m[k];
+  for (const day of Object.values(m.log)) {
+    for (const k of ['done', 'review', 'wake', 'wakeTs', 'workDone', 'autopilotLoaded', 'note']) delete day[k];
+    if (!Array.isArray(day.entries)) day.entries = [];
+    if (!day.supps) day.supps = {};
   }
-  // Do-Training fix 19:00 Basketball (Anker für dynamischen Tagesplan)
-  if (!merged._planV9) {
-    merged.schedule = structuredClone(DEFAULT_SCHEDULE);
-    merged._planV9 = true;
-  }
-  if (!Array.isArray(merged.measurements)) merged.measurements = [];
-  if (!Array.isArray(merged.photos)) merged.photos = [];
-  if (!Array.isArray(merged.lifts)) merged.lifts = [];
-  if (!Array.isArray(merged.favorites)) merged.favorites = [];
-  if (!Array.isArray(merged.dayTemplate)) merged.dayTemplate = [];
-  if (!Array.isArray(merged.meals)) merged.meals = [];
-  // Erste gespeicherte Mahlzeit (Poke Bowl) einmalig ergänzen
-  if (!merged._mealsSeed1) {
-    const have = new Set(merged.meals.map(m => m.id));
-    for (const m of DEFAULT_MEALS) if (!have.has(m.id)) merged.meals.push(structuredClone(m));
-    merged._mealsSeed1 = true;
-  }
-  // Knie-sicherer Wochenplan + Trainingsplan (überschreibt Vorlage)
-  if (!merged._planV3) {
-    merged.schedule = structuredClone(DEFAULT_SCHEDULE);
-    merged.training = structuredClone(DEFAULT_TRAINING);
-    merged._planV3 = true;
-  }
-  // Plan-Update: Do flexibel, Gym B auf Fr, Schwimmen+Sauna kombiniert
-  if (!merged._planV4) {
-    merged.schedule = structuredClone(DEFAULT_SCHEDULE);
-    merged.training = structuredClone(DEFAULT_TRAINING);
-    merged._planV4 = true;
-  }
-  // Basketball-Spielplan setzen
-  if (!merged._gamesV1) {
-    merged.games = structuredClone(GAMES);
-    merged._gamesV1 = true;
-  }
-  if (!Array.isArray(merged.games)) merged.games = structuredClone(GAMES);
-  // Start-Körpermessung (InBody) seeden, falls noch keine vorhanden
-  if (!merged._bodyseed1) {
-    if (!Array.isArray(merged.measurements) || merged.measurements.length === 0) {
-      merged.measurements = structuredClone(DEFAULT_MEASUREMENTS);
-    }
-    if (merged.profile.targetWeight == null) merged.profile.targetWeight = 85;
-    merged._bodyseed1 = true;
-  }
-  return merged;
+  m.schema = SCHEMA;
+  return m;
 }
 
 export function save() {
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   } catch (e) {
-    console.error('Speichern fehlgeschlagen (Speicher voll?):', e);
-    alert('Speichern fehlgeschlagen. Ggf. ist der Browser-Speicher voll.');
+    console.error('Speichern fehlgeschlagen:', e);
+    alert('Speichern fehlgeschlagen – evtl. ist der Browser-Speicher voll (Fotos?).');
   }
 }
 
 export function getState() { return load(); }
+export function exportJSON() { return JSON.stringify(load(), null, 2); }
+export function importJSON(text) { state = migrate(JSON.parse(text)); save(); return state; }
+export function resetAll() { state = freshState(); save(); return state; }
+export function isOnboarded() { return !!load()._onboarded; }
+export function setOnboarded(v = true) { load()._onboarded = !!v; save(); }
 
-// --- Tages-Log-Zugriff -------------------------------------------------------
+// ============================================================================
+// Tages-Log
+// ============================================================================
 export function getDay(key) {
   const s = load();
   if (!s.log[key]) {
-    s.log[key] = { entries: [], water: 0, supps: {}, weight: null, note: '', done: {}, autopilotLoaded: false, review: null };
+    s.log[key] = { entries: [], water: 0, supps: {}, weight: null, sleep: null, knee: null, reha: false, steps: 0, sessions: [] };
   }
-  if (!s.log[key].done) s.log[key].done = {};
-  return s.log[key];
+  const d = s.log[key];
+  if (!d.entries) d.entries = [];
+  if (!d.supps) d.supps = {};
+  if (!Array.isArray(d.sessions)) d.sessions = [];
+  return d;
 }
+function peekDay(key) { return load().log[key] || null; }
 
-export function addEntry(key, foodId, grams) {
+export function addEntry(key, foodId, grams, ts = Date.now()) {
   const day = getDay(key);
-  day.entries.push({ foodId, grams: Number(grams) || 0, ts: Date.now() });
+  day.entries.push({ foodId, grams: Math.round(Number(grams) || 0), ts });
   save();
   return day.entries.length - 1;
 }
-
+export function addEntries(key, items) {
+  const day = getDay(key);
+  const ts = Date.now();
+  let n = 0;
+  for (const it of items) {
+    if (!foodById(it.foodId) || !(it.grams > 0)) continue;
+    day.entries.push({ foodId: it.foodId, grams: Math.round(it.grams), ts });
+    n++;
+  }
+  save();
+  return n;
+}
 export function updateEntry(key, index, grams) {
   const day = getDay(key);
-  if (day.entries[index]) {
-    day.entries[index].grams = Number(grams) || 0;
-    save();
-  }
+  if (day.entries[index]) { day.entries[index].grams = Math.round(Number(grams) || 0); save(); }
 }
-
 export function removeEntry(key, index) {
   const day = getDay(key);
   day.entries.splice(index, 1);
   save();
 }
-
-export function setWater(key, ml) {
+export function truncateEntries(key, length) {
   const day = getDay(key);
-  day.water = Math.max(0, Number(ml) || 0);
+  day.entries.length = Math.min(day.entries.length, length);
   save();
 }
-
-export function toggleSupp(key, suppId) {
-  const day = getDay(key);
-  day.supps[suppId] = !day.supps[suppId];
-  save();
+export function copyEntries(fromKey, toKey) {
+  const from = peekDay(fromKey);
+  if (!from || !from.entries.length) return 0;
+  return addEntries(toKey, from.entries.map(e => ({ foodId: e.foodId, grams: e.grams })));
 }
 
+export function setWater(key, ml) { getDay(key).water = Math.max(0, Math.round(Number(ml) || 0)); save(); }
+export function addWater(key, ml) { const d = getDay(key); setWater(key, (d.water || 0) + ml); }
+export function toggleSupp(key, id) { const d = getDay(key); d.supps[id] = !d.supps[id]; save(); }
+export function setSupp(key, id, v) { getDay(key).supps[id] = !!v; save(); }
 export function setWeight(key, kg) {
-  const day = getDay(key);
-  day.weight = kg === '' || kg == null ? null : Number(kg);
+  getDay(key).weight = kg === '' || kg == null || isNaN(Number(kg)) ? null : Number(kg);
   save();
 }
 
-export function setNote(key, text) {
-  const day = getDay(key);
-  day.note = text;
-  save();
-}
-
-// --- Lebensmittel-CRUD -------------------------------------------------------
-export function foodById(id) {
-  return load().foods.find(f => f.id === id) || null;
-}
-
+// ============================================================================
+// Bibliothek · Supplements · Profil
+// ============================================================================
+export function foodById(id) { return load().foods.find(f => f.id === id) || null; }
 export function upsertFood(food) {
   const s = load();
-  const idx = s.foods.findIndex(f => f.id === food.id);
-  if (idx >= 0) s.foods[idx] = food;
-  else s.foods.push(food);
+  const i = s.foods.findIndex(f => f.id === food.id);
+  if (i >= 0) s.foods[i] = food; else s.foods.push(food);
   save();
 }
-
-export function deleteFood(id) {
-  const s = load();
-  s.foods = s.foods.filter(f => f.id !== id);
-  save();
+export function deleteFood(id) { const s = load(); s.foods = s.foods.filter(f => f.id !== id); save(); }
+export function newFoodId(name) {
+  const base = 'u_' + String(name || 'food').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 24);
+  let id = base, i = 2;
+  while (foodById(id)) id = base + '_' + i++;
+  return id;
 }
 
-// --- Supplement-CRUD ---------------------------------------------------------
 export function upsertSupplement(supp) {
   const s = load();
-  const idx = s.supplements.findIndex(x => x.id === supp.id);
-  if (idx >= 0) s.supplements[idx] = supp;
-  else s.supplements.push(supp);
+  const i = s.supplements.findIndex(x => x.id === supp.id);
+  if (i >= 0) s.supplements[i] = supp; else s.supplements.push(supp);
   save();
 }
+export function deleteSupplement(id) { const s = load(); s.supplements = s.supplements.filter(x => x.id !== id); save(); }
 
-export function deleteSupplement(id) {
-  const s = load();
-  s.supplements = s.supplements.filter(x => x.id !== id);
-  save();
+export function updateProfile(patch) { Object.assign(load().profile, patch); save(); }
+export function setTarget(key, value) { load().profile.targets[key] = Number(value) || 0; save(); }
+
+export function servingGrams(food) {
+  if (!food) return 100;
+  if (food.piece) return food.piece.g * (food.piece.def || 1);
+  return (food.servings && food.servings[0]) ? food.servings[0].grams : 100;
 }
 
-// --- Profil ------------------------------------------------------------------
-export function updateProfile(patch) {
-  const s = load();
-  Object.assign(s.profile, patch);
-  save();
-}
-
-export function setTarget(key, value) {
-  const s = load();
-  s.profile.targets[key] = Number(value) || 0;
-  save();
-}
-
-// --- Berechnungen ------------------------------------------------------------
-// Summiert alle Nährstoffe eines Tages aus den Einträgen.
+// ============================================================================
+// Nährwerte
+// ============================================================================
 export function computeTotals(key) {
   const s = load();
-  const day = s.log[key] || { entries: [] };
+  const day = s.log[key] || { entries: [], supps: {} };
   const totals = {};
   for (const nut of NUTRIENTS) totals[nut.key] = 0;
-  for (const entry of day.entries) {
-    const food = s.foods.find(f => f.id === entry.foodId);
+  for (const e of day.entries) {
+    const food = s.foods.find(f => f.id === e.foodId);
     if (!food) continue;
-    const factor = (entry.grams || 0) / 100;
-    for (const nut of NUTRIENTS) {
-      totals[nut.key] += (food.per100[nut.key] || 0) * factor;
-    }
+    const f = (e.grams || 0) / 100;
+    for (const nut of NUTRIENTS) totals[nut.key] += (food.per100[nut.key] || 0) * f;
   }
-  // Abgehakte Supplements mit hinterlegten Nährwerten mitzählen
-  if (day.supps) {
-    for (const supp of s.supplements) {
-      if (day.supps[supp.id] && supp.nutrients) {
-        for (const k in supp.nutrients) {
-          if (k in totals) totals[k] += supp.nutrients[k];
-        }
-      }
+  for (const supp of s.supplements) {
+    if (day.supps && day.supps[supp.id] && supp.nutrients) {
+      for (const k in supp.nutrients) if (k in totals) totals[k] += supp.nutrients[k];
     }
   }
   return totals;
 }
 
-// --- Backup / Wiederherstellung ---------------------------------------------
-export function exportJSON() {
-  return JSON.stringify(load(), null, 2);
-}
-
-export function importJSON(text) {
-  const parsed = JSON.parse(text);
-  state = migrate(parsed);
-  save();
-  return state;
-}
-
-export function resetAll() {
-  state = freshState();
-  save();
-  return state;
-}
-
-// ============================================================================
-// Schnellzugriff (Smart-Mix): Uhrzeit + zuletzt + Häufigkeit
-// ============================================================================
-// Liefert die passendsten Lebensmittel zum One-Tap-Loggen, inkl. vorgeschlagener
-// Grammzahl (aus der letzten Nutzung).
-export function getQuickPicks(limit = 8, now = Date.now()) {
+// Woher kommt ein Nährstoff heute? (Top-Quellen)
+export function sourcesFor(key, nutKey, limit = 5) {
   const s = load();
-  const nowHour = new Date(now).getHours();
-  const stats = new Map(); // foodId -> { count, lastTs, lastGrams, hourHits }
-
-  for (const key of Object.keys(s.log)) {
-    for (const e of s.log[key].entries) {
-      if (!e.foodId) continue;
-      let st = stats.get(e.foodId);
-      if (!st) { st = { count: 0, lastTs: 0, lastGrams: 0, hourHits: 0 }; stats.set(e.foodId, st); }
-      st.count += 1;
-      if (e.ts) {
-        if (e.ts > st.lastTs) { st.lastTs = e.ts; st.lastGrams = e.grams; }
-        const h = new Date(e.ts).getHours();
-        let diff = Math.abs(h - nowHour);
-        if (diff > 12) diff = 24 - diff;      // zyklisch
-        if (diff <= 2) st.hourHits += 1;      // ±2 Stunden
-      } else if (!st.lastGrams) {
-        st.lastGrams = e.grams;
-      }
-    }
-  }
-
-  const scored = [];
-  for (const [foodId, st] of stats) {
-    const food = s.foods.find(f => f.id === foodId);
+  const day = s.log[key];
+  if (!day) return [];
+  const target = s.profile.targets[nutKey] || 0;
+  const map = new Map();
+  for (const e of day.entries) {
+    const food = s.foods.find(f => f.id === e.foodId);
     if (!food) continue;
-    // Recency-Bonus
-    let rec = 0;
-    if (st.lastTs) {
-      const ageH = (now - st.lastTs) / 3.6e6;
-      if (ageH < 24) rec = 3; else if (ageH < 72) rec = 2; else if (ageH < 168) rec = 1;
+    const amt = (food.per100[nutKey] || 0) * (e.grams || 0) / 100;
+    if (amt <= 0) continue;
+    const cur = map.get(food.id) || { name: food.name, amount: 0 };
+    cur.amount += amt;
+    map.set(food.id, cur);
+  }
+  for (const supp of s.supplements) {
+    if (day.supps[supp.id] && supp.nutrients && supp.nutrients[nutKey]) {
+      map.set('supp:' + supp.id, { name: supp.name + ' (Supp)', amount: supp.nutrients[nutKey] });
     }
-    const score = st.hourHits * 2 + st.count + rec;
-    const grams = st.lastGrams || servingGrams(food);
-    scored.push({ food, grams, score });
   }
-  scored.sort((a, b) => b.score - a.score);
-
-  if (scored.length === 0) {
-    // Erststart: sinnvolle Standard-Vorschläge
-    const seeds = ['banana', 'apple', 'kiwi', 'bell_pepper', 'carrot', 'spinach'];
-    return seeds.map(id => s.foods.find(f => f.id === id)).filter(Boolean)
-      .map(food => ({ food, grams: servingGrams(food), score: 0 }));
-  }
-  return scored.slice(0, limit);
+  return [...map.values()].sort((a, b) => b.amount - a.amount).slice(0, limit)
+    .map(x => ({ ...x, pct: target ? Math.round(x.amount / target * 100) : 0 }));
 }
 
-// ============================================================================
-// 100%-Coach: Empfehlungen zum Schließen der Nährstoff-Lücken
-// ============================================================================
-// Nährstoffe, die "auf 100%" gebracht werden sollen (ohne kcal & Limit-Werte).
+// Durchschnitt der letzten n Tage (nur Tage mit Einträgen zählen)
+export function averageTotals(key, days = 7) {
+  const s = load();
+  const sum = {};
+  for (const nut of NUTRIENTS) sum[nut.key] = 0;
+  let n = 0;
+  for (let i = 0; i < days; i++) {
+    const k = shiftDate(key, -i);
+    const day = s.log[k];
+    if (!day || (!day.entries.length && !Object.values(day.supps || {}).some(Boolean))) continue;
+    const t = computeTotals(k);
+    for (const nut of NUTRIENTS) sum[nut.key] += t[nut.key];
+    n++;
+  }
+  for (const k in sum) sum[k] = n ? sum[k] / n : 0;
+  return { totals: sum, days: n };
+}
+
+// Protein über den Tag verteilt (Frühstück/Mittag/Nachmittag/Abend)
+export const DAY_PARTS = [
+  { id: 'morning', label: 'Früh', from: 0, to: 11 },
+  { id: 'noon', label: 'Mittag', from: 11, to: 15 },
+  { id: 'afternoon', label: 'Nachm.', from: 15, to: 19 },
+  { id: 'evening', label: 'Abend', from: 19, to: 24 },
+];
+export function partOfHour(h) { return DAY_PARTS.find(p => h >= p.from && h < p.to) || DAY_PARTS[3]; }
+export function proteinByPart(key) {
+  const s = load();
+  const day = s.log[key];
+  const out = Object.fromEntries(DAY_PARTS.map(p => [p.id, 0]));
+  if (day) {
+    for (const e of day.entries) {
+      const food = s.foods.find(f => f.id === e.foodId);
+      if (!food) continue;
+      const h = e.ts ? new Date(e.ts).getHours() : 12;
+      out[partOfHour(h).id] += (food.per100.protein || 0) * (e.grams || 0) / 100;
+    }
+  }
+  const perPart = (s.profile.targets.protein || 0) / DAY_PARTS.length;
+  return DAY_PARTS.map(p => ({ ...p, grams: Math.round(out[p.id]), target: Math.round(perPart) }));
+}
+
+// Vorschau: wie verändert sich die Ernährungs-Säule durch neue Einträge?
+export function nutritionPreview(key, { foods = [], waterMl = 0, suppIds = [] } = {}) {
+  const s = load();
+  const day = s.log[key] || { water: 0, supps: {} };
+  const before = dayPillars(key);
+  const totals = { ...before.totals };
+  let addKcal = 0, addProtein = 0;
+  for (const it of foods) {
+    const f = foodById(it.foodId);
+    if (!f) continue;
+    const x = (it.grams || 0) / 100;
+    for (const nut of NUTRIENTS) totals[nut.key] += (f.per100[nut.key] || 0) * x;
+    addKcal += (f.per100.kcal || 0) * x;
+    addProtein += (f.per100.protein || 0) * x;
+  }
+  const supps = { ...(day.supps || {}) };
+  for (const id of suppIds) {
+    if (supps[id]) continue;
+    supps[id] = true;
+    const supp = s.supplements.find(x => x.id === id);
+    if (supp && supp.nutrients) for (const k in supp.nutrients) if (k in totals) totals[k] += supp.nutrients[k];
+  }
+  const p = s.profile;
+  const protein = Math.min(100, totals.protein / (p.targets.protein || 1) * 100);
+  const micros = microSummary(key, totals).coverage;
+  const water = Math.min(100, ((day.water || 0) + waterMl) / (p.water || 1) * 100);
+  const suppPct = s.supplements.length ? s.supplements.filter(x => supps[x.id]).length / s.supplements.length * 100 : 100;
+  return {
+    before: before.nutrition,
+    after: Math.round((protein + micros + water + suppPct) / 4),
+    kcal: Math.round(addKcal), protein: Math.round(addProtein),
+  };
+}
+
+// Mikro-Essentials (ohne Protein – das hat eine eigene Säule im Ring)
 export const GAP_KEYS = [
   'protein', 'fiber', 'omega3',
   'vitA', 'vitC', 'vitD', 'vitE', 'vitK',
@@ -514,695 +395,670 @@ export const GAP_KEYS = [
   'calcium', 'iron', 'magnesium', 'zinc', 'potassium', 'phosphorus',
   'selenium', 'copper', 'manganese', 'iodine',
 ];
+export const MICRO_KEYS = GAP_KEYS.filter(k => k !== 'protein');
 
-function servingGrams(food) {
-  if (food.piece) return food.piece.g * (food.piece.def || 1);
-  return (food.servings && food.servings[0]) ? food.servings[0].grams : 100;
+export function microSummary(key, totals = computeTotals(key)) {
+  const t = load().profile.targets;
+  let sum = 0, n = 0, done = 0;
+  const byKey = [];
+  for (const k of MICRO_KEYS) {
+    if (!t[k]) continue;
+    const p = ((totals[k] || 0) / t[k]) * 100;
+    byKey.push({ key: k, pct: Math.round(p) });
+    sum += Math.min(100, p); n++;
+    if (p >= 99.9) done++;
+  }
+  return { coverage: n ? Math.round(sum / n) : 0, done, total: n, byKey };
 }
 
-const MAX_PIECE_SCALE = 3; // Coach schlägt max. so viele Stück vor (damit's gesund/realistisch bleibt)
-
-// Bewertet ein Lebensmittel: wie viel der offenen Tages-Lücken schließt es
-// (Summe der geschlossenen Zielanteile) und was kostet es an kcal.
+// Lücken-Coach: welches Lebensmittel schließt die offenen Lücken am besten?
+const MAX_PIECE_SCALE = 3;
 function scoreFood(food, grams, totals, targets) {
   const factor = grams / 100;
   let gapClose = 0;
-  const contribs = [];
   for (const key of GAP_KEYS) {
     const target = targets[key];
     if (!target) continue;
     const gap = target - (totals[key] || 0);
     if (gap <= 0.0001) continue;
     const contrib = (food.per100[key] || 0) * factor;
-    if (contrib <= 0) continue;
-    const filled = Math.min(contrib, gap);
-    gapClose += filled / target;
-    contribs.push({ key, addedPct: Math.round((contrib / target) * 100) });
+    if (contrib > 0) gapClose += Math.min(contrib, gap) / target;
   }
-  contribs.sort((a, b) => b.addedPct - a.addedPct);
-  return { gapClose, kcal: (food.per100.kcal || 0) * factor, contribs };
+  return { gapClose, kcal: (food.per100.kcal || 0) * factor };
 }
-
 export function getRecommendations(key) {
   const s = load();
   const totals = computeTotals(key);
   const targets = s.profile.targets;
   const remainingKcal = targets.kcal - (totals.kcal || 0);
   const wholeFoods = s.foods.filter(f => f.whole !== false);
-
-  // Offene Lücken (für die Fortschrittsanzeige / Erfolgszustand)
-  const openGaps = GAP_KEYS.filter(k => targets[k] && (totals[k] || 0) < targets[k] * 0.999);
-
-  // --- Top-Tipps: Lebensmittel, die am meisten Lücken pro Portion schließen ---
-  const ranked = wholeFoods
-    .map(food => {
-      const g = servingGrams(food);
-      return { food, grams: g, ...scoreFood(food, g, totals, targets) };
-    })
-    .filter(r => r.gapClose > 0.0001)
-    .sort((a, b) => b.gapClose - a.gapClose);
-
+  const ranked = wholeFoods.map(food => {
+    const g = servingGrams(food);
+    return { food, grams: g, ...scoreFood(food, g, totals, targets) };
+  }).filter(r => r.gapClose > 0.0001).sort((a, b) => b.gapClose - a.gapClose);
   const fits = ranked.filter(r => r.kcal <= remainingKcal + 5);
   const topTips = (fits.length ? fits : ranked).slice(0, 4);
 
-  // --- Aufschlüsselung pro fehlendem Nährstoff (größtes Defizit zuerst) ------
-  const allGaps = openGaps.map(nutKey => {
+  const gaps = GAP_KEYS.filter(k => targets[k] && (totals[k] || 0) < targets[k] * 0.999).map(nutKey => {
     const target = targets[nutKey];
     const current = totals[nutKey] || 0;
-    const currentPct = Math.round((current / target) * 100);
-    // Bestes unverarbeitetes Lebensmittel für genau diesen Nährstoff (dichteste Quelle)
-    let best = null;
+    // Bestes Lebensmittel: schließt möglichst viel der Lücke (gedeckelt), bei Gleichstand weniger kcal
+    const gapPct = Math.max(1, 100 - current / target * 100);
+    let best = null, bestScore = -1;
     for (const food of wholeFoods) {
       const g = servingGrams(food);
-      const contrib = (food.per100[nutKey] || 0) * (g / 100);
+      const contrib = (food.per100[nutKey] || 0) * g / 100;
       if (contrib <= 0) continue;
-      const addedPct = Math.round((contrib / target) * 100);
-      const kcal = Math.round((food.per100.kcal || 0) * (g / 100));
-      if (!best || addedPct > best.addedPct) best = { food, grams: g, addedPct, kcal };
+      const addedPct = Math.round(contrib / target * 100);
+      const kcal = (food.per100.kcal || 0) * g / 100;
+      const score = Math.min(addedPct, gapPct) - kcal / 400;
+      if (score > bestScore) { bestScore = score; best = { food, grams: g, addedPct }; }
     }
-    // Stück-Lebensmittel zum Lückenfüllen hochrechnen (z.B. 2 Paprika), gedeckelt.
     if (best && best.food.piece) {
       const p = best.food.piece;
-      const perPieceContrib = (best.food.per100[nutKey] || 0) / 100 * p.g;
-      const perPieceKcal = (best.food.per100.kcal || 0) / 100 * p.g;
-      const gapAbs = target - current;
+      const per = (best.food.per100[nutKey] || 0) / 100 * p.g;
       let count = p.def || 1;
-      while (count < MAX_PIECE_SCALE
-             && perPieceContrib * count < gapAbs
-             && (remainingKcal <= 0 || perPieceKcal * (count + 1) <= remainingKcal)) {
-        count++;
-      }
-      const g = p.g * count;
-      best = {
-        food: best.food, grams: g,
-        addedPct: Math.round((best.food.per100[nutKey] || 0) / 100 * g / target * 100),
-        kcal: Math.round((best.food.per100.kcal || 0) / 100 * g),
-      };
+      while (count < MAX_PIECE_SCALE && per * count < target - current) count++;
+      best.grams = p.g * count;
+      best.addedPct = Math.round(per * count / target * 100);
     }
-    return { nutKey, current, target, currentPct, best };
-  });
-  // Aufteilen: füllbar über Obst/Gemüse vs. nur über Supplement/Hauptmahlzeit
-  const perNutrient = allGaps.filter(x => x.best).sort((a, b) => a.currentPct - b.currentPct);
-  const hardGaps = allGaps.filter(x => !x.best).sort((a, b) => a.currentPct - b.currentPct);
-
-  return { totals, remainingKcal, openGaps, topTips, perNutrient, hardGaps, allDone: openGaps.length === 0 };
+    return { nutKey, current, target, currentPct: Math.round(current / target * 100), best };
+  }).sort((a, b) => a.currentPct - b.currentPct);
+  return { totals, remainingKcal, topTips, gaps };
 }
 
-// Nährstoffe, die aus Obst/Gemüse praktisch nicht ausreichend kommen
-// (Info-Hinweis für den Nutzer). Werden als "über Supplement/Hauptmahlzeit" markiert.
-export const SUPPLEMENT_ONLY = new Set(['vitB12', 'vitD', 'omega3', 'iodine', 'calcium']);
-
-// --- Essentials-Zusammenfassung (Mikros + Protein) --------------------------
-export function essentialsSummary(key) {
+// ============================================================================
+// Schnellzugriff · Favoriten · Mahlzeiten · Standardtag
+// ============================================================================
+export function getQuickPicks(limit = 8, now = Date.now()) {
   const s = load();
-  const totals = computeTotals(key);
-  const t = s.profile.targets;
-  let done = 0, n = 0, sum = 0;
-  const byKey = [];
-  for (const k of GAP_KEYS) {
-    if (!t[k]) continue;
-    const cur = totals[k] || 0;
-    const p = (cur / t[k]) * 100;
-    byKey.push({ key: k, pct: Math.round(p) });
-    sum += Math.min(100, p);
-    n++;
-    if (cur >= t[k] * 0.999) done++;
+  const nowHour = new Date(now).getHours();
+  const stats = new Map();
+  for (const key of Object.keys(s.log)) {
+    for (const e of s.log[key].entries) {
+      let st = stats.get(e.foodId);
+      if (!st) { st = { count: 0, lastTs: 0, lastGrams: 0, hourHits: 0 }; stats.set(e.foodId, st); }
+      st.count++;
+      if (e.ts) {
+        if (e.ts > st.lastTs) { st.lastTs = e.ts; st.lastGrams = e.grams; }
+        let diff = Math.abs(new Date(e.ts).getHours() - nowHour);
+        if (diff > 12) diff = 24 - diff;
+        if (diff <= 2) st.hourHits++;
+      }
+    }
   }
-  return { done, total: n, coverage: n ? Math.round(sum / n) : 0, byKey };
+  const scored = [];
+  for (const [foodId, st] of stats) {
+    const food = foodById(foodId);
+    if (!food) continue;
+    const ageH = st.lastTs ? (now - st.lastTs) / 3.6e6 : 999;
+    const rec = ageH < 24 ? 3 : ageH < 72 ? 2 : ageH < 168 ? 1 : 0;
+    scored.push({ food, grams: st.lastGrams || servingGrams(food), score: st.hourHits * 2 + st.count + rec });
+  }
+  scored.sort((a, b) => b.score - a.score);
+  if (!scored.length) {
+    return ['egg', 'magerquark', 'banana', 'oats', 'chicken_breast', 'kiwi']
+      .map(foodById).filter(Boolean).map(food => ({ food, grams: servingGrams(food), score: 0 }));
+  }
+  return scored.slice(0, limit);
 }
 
-// --- Essential-Stack automatisch für heute laden ----------------------------
-export function ensureAutopilot(key) {
+export function isFavorite(id) { return (load().favorites || []).includes(id); }
+export function toggleFavorite(id) {
   const s = load();
-  if (s.profile.autopilotAuto === false) return false;
-  if (!s.autopilot || !s.autopilot.length) return false;
-  const day = getDay(key);
-  if (day.autopilotLoaded) return false;
-  loadAutopilot(key);
-  return true;
-}
-
-// --- Snack-Kombis ------------------------------------------------------------
-export function getSnacks() { return SNACKS; }
-export function logSnack(key, snackId) {
-  const snack = SNACKS.find(s => s.id === snackId);
-  if (!snack) return 0;
-  const day = getDay(key);
-  let added = 0;
-  for (const it of snack.items) {
-    if (!foodById(it.foodId)) continue;
-    day.entries.push({ foodId: it.foodId, grams: it.grams, ts: Date.now() });
-    added++;
-  }
+  const i = s.favorites.indexOf(id);
+  if (i >= 0) s.favorites.splice(i, 1); else s.favorites.push(id);
   save();
-  return added;
+  return s.favorites.includes(id);
+}
+export function getFavorites() {
+  return load().favorites.map(foodById).filter(Boolean).map(food => ({ food, grams: servingGrams(food) }));
 }
 
-// --- Meine Mahlzeiten (gespeicherte Gerichte) -------------------------------
+export function getSnacks() { return SNACKS; }
 export function getMeals() { return load().meals || []; }
-export function mealById(id) { return (load().meals || []).find(m => m.id === id) || null; }
+export function mealById(id) { return getMeals().find(m => m.id === id) || null; }
 export function upsertMeal(meal) {
   const s = load();
-  if (!Array.isArray(s.meals)) s.meals = [];
   const i = s.meals.findIndex(m => m.id === meal.id);
   if (i >= 0) s.meals[i] = meal; else s.meals.push(meal);
   save();
 }
-export function deleteMeal(id) {
-  const s = load();
-  s.meals = (s.meals || []).filter(m => m.id !== id);
-  save();
-}
-export function logMeal(key, mealId) {
+export function deleteMeal(id) { const s = load(); s.meals = s.meals.filter(m => m.id !== id); save(); }
+export function mealItems(mealId, portions = 1) {
   const meal = mealById(mealId);
-  if (!meal) return 0;
-  const day = getDay(key);
-  let added = 0;
-  for (const it of meal.items) {
-    if (!foodById(it.foodId)) continue;
-    day.entries.push({ foodId: it.foodId, grams: it.grams, ts: Date.now() });
-    added++;
-  }
-  save();
-  return added;
+  if (!meal) return [];
+  return meal.items.filter(it => foodById(it.foodId)).map(it => ({ foodId: it.foodId, grams: Math.round(it.grams * portions) }));
 }
-// Kalorien einer Mahlzeit (Summe der Zutaten)
-export function mealKcal(meal) {
-  let kcal = 0;
+export function logMeal(key, mealId, portions = 1) { return addEntries(key, mealItems(mealId, portions)); }
+export function mealTotals(meal) {
+  const out = { kcal: 0, protein: 0 };
   for (const it of meal.items) {
     const f = foodById(it.foodId);
-    if (f) kcal += (f.per100.kcal || 0) * it.grams / 100;
+    if (!f) continue;
+    out.kcal += (f.per100.kcal || 0) * it.grams / 100;
+    out.protein += (f.per100.protein || 0) * it.grams / 100;
   }
-  return Math.round(kcal);
+  return { kcal: Math.round(out.kcal), protein: Math.round(out.protein) };
 }
 
-export function lastGramsFor(foodId) {
-  const s = load();
-  let latest = null;
-  for (const key of Object.keys(s.log)) {
-    for (const e of s.log[key].entries) {
-      if (e.foodId === foodId && (!latest || (e.ts || 0) > (latest.ts || 0))) latest = e;
-    }
-  }
-  if (latest) return latest.grams;
-  const food = s.foods.find(f => f.id === foodId);
-  return food && food.servings && food.servings[0] ? food.servings[0].grams : 100;
+export function saveDayTemplate(key) {
+  const day = peekDay(key);
+  load().dayTemplate = (day ? day.entries : []).map(e => ({ foodId: e.foodId, grams: e.grams }));
+  save();
+  return load().dayTemplate.length;
 }
+export function getDayTemplate() { return load().dayTemplate || []; }
+export function loadDayTemplate(key) { return addEntries(key, getDayTemplate()); }
+export function clearDayTemplate() { load().dayTemplate = []; save(); }
 
 // ============================================================================
-// LIFE PLANNER
+// Regeneration: Schlaf · Knie · Reha
 // ============================================================================
-export function weekdayOf(key) {
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(y, m - 1, d).getDay();
+export function setSleep(key, hours) {
+  getDay(key).sleep = hours === '' || hours == null ? null : Math.max(0, Math.min(14, Number(hours)));
+  save();
 }
+export function setKnee(key, score) {
+  const d = getDay(key);
+  d.knee = d.knee === score ? null : score; // nochmal tippen = zurücksetzen
+  save();
+}
+export function toggleReha(key) { const d = getDay(key); d.reha = !d.reha; save(); }
 
-function timeToMin(t) {
-  const [h, m] = (t || '00:00').split(':').map(Number);
-  return h * 60 + m;
+export function kneeHistory(key = todayKey(), days = 28) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const k = shiftDate(key, -i);
+    const d = peekDay(k);
+    out.push({ key: k, knee: d && d.knee != null ? d.knee : null, sleep: d && d.sleep != null ? d.sleep : null });
+  }
+  return out;
 }
-function minToTime(min) {
-  min = Math.max(0, Math.round(min));
-  const h = Math.floor(min / 60) % 24;
-  const m = min % 60;
-  return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
-}
-
-// --- Aufsteh-Zeit (Anker für den dynamischen Tagesplan) ---------------------
-export function getWake(key = todayKey()) {
-  const s = load();
-  const day = s.log[key];
-  if (day && day.wake) return { wake: day.wake, wakeTs: day.wakeTs || null };
+// Warnung, wenn das Knie heute stark schmerzt oder der Trend steigt
+export function kneeStatus(key = todayKey()) {
+  const hist = kneeHistory(key, 7).filter(x => x.knee != null);
+  const today = (peekDay(key) || {}).knee;
+  if (today != null && today >= 6) return { level: 'high', text: `Knie ${today}/10 – heute schonen: keine Sprints oder Sprünge, Reha zuerst.` };
+  if (hist.length >= 4) {
+    const recent = hist.slice(-3), older = hist.slice(0, -3);
+    const avg = a => a.reduce((x, y) => x + y.knee, 0) / a.length;
+    if (avg(recent) - avg(older) >= 1.5) return { level: 'rising', text: 'Dein Knie-Score steigt seit ein paar Tagen – Belastung etwas runter, Reha durchziehen.' };
+  }
   return null;
 }
-export function setWake(key = todayKey(), now = new Date()) {
-  const day = getDay(key);
-  day.wake = minToTime(now.getHours() * 60 + now.getMinutes());
-  day.wakeTs = Date.now();
-  save();
-  return day.wake;
-}
-export function clearWake(key = todayKey()) {
-  const day = getDay(key);
-  day.wake = null; day.wakeTs = null;
-  save();
-}
-// Dauer des Aufsteh-Rituals (ms)
-export const WAKE_RITUAL_MS = 30 * 60 * 1000;
-// Ritual vorzeitig beenden (Aufsteh-Zeit bleibt als Plan-Anker erhalten)
-export function endRitual(key = todayKey()) {
-  const day = getDay(key);
-  if (day.wakeTs) { day.wakeTs = Date.now() - WAKE_RITUAL_MS - 1000; save(); }
-}
-// Verbleibende Ritual-Sekunden (0 wenn vorbei / nicht gestartet)
-export function ritualRemaining(key = todayKey()) {
-  const w = getWake(key);
-  if (!w || !w.wakeTs) return 0;
-  const left = Math.ceil((w.wakeTs + WAKE_RITUAL_MS - Date.now()) / 1000);
-  return Math.max(0, left);
-}
 
-// Fixe Anker: externe/zeitgebundene Termine (Abendtraining, Kurse, Schlaf)
-function isFixedAnchor(b, mi) {
-  if (b.kind === 'sleep') return true;
-  if ((b.kind === 'gym' || b.kind === 'move') && mi >= 840) return true; // ab 14:00
-  return false;
-}
+// ============================================================================
+// Sport: Wochen-Split · Einheiten · Belastung · Schritte
+// ============================================================================
+export function getTrainingFor(key) { return load().training[weekdayOf(key)] || null; }
+export function setTrainingDay(weekday, plan) { load().training[weekday] = plan; save(); }
+export function sportType(id) { return SPORT_TYPES.find(t => t.id === id) || SPORT_TYPES[SPORT_TYPES.length - 1]; }
 
-// Legt den Plan ab der Aufsteh-Zeit neu: flexible Blöcke fließen & stauchen,
-// feste Anker (Basketball 19:00, Schlaf …) bleiben auf ihrer Uhrzeit.
-function reflowSchedule(blocks, wakeMin) {
-  const n = blocks.length;
-  if (!n) return blocks;
-  const m = blocks.map(b => timeToMin(b.time));
-  const dur = m.map((mi, i) => (i < n - 1 ? Math.max(5, m[i + 1] - mi) : 30));
-  const fixed = blocks.map((b, i) => isFixedAnchor(b, m[i]));
-  const outMin = new Array(n);
-  let buf = [];
-  let segStart = wakeMin;
-  const flush = (anchorMin) => {
-    const idealSum = buf.reduce((a, i) => a + dur[i], 0);
-    let scale = 1;
-    if (anchorMin != null && idealSum > 0) {
-      const avail = anchorMin - segStart;
-      if (idealSum > avail) scale = Math.max(0.4, avail / idealSum);
-    }
-    let c = segStart;
-    for (const i of buf) { outMin[i] = Math.round(c); c += dur[i] * scale; }
-    buf = [];
-    return c;
+export function addSession(key, { type, min, rpe, title, workoutId }) {
+  const d = getDay(key);
+  const session = {
+    id: 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
+    type, min: Math.round(Number(min) || 0), rpe: Math.round(Number(rpe) || 5),
+    title: title || sportType(type).label, ts: Date.now(),
   };
-  for (let i = 0; i < n; i++) {
-    if (fixed[i]) {
-      flush(m[i]);
-      outMin[i] = m[i];
-      segStart = m[i] + dur[i];
-    } else {
-      buf.push(i);
+  if (workoutId) session.workoutId = workoutId;
+  d.sessions.push(session);
+  save();
+  return session;
+}
+export function removeSession(key, id) {
+  const d = getDay(key);
+  d.sessions = d.sessions.filter(x => x.id !== id);
+  save();
+}
+export function sessionsFor(key) { const d = peekDay(key); return d && d.sessions ? d.sessions : []; }
+export const sessionLoad = (s) => (s.min || 0) * (s.rpe || 0); // Session-RPE (Foster)
+
+export function getSteps(key) { const d = peekDay(key); return d && d.steps ? d.steps : 0; }
+export function setSteps(key, n) { getDay(key).steps = Math.max(0, Math.round(Number(n) || 0)); save(); }
+
+export function dayLoad(key) { return sessionsFor(key).reduce((a, s) => a + sessionLoad(s), 0); }
+
+// Akut (7 Tage) vs. chronisch (Ø-Woche der letzten 28 Tage)
+export function trainingLoad(key = todayKey()) {
+  const s = load();
+  let acute = 0, chronic28 = 0, first = null;
+  for (let i = 0; i < 28; i++) {
+    const k = shiftDate(key, -i);
+    const l = dayLoad(k);
+    if (i < 7) acute += l;
+    chronic28 += l;
+  }
+  for (const k of Object.keys(s.log).sort()) {
+    if ((s.log[k].sessions || []).length) { first = k; break; }
+  }
+  const chronic = chronic28 / 4;
+  const ratio = chronic > 0 ? acute / chronic : null;
+  const building = !first || daysBetween(first, key) < 14;
+  let zone = 'none';
+  if (ratio != null && !building) {
+    zone = ratio < 0.8 ? 'low' : ratio <= 1.3 ? 'optimal' : ratio <= 1.5 ? 'elevated' : 'high';
+  }
+  const weeks = [];
+  for (let w = 3; w >= 0; w--) {
+    let sum = 0;
+    for (let i = 0; i < 7; i++) sum += dayLoad(shiftDate(key, -(w * 7 + i)));
+    weeks.push(sum);
+  }
+  return { acute, chronic: Math.round(chronic), ratio, zone, building, weeks };
+}
+
+// ============================================================================
+// Workout-Modus
+// ============================================================================
+function liftId() { return 'lift_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5); }
+
+// Letzte absolvierte Sätze einer Übung (aus der Workout-Historie)
+export function lastPerformance(exId) {
+  const ws = load().workouts;
+  for (let i = ws.length - 1; i >= 0; i--) {
+    const ex = ws[i].exercises.find(e => e.id === exId);
+    if (ex && ex.sets.length) return { date: ws[i].key, sets: ex.sets };
+  }
+  return null;
+}
+
+// Doppel-Progression: erst Wiederholungen bis zur Obergrenze, dann Gewicht rauf
+export function progressionFor(ex) {
+  const last = lastPerformance(ex.id);
+  if (ex.load === 'time') {
+    if (!last) return { s: ex.secs, note: `${ex.sets} × ${ex.secs} s halten.` };
+    const all = last.sets.every(x => (x.s || 0) >= ex.secs);
+    const best = Math.max(...last.sets.map(x => x.s || 0));
+    return all
+      ? { s: best + 5, note: `Letztes Mal alle Sätze ${best} s geschafft → heute ${best + 5} s.` }
+      : { s: ex.secs, note: `Ziel: ${ex.sets} × ${ex.secs} s sauber halten.` };
+  }
+  const [lo, hi] = ex.reps;
+  if (!last) {
+    return { w: ex.load === 'bw' ? 0 : null, r: lo, note: ex.load === 'bw'
+      ? `Erstes Mal: ${ex.sets} × ${lo}–${hi} Wdh mit Körpergewicht.`
+      : `Erstes Mal: Startgewicht wählen, mit dem ${hi} Wdh gerade so gehen.` };
+  }
+  const w = Math.max(...last.sets.map(x => x.w || 0));
+  const topSets = last.sets.filter(x => (x.w || 0) === w);
+  const minReps = Math.min(...topSets.map(x => x.r || 0));
+  const repStr = last.sets.map(x => x.r).join('/');
+  const wStr = ex.load === 'bw' ? (w ? `+${fmtKg(w)} kg` : 'Körpergewicht') : `${fmtKg(w)} kg`;
+  if (minReps >= hi && topSets.length >= ex.sets) {
+    if (ex.inc > 0) {
+      const nw = w + ex.inc;
+      const nStr = ex.load === 'bw' ? `+${fmtKg(nw)} kg` : `${fmtKg(nw)} kg`;
+      return { w: nw, r: lo, up: true, note: `Letztes Mal ${wStr} × ${repStr} – Obergrenze geschafft. Heute ${nStr} × ${lo}.` };
+    }
+    return { w, r: hi, up: true, note: `${wStr} × ${repStr} – Obergrenze erreicht. Zeit für eine schwerere Variante.` };
+  }
+  const target = Math.min(hi, minReps + 1);
+  return { w, r: target, note: `Letztes Mal ${wStr} × ${repStr}. Heute ${wStr}, Ziel ${target} Wdh in allen Sätzen.` };
+}
+export function fmtKg(x) { return String(Math.round(x * 10) / 10).replace('.', ','); }
+
+export function getActiveWorkout() { return load().activeWorkout; }
+
+export function startWorkout(key = todayKey(), weekday = weekdayOf(key)) {
+  const s = load();
+  const plan = s.training[weekday];
+  if (!plan || plan.kind !== 'gym') return null;
+  s.activeWorkout = {
+    id: 'w_' + Date.now().toString(36),
+    key, weekday, title: plan.title, startedAt: Date.now(), idx: 0,
+    exercises: plan.exercises.map(e => ({ ...structuredClone(e), target: progressionFor(e) })),
+    log: {}, restUntil: null, restFor: 0,
+  };
+  save();
+  return s.activeWorkout;
+}
+
+export function setWorkoutIndex(i) {
+  const w = load().activeWorkout;
+  if (!w) return;
+  w.idx = Math.max(0, Math.min(w.exercises.length - 1, i));
+  save();
+}
+
+// Satz speichern: { w, r } oder { s } bei Halte-Übungen
+export function logWorkoutSet(exId, set) {
+  const w = load().activeWorkout;
+  if (!w) return null;
+  const ex = w.exercises.find(e => e.id === exId);
+  if (!w.log[exId]) w.log[exId] = [];
+  w.log[exId].push({ ...set, ts: Date.now() });
+  w.restFor = ex ? ex.rest : 90;
+  w.restUntil = Date.now() + w.restFor * 1000;
+  save();
+  // Rekord? (nur Gewichts-/Körpergewichtsübungen)
+  if (ex && ex.load !== 'time') {
+    const score = liftScore({ weight: set.w || 0, reps: set.r || 0, bw: ex.load === 'bw' });
+    const prev = (load().lifts || []).filter(l => l.exId === exId || l.name === ex.n);
+    const prevBest = prev.reduce((m, l) => Math.max(m, liftScore(l)), 0);
+    const earlierToday = w.log[exId].slice(0, -1).reduce((m, x) => Math.max(m, liftScore({ weight: x.w || 0, reps: x.r || 0, bw: ex.load === 'bw' })), 0);
+    return { pr: prev.length > 0 && score > prevBest && score > earlierToday };
+  }
+  return { pr: false };
+}
+export function undoWorkoutSet(exId) {
+  const w = load().activeWorkout;
+  if (!w || !w.log[exId] || !w.log[exId].length) return;
+  w.log[exId].pop();
+  w.restUntil = null;
+  save();
+}
+export function skipRest() { const w = load().activeWorkout; if (w) { w.restUntil = null; save(); } }
+
+export function finishWorkout(rpe = 7) {
+  const s = load();
+  const w = s.activeWorkout;
+  if (!w) return null;
+  const endedAt = Date.now();
+  const min = Math.max(10, Math.round((endedAt - w.startedAt) / 60000));
+  const record = {
+    id: w.id, key: w.key, title: w.title, startedAt: w.startedAt, endedAt, rpe,
+    exercises: w.exercises.map(e => ({ id: e.id, n: e.n, load: e.load, muscles: e.muscles || [], sets: (w.log[e.id] || []).map(x => ({ w: x.w, r: x.r, s: x.s })) }))
+      .filter(e => e.sets.length),
+  };
+  s.workouts.push(record);
+  // Sätze ins Kraft-Log (PR-Historie)
+  for (const e of record.exercises) {
+    if (e.load === 'time') continue;
+    for (const st of e.sets) {
+      s.lifts.push({ id: liftId(), name: e.n, exId: e.id, weight: st.w || 0, reps: st.r || 0, date: w.key, bw: e.load === 'bw' });
     }
   }
-  if (buf.length) flush(null);
-  return blocks.map((b, i) => ({ ...b, time: minToTime(outMin[i]) }));
+  s.activeWorkout = null;
+  save();
+  addSession(w.key, { type: 'gym', min, rpe, title: w.title, workoutId: w.id });
+  return record;
 }
+export function cancelWorkout() { load().activeWorkout = null; save(); }
+export function getWorkouts() { return load().workouts || []; }
 
-// --- Tagesplan / Timeline ----------------------------------------------------
-export function getDaySchedule(key) {
-  const s = load();
-  const wd = weekdayOf(key);
-  const blocks = (s.schedule[wd] || []).slice();
-  blocks.sort((a, b) => timeToMin(a.time) - timeToMin(b.time));
-  if (!blocks.length) return blocks;
-  const day = s.log[key];
-  const wakeMin = (day && day.wake) ? timeToMin(day.wake) : timeToMin(blocks[0].time);
-  return reflowSchedule(blocks, wakeMin);
-}
-
-// Aktueller & nächster Block anhand der Uhrzeit
-export function currentBlock(key, now = new Date()) {
-  const blocks = getDaySchedule(key);
-  if (!blocks.length) return { current: null, next: null };
-  const nowMin = now.getHours() * 60 + now.getMinutes();
-  let current = null, next = null;
-  for (const b of blocks) {
-    if (timeToMin(b.time) <= nowMin) current = b;
-    else { next = b; break; }
+// Trainierte Sätze pro Muskelgruppe (letzte 7 Tage)
+export function muscleVolume(key = todayKey(), days = 7) {
+  const from = shiftDate(key, -(days - 1));
+  const vol = {};
+  for (const w of getWorkouts()) {
+    if (w.key < from || w.key > key) continue;
+    for (const e of w.exercises) for (const m of e.muscles || []) vol[m] = (vol[m] || 0) + e.sets.length;
   }
-  // Vor dem ersten Block: nächster ist der erste
-  if (!current) next = blocks[0];
-  return { current, next };
+  return vol;
 }
 
-// --- Checks (Blöcke, Steps, Habits) -----------------------------------------
-export function toggleCheck(key, checkKey) {
-  const day = getDay(key);
-  day.done[checkKey] = !day.done[checkKey];
+// ============================================================================
+// Kraft-Log (Rekorde)
+// ============================================================================
+export function e1rm(weight, reps) {
+  if (!weight) return 0;
+  if (reps <= 1) return weight;
+  return weight * (1 + reps / 30);
+}
+function bodyWeight() { return currentWeight() || load().profile.weight || 80; }
+export function liftScore(l) {
+  const w = l.bw ? bodyWeight() + (l.weight || 0) : (l.weight || 0);
+  return e1rm(w, l.reps || 0);
+}
+export function logLift(name, weight, reps, date = todayKey()) {
+  name = String(name || '').trim();
+  if (!name) return;
+  load().lifts.push({ id: liftId(), name, weight: Number(weight) || 0, reps: Number(reps) || 0, date });
   save();
 }
-export function isChecked(key, checkKey) {
-  const s = load();
-  const day = s.log[key];
-  return !!(day && day.done && day.done[checkKey]);
+export function deleteLift(id) { const s = load(); s.lifts = s.lifts.filter(l => l.id !== id); save(); }
+export function getLiftsFor(name) {
+  return (load().lifts || []).filter(l => l.name === name)
+    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+}
+export function liftExercises() {
+  const names = [...new Set(load().lifts.map(l => l.name))];
+  return names.map(name => {
+    const sets = getLiftsFor(name);
+    const last = sets[sets.length - 1];
+    let pr = null;
+    for (const x of sets) { const e = liftScore(x); if (!pr || e > pr.e1rm) pr = { ...x, e1rm: e }; }
+    return { name, sets, last, pr, bw: !!last.bw, count: sets.length };
+  }).sort((a, b) => b.last.date.localeCompare(a.last.date));
+}
+export function isLiftPR(id) {
+  const lift = load().lifts.find(l => l.id === id);
+  if (!lift) return false;
+  const e = liftScore(lift);
+  const earlier = getLiftsFor(lift.name).filter(x => x.date < lift.date || (x.date === lift.date && x.id < lift.id));
+  return e > 0 && earlier.every(x => liftScore(x) < e);
 }
 
-// --- Training ----------------------------------------------------------------
-export function getTrainingFor(key) {
-  const s = load();
-  return s.training[weekdayOf(key)] || null;
-}
-
-// --- Gewohnheiten & Streaks --------------------------------------------------
-export function getHabits() { return load().habits; }
-
-// Tages-Ring: anteiliger Fortschritt aus Tagesplan-Blöcken + Wasser + Supplements
 // ============================================================================
-// 3-Säulen-Wertung: Ernährung · Aktivität · Arbeit
+// Die 3 Säulen: Ernährung · Sport · Regeneration
 // ============================================================================
-export const STEP_GOAL = 10000;
-
-// Zählt ein Block als echte Aktivität? (Einheiten + Reha/Core/Calisthenics)
-export function isActivityBlock(b) {
-  if (!b) return false;
-  if (b.kind === 'gym') return true;                               // Gym, Basketball, Sprints, Spiele
-  if (b.id && (b.id.endsWith('-rc') || b.id.endsWith('-pm'))) return true; // Reha/Core + Calisthenics
-  if (b.kind === 'move' && /schwimm|yoga|sprint|mobil/i.test(b.title || '')) return true;
-  return false;
-}
-
-export function getSteps(key = todayKey()) {
-  const s = load(); const day = s.log[key];
-  return day && day.steps ? day.steps : 0;
-}
-export function setSteps(key, n) {
-  const day = getDay(key);
-  day.steps = Math.max(0, Math.round(Number(n) || 0));
-  save();
-}
-export function isWorkDone(key = todayKey()) {
-  const s = load(); const day = s.log[key];
-  return !!(day && day.workDone);
-}
-export function toggleWork(key = todayKey()) {
-  const day = getDay(key); day.workDone = !day.workDone; save();
-  return !!day.workDone;
-}
-export function isActivityManual(key = todayKey()) {
-  const s = load(); const day = s.log[key];
-  return !!(day && day.activityManual);
-}
-export function toggleActivity(key = todayKey()) {
-  const day = getDay(key); day.activityManual = !day.activityManual; save();
-  return !!day.activityManual;
-}
-
-// Mindestens eine Aktivität an diesem Tag? (manuell, Aktiv-Block oder Spiel abgehakt)
-export function activityDone(key = todayKey()) {
-  const s = load(); const day = s.log[key];
-  if (day && day.activityManual) return true;
-  const done = day && day.done ? day.done : {};
-  for (const b of getDaySchedule(key)) {
-    if (isActivityBlock(b) && done['block:' + b.id]) return true;
-  }
-  for (const k in done) { if (done[k] && k.startsWith('block:game')) return true; }
-  return false;
-}
-
-// Die 3 Säulen (je 0–100) + Gesamt
 export function dayPillars(key = todayKey()) {
   const s = load();
   const day = s.log[key];
-  // 🥗 Ernährung = Ø(Essentials-Abdeckung, Wasser, Supplements)
-  const ess = essentialsSummary(key).coverage;
-  const water = day ? (day.water || 0) : 0;
-  const wTarget = s.profile.water || 1;
-  const waterPct = Math.min(100, (water / wTarget) * 100);
-  const suppPct = s.supplements.length
-    ? (s.supplements.filter(x => day && day.supps && day.supps[x.id]).length / s.supplements.length) * 100
+  const p = s.profile;
+  const totals = computeTotals(key);
+
+  // Ernährung = Ø(Protein, Mikros, Wasser, Supplements)
+  const protein = Math.min(100, (totals.protein || 0) / (p.targets.protein || 1) * 100);
+  const micros = microSummary(key, totals).coverage;
+  const water = Math.min(100, ((day && day.water) || 0) / (p.water || 1) * 100);
+  const supps = s.supplements.length
+    ? s.supplements.filter(x => day && day.supps && day.supps[x.id]).length / s.supplements.length * 100
     : 100;
-  const nutrition = Math.round((ess + waterPct + suppPct) / 3);
+  const nutrition = Math.round((protein + micros + water + supps) / 4);
 
-  // 🏃 Aktivität = 100 wenn Einheit, sonst Schritte/10k
-  const steps = getSteps(key);
-  const act = activityDone(key);
-  const activity = act ? 100 : Math.min(100, Math.round((steps / STEP_GOAL) * 100));
+  // Sport = 100 % nach einer Einheit, sonst Schritte bis zum Minimum
+  const sessions = (day && day.sessions) || [];
+  const sessionDone = sessions.length > 0 || !!(day && day.activityManual);
+  const steps = (day && day.steps) || 0;
+  const sport = sessionDone ? 100 : Math.min(100, Math.round(steps / (p.stepGoal || 10000) * 100));
 
-  // 💼 Arbeit = Toggle
-  const work = isWorkDone(key) ? 100 : 0;
+  // Regeneration = Ø(Schlaf, Knie-Check, Reha)
+  const sleepH = day && day.sleep != null ? day.sleep : null;
+  const sleep = sleepH == null ? 0 : Math.min(100, sleepH / (p.sleepTarget || 8) * 100);
+  const knee = day && day.knee != null ? 100 : 0;
+  const reha = day && day.reha ? 100 : 0;
+  const regen = Math.round((sleep + knee + reha) / 3);
 
-  const overall = Math.round((nutrition + activity + work) / 3);
-  return { nutrition, activity, work, overall, steps, activityDone: act, ess: Math.round(ess), waterPct: Math.round(waterPct), suppPct: Math.round(suppPct) };
+  const legacy = key < (s._ringV3Since || '0000');
+  const overall = legacy ? Math.round((nutrition + sport) / 2) : Math.round((nutrition + sport + regen) / 3);
+  return {
+    nutrition, sport, regen, overall, legacy,
+    parts: {
+      protein: Math.round(protein), micros, water: Math.round(water), supps: Math.round(supps),
+      sessionDone, steps, sleep: Math.round(sleep), sleepH, knee: day ? day.knee : null, reha: !!(day && day.reha),
+    },
+    totals,
+  };
 }
+export function ringSummary(key) { const p = dayPillars(key); return { pct: p.overall, ...p }; }
+export function dayComplete(key) { return ringSummary(key).pct >= (load().profile.dayGoal || 80); }
 
-export function ringSummary(key) {
-  const p = dayPillars(key);
-  return { pct: p.overall, nutrition: p.nutrition, activity: p.activity, work: p.work };
-}
-
-// Wurde im Zeitfenster [fromMin, toMin) an diesem Tag etwas gegessen?
-export function entriesInWindow(key, fromMin, toMin) {
-  const s = load(); const day = s.log[key];
-  if (!day || !day.entries) return 0;
-  let c = 0;
-  for (const e of day.entries) {
-    if (!e.ts) continue;
-    const d = new Date(e.ts);
-    const m = d.getHours() * 60 + d.getMinutes();
-    if (m >= fromMin && m < toMin) c++;
-  }
-  return c;
-}
-
-// Gilt der Tag als "geschafft"? (Ring >= Tagesziel)
-export function dayComplete(key) {
-  const goal = load().profile.dayGoal || 80;
-  return ringSummary(key).pct >= goal;
-}
-
-// Aktuelle Streak: aufeinanderfolgende geschaffte Tage (heute offen = läuft weiter)
-export function currentStreak(todayKeyStr = todayKey()) {
-  let streak = 0, cursor = todayKeyStr, first = true;
-  while (true) {
+export function currentStreak(today = todayKey()) {
+  let streak = 0, cursor = today, first = true;
+  while (streak < 500) {
     if (dayComplete(cursor)) streak++;
-    else if (first) { /* heute noch offen – nicht abbrechen */ }
-    else break;
+    else if (!first) break;
     first = false;
     cursor = shiftDate(cursor, -1);
-    if (streak > 500) break;
   }
   return streak;
 }
-
-// Längste je erreichte Streak (aus dem Log)
 export function bestStreak() {
-  const s = load();
-  const keys = Object.keys(s.log).sort();
-  if (!keys.length) return 0;
+  const keys = Object.keys(load().log).sort();
   let best = 0, run = 0, prev = null;
   for (const k of keys) {
     if (!dayComplete(k)) { run = 0; prev = k; continue; }
-    if (prev && shiftDate(prev, 1) === k && run > 0) run++;
-    else run = 1;
-    if (run > best) best = run;
+    run = prev && shiftDate(prev, 1) === k && run > 0 ? run + 1 : 1;
+    best = Math.max(best, run);
     prev = k;
   }
   return best;
 }
-
-// Ring-Verlauf der letzten n Tage (für Kalender-Kette)
-export function ringHistory(n = 28, todayKeyStr = todayKey()) {
+export function ringHistory(n = 28, today = todayKey()) {
+  const goal = load().profile.dayGoal || 80;
   const out = [];
   for (let i = n - 1; i >= 0; i--) {
-    const k = shiftDate(todayKeyStr, -i);
-    const pct = ringSummary(k).pct;
-    out.push({ key: k, pct, complete: pct >= (load().profile.dayGoal || 80) });
+    const k = shiftDate(today, -i);
+    const r = ringSummary(k);
+    out.push({ key: k, pct: r.pct, nutrition: r.nutrition, sport: r.sport, regen: r.regen, complete: r.pct >= goal });
   }
   return out;
 }
+export function perfectDays() { return Object.keys(load().log).filter(k => ringSummary(k).pct >= 100).length; }
 
-// Anzahl 100%-Tage insgesamt
-export function perfectDays() {
+// ============================================================================
+// Coach: der eine sinnvollste nächste Schritt
+// action: { type: 'workout'|'session'|'food'|'water'|'supps'|'sleep'|'knee'|'reha'|'add', ... }
+// ============================================================================
+export function coachHints(key = todayKey(), now = new Date()) {
   const s = load();
-  return Object.keys(s.log).filter(k => ringSummary(k).pct >= 100).length;
-}
+  const h = now.getHours() + now.getMinutes() / 60;
+  const isToday = key === todayKey(now);
+  const p = dayPillars(key);
+  const day = s.log[key] || {};
+  const plan = getTrainingFor(key);
+  const hints = [];
+  const add = (prio, tone, icon, title, text, action) => hints.push({ prio, tone, icon, title, text, action });
 
-// --- Tagesabschluss / Review -------------------------------------------------
-export function setReview(key, data) {
-  const day = getDay(key);
-  day.review = Object.assign({}, day.review, data);
-  save();
-}
-export function getReview(key) {
-  const s = load();
-  return s.log[key] ? s.log[key].review : null;
-}
+  const ks = kneeStatus(key);
+  if (ks) add(100, 'warn', 'knee', 'Knie', ks.text, { type: 'reha' });
 
-// Tages-Ring: wie viele Must-Dos (Gewohnheiten) sind heute erledigt
-export function mustDoSummary(key) {
-  const s = load();
-  const day = s.log[key];
-  const done = day && day.done ? day.done : {};
-  const total = s.habits.length;
-  const doneN = s.habits.filter(h => done['habit:' + h.id]).length;
-  return { done: doneN, total, pct: total ? Math.round((doneN / total) * 100) : 0 };
-}
+  const load_ = trainingLoad(key);
+  if (load_.zone === 'high') add(90, 'warn', 'gauge', 'Belastung', 'Deine Trainingslast ist diese Woche deutlich über dem Schnitt – heute locker machen.', null);
 
-export function habitStreak(habitId, todayKeyStr = todayKey()) {
-  const s = load();
-  const ck = 'habit:' + habitId;
-  let streak = 0;
-  let cursor = todayKeyStr;
-  // Heute zählt nur, wenn erledigt; sonst wird heute übersprungen (noch offen).
-  let first = true;
-  while (true) {
-    const day = s.log[cursor];
-    const done = !!(day && day.done && day.done[ck]);
-    if (done) { streak++; }
-    else if (first) { /* heute noch offen: nicht abbrechen */ }
-    else { break; }
-    first = false;
-    cursor = shiftDate(cursor, -1);
-    if (streak > 400) break; // Sicherheitslimit
+  if (isToday && h < 12 && p.parts.sleepH == null) add(70, 'info', 'moon', 'Guten Morgen', 'Wie lange hast du geschlafen?', { type: 'sleep' });
+  if (isToday && h < 14 && p.parts.knee == null) add(68, 'info', 'knee', 'Knie-Check', 'Kurz einschätzen: wie fühlt sich das Knie heute an (0–10)?', { type: 'knee' });
+
+  const games = gamesForDate(key);
+  if (games.length && !p.parts.sessionDone) {
+    const g = games[0];
+    add(85, 'info', 'trophy', `Spieltag · ${g.time}`, `${g.home ? 'Heimspiel' : 'Auswärts'} gegen ${g.opponent}. 2–3 h vorher Carbs + etwas Protein, viel trinken.`, { type: 'session', sport: 'game' });
   }
-  return streak;
-}
-
-export function upsertHabit(habit) {
-  const s = load();
-  const i = s.habits.findIndex(h => h.id === habit.id);
-  if (i >= 0) s.habits[i] = habit; else s.habits.push(habit);
-  save();
-}
-export function deleteHabit(id) {
-  const s = load();
-  s.habits = s.habits.filter(h => h.id !== id);
-  save();
-}
-
-// --- Ernährungs-Autopilot ----------------------------------------------------
-export function getAutopilot() { return load().autopilot; }
-
-export function setAutopilot(list) {
-  const s = load();
-  s.autopilot = list;
-  save();
-}
-
-export function isAutopilotLoaded(key) {
-  const s = load();
-  return !!(s.log[key] && s.log[key].autopilotLoaded);
-}
-
-// Lädt den festen Tagesplan in den heutigen Log (einmalig).
-export function loadAutopilot(key) {
-  const s = load();
-  const day = getDay(key);
-  let added = 0;
-  for (const item of s.autopilot) {
-    const food = s.foods.find(f => f.id === item.foodId);
-    if (!food) continue;
-    day.entries.push({ foodId: item.foodId, grams: Number(item.grams) || 0, ts: Date.now() });
-    added++;
+  if (plan && plan.kind === 'gym' && !p.parts.sessionDone && h < 21) {
+    add(80, 'info', 'dumbbell', `Heute: ${plan.title}`, s.activeWorkout ? 'Dein Workout läuft noch – weitermachen?' : 'Workout starten – letzte Werte und Ziele sind schon vorbereitet.', { type: 'workout' });
   }
-  day.autopilotLoaded = true;
-  save();
-  return added;
-}
-
-// --- Tagesplan-Editor --------------------------------------------------------
-export function setScheduleDay(weekday, blocks) {
-  const s = load();
-  s.schedule[weekday] = blocks;
-  save();
-}
-export function setTrainingDay(weekday, training) {
-  const s = load();
-  s.training[weekday] = training;
-  save();
-}
-
-// --- Basketball-Spielplan ----------------------------------------------------
-export function getGames() { return load().games || []; }
-
-export function gamesForDate(key) {
-  return (load().games || []).filter(g => g.date === key);
-}
-
-export function nextGame(fromKey = todayKey()) {
-  const games = (load().games || []).slice().sort((a, b) =>
-    (a.date + a.time).localeCompare(b.date + b.time));
-  for (const g of games) {
-    if (g.date >= fromKey) {
-      const [y, m, d] = g.date.split('-').map(Number);
-      const [fy, fm, fd] = fromKey.split('-').map(Number);
-      const days = Math.round((Date.UTC(y, m - 1, d) - Date.UTC(fy, fm - 1, fd)) / 86400000);
-      return { game: g, days };
+  if (plan && plan.kind === 'sport' && !p.parts.sessionDone) {
+    const t = plan.time ? Number(plan.time.slice(0, 2)) : null;
+    if (t != null && h >= t - 4 && h < t) {
+      add(78, 'info', 'zap', `${plan.title} um ${plan.time}`, 'Jetzt Pre-Workout-Snack: Banane + Datteln oder Reiswaffeln, dazu 500 ml Wasser.', { type: 'add', text: '1 Banane, 2 Datteln' });
+    } else if (t == null || h >= t + 1.5) {
+      add(74, 'info', sportType(plan.sport).icon, plan.title, 'Einheit eintragen – Dauer und Intensität, das füllt deinen Sport-Ring.', { type: 'session', sport: plan.sport });
     }
   }
-  return null;
+
+  const protGap = Math.round((s.profile.targets.protein || 0) - (p.totals.protein || 0));
+  if (protGap > 35 && h >= 13) {
+    const evening = h >= 19;
+    const foodId = evening ? 'magerquark' : 'whey';
+    const f = foodById(foodId) || foodById('egg');
+    if (f) {
+      const g = servingGrams(f);
+      const pg = Math.round((f.per100.protein || 0) * g / 100);
+      add(60, 'info', 'apple', `Noch ${protGap} g Protein`, `${evening ? 'Für die Nacht: ' : ''}${f.name.replace(/\s*\(.*\)/, '')} (${g} g) bringt ${pg} g.`, { type: 'food', foodId: f.id, grams: g });
+    }
+  }
+  const expected = (s.profile.water || 3500) * Math.min(1, Math.max(0, (h - 7) / 14));
+  if (isToday && (day.water || 0) < expected - 600) {
+    const open = ((s.profile.water || 0) - (day.water || 0)) / 1000;
+    add(50, 'info', 'drop', 'Trinken', `Noch ${open.toFixed(1).replace('.', ',')} L offen – jetzt 500 ml.`, { type: 'water', ml: 500 });
+  }
+  const slot = h < 11 ? 'morgens' : h < 15 ? 'mittags' : h >= 19 ? 'abends' : null;
+  if (slot) {
+    const open = s.supplements.filter(x => x.time === slot && !(day.supps && day.supps[x.id]));
+    if (open.length) add(45, 'info', 'pill', `Supplements ${slot}`, open.map(x => x.name.replace(/\s*\(.*\)/, '')).join(', '), { type: 'supps' });
+  }
+  if (!p.parts.reha && h >= 10) add(42, 'info', 'knee', 'Knie-Reha', 'Wall Sit oder Spanish Squat · 5 × 45 s – 5 Minuten, die dein Knie stark machen.', { type: 'reha' });
+  if (isToday && h >= 21) {
+    const [wh, wm] = String(s.profile.wakeTime || '07:00').split(':').map(Number);
+    const bed = (wh * 60 + wm - (s.profile.sleepTarget || 8) * 60 + 1440) % 1440;
+    add(40, 'info', 'moon', 'Schlaf', `Für ${s.profile.sleepTarget || 8} h Schlaf: spätestens ${String(Math.floor(bed / 60)).padStart(2, '0')}:${String(bed % 60).padStart(2, '0')} ins Bett.`, null);
+  }
+  if (p.overall >= 100) add(200, 'good', 'trophy', 'Tag geschafft', 'Alle drei Ringe voll. Du hast dir den Schlaf verdient.', null);
+
+  return hints.sort((a, b) => b.prio - a.prio);
 }
 
+// ============================================================================
+// Basketball-Spielplan
+// ============================================================================
+export function getGames() { return load().games || []; }
+export function gamesForDate(key) { return getGames().filter(g => g.date === key); }
 export function upcomingGames(fromKey = todayKey(), limit = 6) {
-  return (load().games || [])
-    .filter(g => g.date >= fromKey)
-    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time))
-    .slice(0, limit);
+  return getGames().filter(g => g.date >= fromKey)
+    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)).slice(0, limit);
+}
+export function nextGame(fromKey = todayKey()) {
+  const g = upcomingGames(fromKey, 1)[0];
+  return g ? { game: g, days: daysBetween(fromKey, g.date) } : null;
 }
 
-// --- Körperanalyse / Messungen ----------------------------------------------
-export function getMeasurements() {
-  return (load().measurements || []).slice().sort((a, b) => a.date.localeCompare(b.date));
-}
+// ============================================================================
+// Körper: Messungen · Gewicht · Projektion · Badges · Fotos
+// ============================================================================
+export function getMeasurements() { return (load().measurements || []).slice().sort((a, b) => a.date.localeCompare(b.date)); }
 export function addMeasurement(entry) {
   const s = load();
-  if (!s.measurements) s.measurements = [];
-  // gleiches Datum überschreiben
   const i = s.measurements.findIndex(m => m.date === entry.date);
   if (i >= 0) s.measurements[i] = entry; else s.measurements.push(entry);
   save();
 }
-export function deleteMeasurement(date) {
-  const s = load();
-  s.measurements = (s.measurements || []).filter(m => m.date !== date);
-  save();
-}
-export function latestMeasurement() {
-  const m = getMeasurements();
-  return m.length ? m[m.length - 1] : null;
-}
-export function firstMeasurement() {
-  const m = getMeasurements();
-  return m.length ? m[0] : null;
-}
+export function deleteMeasurement(date) { const s = load(); s.measurements = s.measurements.filter(m => m.date !== date); save(); }
+export function latestMeasurement() { const m = getMeasurements(); return m.length ? m[m.length - 1] : null; }
+export function firstMeasurement() { const m = getMeasurements(); return m.length ? m[0] : null; }
 
-// --- 7-Tage-Gewichtsschnitt (aus Tages-Log) ---------------------------------
 export function weightTrend(key = todayKey(), windowDays = 7) {
-  const s = load();
   const vals = [];
   for (let i = 0; i < windowDays; i++) {
-    const d = shiftDate(key, -i);
-    const w = s.log[d] && s.log[d].weight;
-    if (w != null && !isNaN(w)) vals.push(w);
+    const d = peekDay(shiftDate(key, -i));
+    if (d && d.weight != null && !isNaN(d.weight)) vals.push(d.weight);
   }
-  if (!vals.length) return null;
-  return vals.reduce((a, b) => a + b, 0) / vals.length;
+  return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
 }
-
-// Aktuelles Gewicht: letzter Tageswert, sonst letzte Messung, sonst Profil
-function currentWeight() {
+export function currentWeight() {
   const s = load();
-  const keys = Object.keys(s.log).sort().reverse();
-  for (const k of keys) { if (s.log[k].weight != null) return s.log[k].weight; }
+  for (const k of Object.keys(s.log).sort().reverse()) if (s.log[k].weight != null) return s.log[k].weight;
   const m = latestMeasurement();
   if (m && m.values.weight != null) return m.values.weight;
   return s.profile.weight || null;
 }
-
-// --- Wochen-Check-in ---------------------------------------------------------
-export function weeklySummary(todayKeyStr = todayKey()) {
-  let ringSum = 0, days = 0, complete = 0;
-  for (let i = 0; i < 7; i++) {
-    const k = shiftDate(todayKeyStr, -i);
-    ringSum += ringSummary(k).pct; days++;
-    if (dayComplete(k)) complete++;
+export function weightSeries(key = todayKey(), days = 30) {
+  const out = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const k = shiftDate(key, -i);
+    const d = peekDay(k);
+    out.push({ key: k, w: d && d.weight != null ? d.weight : null });
   }
-  const avgRing = Math.round(ringSum / days);
-  const wNow = weightTrend(todayKeyStr, 7);
-  const wPrev = weightTrend(shiftDate(todayKeyStr, -7), 7);
-  const delta = (wNow != null && wPrev != null) ? +(wNow - wPrev).toFixed(1) : null;
-  return { avgRing, complete, days, wNow, wPrev, delta };
+  return out;
 }
 
-// --- Ziel-Projektion ---------------------------------------------------------
-export function goalProjection(todayKeyStr = todayKey()) {
+export function weeklySummary(today = todayKey()) {
+  let ringSum = 0, complete = 0, sessions = 0, loadSum = 0;
+  for (let i = 0; i < 7; i++) {
+    const k = shiftDate(today, -i);
+    ringSum += ringSummary(k).pct;
+    if (dayComplete(k)) complete++;
+    sessions += sessionsFor(k).length;
+    loadSum += dayLoad(k);
+  }
+  const wNow = weightTrend(today, 7), wPrev = weightTrend(shiftDate(today, -7), 7);
+  return {
+    avgRing: Math.round(ringSum / 7), complete, sessions, load: loadSum,
+    wNow, wPrev, delta: wNow != null && wPrev != null ? +(wNow - wPrev).toFixed(1) : null,
+  };
+}
+
+export function goalProjection(today = todayKey()) {
   const s = load();
   const cur = currentWeight();
   const target = s.profile.targetWeight;
   if (cur == null || !target) return { current: cur, target, rate: null };
-  // Rate aus 14-Tage-Vergleich der 7-Tage-Schnitte
-  const wNow = weightTrend(todayKeyStr, 7);
-  const wThen = weightTrend(shiftDate(todayKeyStr, -14), 7);
+  const wNow = weightTrend(today, 7), wThen = weightTrend(shiftDate(today, -14), 7);
   let rate = null, weeks = null, date = null;
   if (wNow != null && wThen != null) {
-    rate = +((wNow - wThen) / 2).toFixed(2); // kg pro Woche
+    rate = +((wNow - wThen) / 2).toFixed(2);
     if (rate < -0.05 && cur > target) {
       weeks = Math.ceil((cur - target) / -rate);
       const d = new Date(); d.setDate(d.getDate() + weeks * 7);
@@ -1211,203 +1067,48 @@ export function goalProjection(todayKeyStr = todayKey()) {
   }
   return { current: cur, target, rate, weeks, date };
 }
-
-// Adaptive Kalorien-Empfehlung
-export function kcalSuggestion(todayKeyStr = todayKey()) {
-  const proj = goalProjection(todayKeyStr);
-  const s = load();
-  const kcal = s.profile.targets.kcal;
-  if (proj.rate == null) return { text: 'Noch zu wenig Gewichtsdaten – wieg dich täglich, dann rechne ich den Trend.', delta: 0 };
-  if (proj.current <= proj.target) return { text: 'Zielgewicht erreicht – auf Erhalt umstellen? 🎉', delta: 0 };
-  if (proj.rate > -0.2) return { text: `Abnahme stockt (${proj.rate} kg/Wo). Vorschlag: ~150 kcal weniger → ${kcal - 150} kcal.`, delta: -150 };
-  if (proj.rate < -0.9) return { text: `Du verlierst schnell (${proj.rate} kg/Wo) – Muskelschutz! Vorschlag: ~100 kcal mehr → ${kcal + 100} kcal.`, delta: 100 };
-  return { text: `Perfektes Tempo (${proj.rate} kg/Wo). Weiter so – nichts ändern.`, delta: 0 };
+export function kcalSuggestion(today = todayKey()) {
+  const proj = goalProjection(today);
+  const kcal = load().profile.targets.kcal;
+  if (proj.rate == null) return 'Wieg dich ein paar Tage morgens, dann rechne ich deinen Trend.';
+  if (proj.current <= proj.target) return 'Zielgewicht erreicht – Zeit, auf Erhalt umzustellen.';
+  if (proj.rate > -0.2) return `Abnahme stockt (${String(proj.rate).replace('.', ',')} kg/Woche). Vorschlag: ~150 kcal weniger → ${kcal - 150} kcal.`;
+  if (proj.rate < -0.9) return `Du verlierst schnell (${String(proj.rate).replace('.', ',')} kg/Woche) – Muskeln schützen: ~100 kcal mehr → ${kcal + 100} kcal.`;
+  return `Perfektes Tempo (${String(proj.rate).replace('.', ',')} kg/Woche). Nichts ändern.`;
 }
 
-// --- Badges / Meilensteine ---------------------------------------------------
 export function getBadges() {
-  const streak = currentStreak();
-  const best = bestStreak();
-  const perfect = perfectDays();
-  const first = firstMeasurement();
-  const latest = latestMeasurement();
-  const cur = currentWeight();
-  const startW = first && first.values.weight != null ? first.values.weight : null;
-  const lostW = (startW != null && cur != null) ? startW - cur : 0;
-  const startBf = first && first.values.bodyfat != null ? first.values.bodyfat : null;
-  const curBf = latest && latest.values.bodyfat != null ? latest.values.bodyfat : null;
-  const lostBf = (startBf != null && curBf != null) ? startBf - curBf : 0;
   const s = load();
-  const loggedDays = Object.keys(s.log).length;
-
-  const B = (icon, label, earned, desc) => ({ icon, label, earned, desc });
+  const streak = currentStreak(), best = Math.max(bestStreak(), streak), perfect = perfectDays();
+  const first = firstMeasurement(), latest = latestMeasurement(), cur = currentWeight();
+  const startW = first && first.values.weight != null ? first.values.weight : null;
+  const lostW = startW != null && cur != null ? startW - cur : 0;
+  const lostBf = first && latest && first.values.bodyfat != null && latest.values.bodyfat != null ? first.values.bodyfat - latest.values.bodyfat : 0;
+  const workouts = s.workouts.length;
+  const kneeDays = Object.values(s.log).filter(d => d.knee != null).length;
+  const prs = s.lifts.filter(l => isLiftPR(l.id)).length;
+  const B = (icon, label, earned, desc) => ({ icon, label, earned: !!earned, desc });
   return [
-    B('🔥', '3 Tage Streak', best >= 3 || streak >= 3, 'Drei Tage in Folge dein Tagesziel.'),
-    B('🔥', '7 Tage Streak', best >= 7 || streak >= 7, 'Eine ganze Woche durchgezogen.'),
-    B('⚡', '14 Tage Streak', best >= 14 || streak >= 14, 'Zwei Wochen am Stück.'),
-    B('👑', '30 Tage Streak', best >= 30 || streak >= 30, 'Ein ganzer Monat Disziplin.'),
-    B('💯', '10 perfekte Tage', perfect >= 10, 'Zehn Tage mit 100%-Ring.'),
-    B('🏆', '50 perfekte Tage', perfect >= 50, 'Fünfzig perfekte Tage.'),
-    B('📅', '30 Tage dabei', loggedDays >= 30, 'Seit 30 Tagen am Tracken.'),
-    B('⚖️', '-2 kg', lostW >= 2, 'Zwei Kilo runter seit Start.'),
-    B('⚖️', '-5 kg', lostW >= 5, 'Fünf Kilo runter.'),
-    B('🎯', 'Zielgewicht', cur != null && s.profile.targetWeight && cur <= s.profile.targetWeight, 'Zielgewicht erreicht.'),
-    B('📉', '-2% KFA', lostBf >= 2, 'Zwei Prozent Körperfett weg.'),
-    B('🥗', '100% erreicht', perfect >= 1, 'Mindestens ein 100%-Tag.'),
+    B('flame', '3 Tage Streak', best >= 3, 'Drei Tage in Folge dein Tagesziel.'),
+    B('flame', '7 Tage Streak', best >= 7, 'Eine ganze Woche durchgezogen.'),
+    B('zap', '30 Tage Streak', best >= 30, 'Ein Monat Disziplin.'),
+    B('target', '100 % Tag', perfect >= 1, 'Alle drei Ringe an einem Tag voll.'),
+    B('trophy', '10 perfekte Tage', perfect >= 10, 'Zehn Tage mit vollem Ring.'),
+    B('dumbbell', 'Erstes Workout', workouts >= 1, 'Den Workout-Modus durchgezogen.'),
+    B('dumbbell', '20 Workouts', workouts >= 20, 'Zwanzig geloggte Workouts.'),
+    B('medal', '5 Rekorde', prs >= 5, 'Fünf persönliche Bestleistungen.'),
+    B('knee', 'Knie im Blick', kneeDays >= 14, '14 Tage Knie-Check gemacht.'),
+    B('scale', '−2 kg', lostW >= 2, 'Zwei Kilo runter seit Start.'),
+    B('scale', '−5 kg', lostW >= 5, 'Fünf Kilo runter.'),
+    B('chart', '−2 % Körperfett', lostBf >= 2, 'Zwei Prozent Körperfett weniger.'),
   ];
 }
 
-// --- Fortschritts-Fotos ------------------------------------------------------
-export function getProgressPhotos() {
-  return (load().photos || []).slice().sort((a, b) => a.date.localeCompare(b.date));
-}
+export function getProgressPhotos() { return (load().photos || []).slice().sort((a, b) => a.date.localeCompare(b.date)); }
 export function addProgressPhoto(url, date = todayKey()) {
   const s = load();
-  if (!s.photos) s.photos = [];
   const i = s.photos.findIndex(p => p.date === date);
   if (i >= 0) s.photos[i] = { date, url }; else s.photos.push({ date, url });
   save();
 }
-export function deleteProgressPhoto(date) {
-  const s = load();
-  s.photos = (s.photos || []).filter(p => p.date !== date);
-  save();
-}
-
-// --- Kraft-Log (Sätze & PRs) -------------------------------------------------
-// Geschätztes 1RM nach Epley
-export function e1rm(weight, reps) {
-  if (!weight) return 0;
-  if (reps <= 1) return weight;
-  return weight * (1 + reps / 30);
-}
-
-// Alle Übungsnamen aus dem Split (für Vorschläge), Kraft-relevant zuerst
-export function exerciseNames() {
-  const s = load();
-  const strength = new Set(['kraft', 'explosiv', 'funktion']);
-  const named = [];
-  Object.values(s.training || {}).forEach(day => {
-    (day.exercises || []).forEach(ex => {
-      const n = typeof ex === 'string' ? ex : ex.n;
-      const t = (typeof ex === 'string' ? '' : (ex.t || '')).toLowerCase();
-      if (!n) return;
-      if (!named.some(x => x.name === n)) named.push({ name: n, strength: strength.has(t) });
-    });
-  });
-  named.sort((a, b) => (b.strength - a.strength) || a.name.localeCompare(b.name));
-  return named.map(x => x.name);
-}
-
-export function logLift(name, weight, reps, date = todayKey()) {
-  name = String(name || '').trim();
-  if (!name) return;
-  const s = load();
-  if (!Array.isArray(s.lifts)) s.lifts = [];
-  s.lifts.push({
-    id: 'lift_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
-    name, weight: Number(weight) || 0, reps: Number(reps) || 0, date,
-  });
-  save();
-}
-
-export function deleteLift(id) {
-  const s = load();
-  s.lifts = (s.lifts || []).filter(l => l.id !== id);
-  save();
-}
-
-export function getLiftsFor(name) {
-  return (load().lifts || []).filter(l => l.name === name)
-    .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
-}
-
-// Übungen, zu denen es Einträge gibt – mit letztem Satz & PR
-export function liftExercises() {
-  const s = load();
-  const names = [...new Set((s.lifts || []).map(l => l.name))];
-  return names.map(name => {
-    const sets = getLiftsFor(name);
-    const last = sets[sets.length - 1];
-    let pr = null;
-    sets.forEach(x => { const e = e1rm(x.weight, x.reps); if (!pr || e > pr.e1rm) pr = { ...x, e1rm: e }; });
-    let maxW = null;
-    sets.forEach(x => { if (maxW == null || x.weight > maxW) maxW = x.weight; });
-    return { name, sets, last, pr, maxW, count: sets.length };
-  }).sort((a, b) => b.last.date.localeCompare(a.last.date) || b.last.id.localeCompare(a.last.id));
-}
-
-// Ist dieser Satz ein neuer e1RM-Rekord gegenüber allen früheren?
-export function isLiftPR(id) {
-  const all = load().lifts || [];
-  const lift = all.find(l => l.id === id);
-  if (!lift) return false;
-  const e = e1rm(lift.weight, lift.reps);
-  const earlier = getLiftsFor(lift.name).filter(x =>
-    x.date < lift.date || (x.date === lift.date && x.id < lift.id));
-  return earlier.every(x => e1rm(x.weight, x.reps) < e) && e > 0;
-}
-
-// --- Favoriten (1-Tap-Logging) ----------------------------------------------
-export function isFavorite(id) {
-  return (load().favorites || []).includes(id);
-}
-export function toggleFavorite(id) {
-  const s = load();
-  if (!Array.isArray(s.favorites)) s.favorites = [];
-  const i = s.favorites.indexOf(id);
-  if (i >= 0) s.favorites.splice(i, 1); else s.favorites.push(id);
-  save();
-  return s.favorites.includes(id);
-}
-export function getFavorites() {
-  const s = load();
-  return (s.favorites || [])
-    .map(id => s.foods.find(f => f.id === id))
-    .filter(Boolean)
-    .map(food => ({ food, grams: servingGrams(food) }));
-}
-
-// --- Standardtag (Vorlage der getrackten Essentials) ------------------------
-export function saveDayTemplate(key = todayKey()) {
-  const s = load();
-  const day = s.log[key];
-  const entries = (day && day.entries) ? day.entries : [];
-  s.dayTemplate = entries.map(e => ({ foodId: e.foodId, grams: e.grams }));
-  save();
-  return s.dayTemplate.length;
-}
-export function getDayTemplate() {
-  return load().dayTemplate || [];
-}
-export function hasDayTemplate() {
-  return (load().dayTemplate || []).length > 0;
-}
-export function loadDayTemplate(key = todayKey()) {
-  const s = load();
-  const tpl = s.dayTemplate || [];
-  const day = getDay(key);
-  let added = 0;
-  tpl.forEach(t => {
-    if (!s.foods.find(f => f.id === t.foodId)) return;
-    day.entries.push({ foodId: t.foodId, grams: Number(t.grams) || 0, ts: Date.now() });
-    added++;
-  });
-  save();
-  return added;
-}
-export function clearDayTemplate() {
-  const s = load();
-  s.dayTemplate = [];
-  save();
-}
-
-// --- Onboarding --------------------------------------------------------------
-export function isOnboarded() {
-  return !!load()._onboarded;
-}
-export function setOnboarded(v = true) {
-  const s = load();
-  s._onboarded = !!v;
-  save();
-}
+export function deleteProgressPhoto(date) { const s = load(); s.photos = s.photos.filter(p => p.date !== date); save(); }

@@ -1,0 +1,259 @@
+// ============================================================================
+// Sport – Wochen-Split, Einheiten, Belastung, Kraft-Log, Spielplan
+// ============================================================================
+import * as store from '../store.js';
+import { SPORT_TYPES, RPE_LABELS, WEEKDAYS, WEEKDAYS_LONG, MUSCLES } from '../data.js';
+import { icon } from '../icons.js';
+import { $, $$, esc, de, router, openSheet, closeSheet, sheetHead, toast, haptic } from '../ui.js';
+import { openWorkout } from './workout.js';
+import { afterChange } from './today.js';
+
+let selDay = null; // Datum-Key des gewählten Wochentags
+
+function weekKeys(today) {
+  const wd = store.weekdayOf(today);
+  const monday = store.shiftDate(today, -((wd + 6) % 7));
+  return Array.from({ length: 7 }, (_, i) => store.shiftDate(monday, i));
+}
+
+export function renderSport(app) {
+  const today = store.todayKey();
+  const key = selDay && weekKeys(today).includes(selDay) ? selDay : today;
+  const isToday = key === today;
+  const plan = store.getTrainingFor(key);
+  const sessions = store.sessionsFor(key);
+  const active = store.getActiveWorkout();
+
+  app.innerHTML = `<div class="view">
+    <div class="vh"><div><div class="vh-date">Woche ${isoWeek(store.dateOf(today))}</div><div class="vh-title">Sport</div></div>
+      <div class="vh-actions"><button class="icon-btn" data-go="setup" aria-label="Plan bearbeiten">${icon('sliders')}</button></div></div>
+
+    <div class="week">${weekKeys(today).map(k => {
+      const pl = store.getTrainingFor(k);
+      const done = store.sessionsFor(k).length > 0;
+      const cls = done ? 'done' : pl && pl.kind === 'gym' ? 'gym' : pl && pl.kind === 'sport' ? 'sport' : '';
+      const ic = done ? 'check' : pl && pl.kind === 'gym' ? 'dumbbell' : pl && pl.kind === 'sport' ? store.sportType(pl.sport).icon : 'moon';
+      return `<button class="wd ${k === key ? 'sel' : ''} ${k === today ? 'today' : ''}" data-day="${k}"><b>${WEEKDAYS[store.weekdayOf(k)]}</b><span class="dot ${cls}">${icon(ic)}</span></button>`;
+    }).join('')}</div>
+
+    ${planCard(key, plan, isToday, active, sessions)}
+    ${loadCard(today)}
+    ${muscleCard(today)}
+    ${liftsCard()}
+    ${gamesCard(today)}
+  </div>`;
+
+  $$('[data-go]', app).forEach(b => b.onclick = () => router.go(b.dataset.go));
+  $$('[data-day]', app).forEach(b => b.onclick = () => { selDay = b.dataset.day; router.rerender(); });
+  $$('[data-start]', app).forEach(b => b.onclick = () => openWorkout(key));
+  $$('[data-gympick]', app).forEach(b => b.onclick = () => openGymPicker(key));
+  $$('[data-log]', app).forEach(b => b.onclick = () => openSessionSheet(key, { sport: b.dataset.log || undefined }));
+  $$('[data-rmsess]', app).forEach(b => b.onclick = () => {
+    if (!confirm('Einheit löschen?')) return;
+    store.removeSession(key, b.dataset.rmsess); router.rerender();
+  });
+  $$('[data-lift]', app).forEach(b => b.onclick = () => openLiftHistory(b.dataset.lift));
+  const ml = $('#lift-manual', app);
+  if (ml) ml.onclick = () => openManualLift();
+}
+
+function isoWeek(d) {
+  const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = t.getUTCDay() || 7;
+  t.setUTCDate(t.getUTCDate() + 4 - dayNum);
+  const y0 = new Date(Date.UTC(t.getUTCFullYear(), 0, 1));
+  return Math.ceil(((t - y0) / 86400000 + 1) / 7);
+}
+
+function planCard(key, plan, isToday, active, sessions) {
+  const label = WEEKDAYS_LONG[store.weekdayOf(key)] + (isToday ? ' · heute' : '');
+  let body = '';
+  if (!plan || plan.kind === 'rest') {
+    body = `<div class="sess"><span class="ic">${icon('walk')}</span><div><div class="t1">${esc(plan ? plan.title : 'Frei')}</div><div class="t2">${esc(plan ? plan.focus : '')}</div></div></div>
+      <p class="hint" style="margin:12px 0 0">Ruhetag heißt nicht stillsitzen: ein Spaziergang oder 10.000 Schritte füllen deinen Sport-Ring.</p>`;
+  } else if (plan.kind === 'gym') {
+    body = `<div class="sess"><span class="ic">${icon('dumbbell')}</span><div><div class="t1">${esc(plan.title)}</div><div class="t2">${esc(plan.focus || '')} · ${plan.exercises.length} Übungen</div></div></div>
+      <div style="margin-top:10px">${plan.exercises.map((ex, i) => {
+        const tg = store.progressionFor(ex);
+        const sr = ex.load === 'time' ? `${ex.sets} × ${tg.s} s` : `${ex.sets} × ${ex.reps[0]}–${ex.reps[1]}`;
+        const w = ex.load === 'time' ? '' : tg.w != null && tg.w > 0 ? ` · ${ex.load === 'bw' ? '+' : ''}${store.fmtKg(tg.w)} kg` : '';
+        return `<div class="ex-prev"><span class="n">${i + 1}</span><span class="nm">${esc(ex.n)}${tg.up ? ` <span class="tag kraft" style="margin-left:4px">↑</span>` : ''}</span><span class="sr">${sr}${w}</span></div>`;
+      }).join('')}</div>`;
+  } else {
+    const st = store.sportType(plan.sport);
+    body = `<div class="sess"><span class="ic">${icon(st.icon)}</span><div><div class="t1">${esc(plan.title)}</div><div class="t2">${esc(plan.focus || '')}${plan.min ? ` · ca. ${plan.min} Min` : ''}</div></div></div>`;
+  }
+  const done = sessions.map(x => {
+    const st = store.sportType(x.type);
+    return `<div class="ex-prev"><span class="n" style="background:var(--spo);color:#fff">${icon('check')}</span>
+      <span class="nm">${esc(x.title)}<span class="sub" style="display:block">${x.min} Min · Intensität ${x.rpe}/10 · Last ${de(store.sessionLoad(x))}</span></span>
+      <button class="qa-rm" data-rmsess="${x.id}" aria-label="Löschen">${icon('trash')}</button></div>`;
+  }).join('');
+  let actions = '';
+  if (isToday && active) actions = `<button class="btn accent" data-start>${icon('play')}Workout fortsetzen</button>`;
+  else if (isToday && plan && plan.kind === 'gym' && !sessions.some(x => x.workoutId)) actions = `<button class="btn accent" data-start>${icon('play')}Workout starten</button>`;
+  actions += `<button class="btn ${actions ? 'ghost' : 'accent'}" data-log="${plan && plan.kind === 'sport' ? plan.sport : plan && plan.kind === 'rest' ? 'walk' : ''}">${icon('plus')}Einheit eintragen</button>`;
+  const otherGym = isToday && !active && !(plan && plan.kind === 'gym');
+  return `<div class="card">
+    <div class="ch"><span class="chip spo">${icon('calendar')}${esc(label)}</span>${sessions.length ? `<span class="done-tag" style="color:var(--spo)">Erledigt${icon('check')}</span>` : ''}</div>
+    ${body}
+    ${done ? `<div class="part-head" style="margin-top:14px"><b>Eingetragen</b></div>${done}` : ''}
+    <div class="sess-actions">${actions}</div>
+    ${otherGym ? `<button class="steps-line" data-gympick style="justify-content:center;font-weight:800;font-size:13.5px">${icon('dumbbell')}Spontan ins Gym? Workout wählen</button>` : ''}
+  </div>`;
+}
+
+// Gym-Workout an einem anderen Tag starten (z. B. statt Basketball)
+function openGymPicker(key) {
+  const tr = store.getState().training;
+  const gyms = Object.entries(tr).filter(([, d]) => d && d.kind === 'gym');
+  const sheet = openSheet(`${sheetHead('Welches Workout?', 'Dein Plan bleibt unverändert')}
+    ${gyms.map(([wd, d]) => `<button class="row" data-wd="${wd}" style="padding-left:0;padding-right:0"><span class="row-ic" style="background:var(--spo-t);color:var(--spo)">${icon('dumbbell')}</span>
+      <span class="row-main"><div class="row-t">${esc(d.title)}</div><div class="row-s">${esc(d.focus || '')} · ${d.exercises.length} Übungen · sonst ${WEEKDAYS_LONG[wd]}</div></span>${icon('play')}</button>`).join('')}`);
+  $$('[data-wd]', sheet).forEach(b => b.onclick = () => { closeSheet(); openWorkout(key, Number(b.dataset.wd)); });
+}
+
+function loadCard(today) {
+  const l = store.trainingLoad(today);
+  const zone = { low: ['eher wenig', 'Du kannst mehr – Belastung langsam steigern.'], optimal: ['optimal', 'Genau richtig: genug Reiz, geringes Verletzungsrisiko.'], elevated: ['erhöht', 'Mehr als sonst – aufs Knie hören, Schlaf priorisieren.'], high: ['sehr hoch', 'Deutlich über deinem Schnitt – 1–2 lockere Tage einbauen.'], none: [l.building ? 'baut sich auf' : 'keine Daten', l.building ? 'Nach ca. 2 Wochen mit Einträgen wird die Bewertung aussagekräftig.' : 'Trag deine Einheiten ein, dann siehst du hier deine Belastung.'] }[l.zone];
+  const pos = l.ratio != null && !l.building ? Math.min(100, Math.max(0, l.ratio / 2 * 100)) : null;
+  const max = Math.max(1, ...l.weeks);
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Belastung</span><span class="sub">Minuten × Intensität</span></div>
+    <div class="big-row">
+      <div><div class="mid num">${de(l.acute)}</div><div class="lbl" style="margin-top:5px">letzte 7 Tage</div></div>
+      <div style="text-align:right"><div class="mid num">${l.ratio != null ? de(l.ratio, 2) : '–'}</div><div class="lbl" style="margin-top:5px">Verhältnis zum Schnitt</div></div>
+    </div>
+    <div class="load"><div class="row-l"><span>Akut : chronisch</span><b class="${l.zone}">${zone[0]}</b></div>
+      <div class="gauge ${pos == null ? 'off' : ''}">${pos != null ? `<i style="left:${pos}%"></i>` : ''}</div></div>
+    <p class="hint" style="margin:10px 0 12px">${zone[1]}</p>
+    ${l.weeks.some(Boolean) ? `<svg class="chart" viewBox="0 0 300 92">
+      ${l.weeks.map((w, i) => {
+        const h = Math.round(w / max * 64);
+        const x = 12 + i * 72;
+        return `<rect x="${x}" y="${70 - h}" width="56" height="${Math.max(2, h)}" rx="8" fill="${i === 3 ? '#1D4ED8' : '#BFDBFE'}"/>
+          <text x="${x + 28}" y="86" text-anchor="middle">${i === 3 ? 'diese Woche' : `vor ${3 - i} Wo`}</text>
+          ${w ? `<text x="${x + 28}" y="${64 - h}" text-anchor="middle" style="fill:var(--ink-2)">${de(w)}</text>` : ''}`;
+      }).join('')}
+    </svg>` : ''}
+  </div>`;
+}
+
+function muscleCard(today) {
+  const vol = store.muscleVolume(today, 7);
+  const max = Math.max(10, ...Object.values(vol));
+  if (!Object.keys(vol).length) return '';
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Muskeln diese Woche</span><span class="sub">Sätze</span></div>
+    ${MUSCLES.map(m => `<div class="vol"><span>${m}</span><span class="bar"><i style="width:${(vol[m] || 0) / max * 100}%"></i></span><span>${vol[m] || 0}</span></div>`).join('')}
+    <p class="hint" style="margin:8px 0 0">Richtwert für Muskelaufbau: ca. 10–20 harte Sätze pro Muskel und Woche.</p>
+  </div>`;
+}
+
+function liftsCard() {
+  const ex = store.liftExercises().slice(0, 8);
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Rekorde</span><button class="more" id="lift-manual">${icon('plus')}Satz</button></div>
+    ${ex.length ? ex.map(e => `<button class="pr-row" data-lift="${esc(e.name)}">
+      <span class="badge-ico" style="background:var(--spo-t);color:var(--spo)">${icon('medal')}</span>
+      <span class="qa-main"><div class="qa-nm">${esc(e.name)}</div><div class="qa-am">zuletzt ${e.last.bw ? (e.last.weight ? '+' + store.fmtKg(e.last.weight) + ' kg' : 'Körpergewicht') : store.fmtKg(e.last.weight) + ' kg'} × ${e.last.reps}</div></span>
+      <span class="pv"><b class="num">${de(e.pr.e1rm)} kg</b><span>1RM GESCHÄTZT</span></span></button>`).join('')
+      : '<div class="empty">Deine Rekorde erscheinen hier automatisch, sobald du Workouts machst.</div>'}
+  </div>`;
+}
+
+function gamesCard(today) {
+  const games = store.upcomingGames(today, 5);
+  if (!games.length) return '';
+  const mon = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Spielplan TSC</span><span class="sub">nächste ${games.length}</span></div>
+    ${games.map(g => { const d = store.dateOf(g.date); const dd = store.daysBetween(today, g.date); return `
+      <div class="game"><div class="gd"><b>${d.getDate()}</b><span>${mon[d.getMonth()]}</span></div>
+        <div class="gm"><b>${g.home ? 'vs' : '@'} ${esc(g.opponent)}</b><span>${WEEKDAYS[d.getDay()]} · ${esc(g.time)} · ${dd === 0 ? 'heute' : dd === 1 ? 'morgen' : `in ${dd} Tagen`}</span></div>
+        <span class="ha ${g.home ? 'home' : ''}">${g.home ? 'HEIM' : 'AUSW.'}</span></div>`; }).join('')}
+  </div>`;
+}
+
+// --- Einheit eintragen (Dauer × Intensität) ---------------------------------
+export function openSessionSheet(key, { sport } = {}) {
+  const plan = store.getTrainingFor(key);
+  let type = sport || (plan && plan.kind === 'sport' ? plan.sport : plan && plan.kind === 'gym' ? 'gym' : 'walk');
+  if (store.gamesForDate(key).length && !sport) type = 'game';
+  let min = (plan && plan.kind === 'sport' && plan.sport === type && plan.min) || store.sportType(type).min;
+  let rpe = type === 'walk' ? 3 : 7;
+  const sheet = openSheet(`${sheetHead('Einheit eintragen', 'Dauer × Intensität = deine Trainingslast')}
+    <div class="sheet-body">
+      <div class="chips" id="ss-types">${SPORT_TYPES.map(t => `<button class="chipbtn" data-type="${t.id}">${icon(t.icon)}${t.label}</button>`).join('')}</div>
+      <div class="part-head" style="margin-top:16px"><b>Dauer</b></div>
+      <div class="stepper"><button class="st-btn" data-m="-5">${icon('minus')}</button><div class="st-val num" id="ss-min"></div><button class="st-btn" data-m="5">${icon('plus')}</button></div>
+      <div class="chips" style="margin-top:8px">${[30, 45, 60, 90, 120].map(m => `<button class="chipbtn" data-mset="${m}">${m} Min</button>`).join('')}</div>
+      <div class="part-head" style="margin-top:16px"><b>Wie hart war's?</b><span id="ss-load"></span></div>
+      <div class="rpe">${Array.from({ length: 10 }, (_, i) => `<button data-rpe="${i + 1}">${i + 1}</button>`).join('')}</div>
+      <div class="rpe-label" id="ss-rpel"></div>
+    </div>
+    <div class="sheet-foot"><button class="btn block" id="ss-save">${icon('check')}Eintragen</button></div>`, { tall: true });
+  const show = () => {
+    $$('[data-type]', sheet).forEach(b => b.classList.toggle('on', b.dataset.type === type));
+    $$('[data-rpe]', sheet).forEach(b => b.classList.toggle('on', Number(b.dataset.rpe) === rpe));
+    $$('[data-mset]', sheet).forEach(b => b.classList.toggle('on', Number(b.dataset.mset) === min));
+    $('#ss-min', sheet).innerHTML = `${min}<small>MINUTEN</small>`;
+    $('#ss-rpel', sheet).textContent = `${rpe}/10 · ${RPE_LABELS[rpe]}`;
+    $('#ss-load', sheet).textContent = `Last ${de(min * rpe)}`;
+  };
+  $$('[data-type]', sheet).forEach(b => b.onclick = () => { type = b.dataset.type; min = (plan && plan.kind === 'sport' && plan.sport === type && plan.min) || store.sportType(type).min; show(); });
+  $$('[data-m]', sheet).forEach(b => b.onclick = () => { min = Math.max(5, min + Number(b.dataset.m)); haptic(4); show(); });
+  $$('[data-mset]', sheet).forEach(b => b.onclick = () => { min = Number(b.dataset.mset); show(); });
+  $$('[data-rpe]', sheet).forEach(b => b.onclick = () => { rpe = Number(b.dataset.rpe); haptic(4); show(); });
+  $('#ss-save', sheet).onclick = () => {
+    const title = plan && plan.kind === 'sport' && plan.sport === type ? plan.title : store.sportType(type).label;
+    store.addSession(key, { type, min, rpe, title });
+    closeSheet(); haptic(12); afterChange(key);
+    toast(`${title} eingetragen · Last ${de(min * rpe)}`);
+  };
+  show();
+}
+
+// --- Schritte -----------------------------------------------------------------
+export function openStepsSheet(key) {
+  let n = store.getSteps(key);
+  const goal = store.getState().profile.stepGoal || 10000;
+  const sheet = openSheet(`${sheetHead('Schritte', `Minimum ${de(goal)} an Tagen ohne Einheit`)}
+    <p class="hint">Die Zahl findest du in der Health-App auf deinem iPhone. Einfach übertragen.</p>
+    <div class="field"><input type="number" inputmode="numeric" id="st-n" value="${n || ''}" placeholder="0" style="font-size:28px;font-weight:850;text-align:center"></div>
+    <div class="chips" style="justify-content:center">${[1000, 2500, 5000].map(x => `<button class="chipbtn" data-add="${x}">+${de(x)}</button>`).join('')}<button class="chipbtn" data-set="${goal}">${de(goal)}</button></div>
+    <div class="sheet-foot"><button class="btn block" id="st-save">${icon('check')}Speichern</button></div>`);
+  const inp = $('#st-n', sheet);
+  $$('[data-add]', sheet).forEach(b => b.onclick = () => { inp.value = (Number(inp.value) || 0) + Number(b.dataset.add); });
+  $$('[data-set]', sheet).forEach(b => b.onclick = () => { inp.value = b.dataset.set; });
+  $('#st-save', sheet).onclick = () => { store.setSteps(key, inp.value); closeSheet(); afterChange(key); toast('Schritte gespeichert'); };
+}
+
+// --- Kraft-Log ----------------------------------------------------------------
+function openLiftHistory(name) {
+  const sets = store.getLiftsFor(name).slice().reverse();
+  const sheet = openSheet(`${sheetHead(esc(name), `${sets.length} Sätze`)}
+    <div class="sheet-body">${sets.map(x => {
+      const d = store.dateOf(x.date);
+      const pr = store.isLiftPR(x.id);
+      return `<div class="entry"><span class="qa-main"><div class="qa-nm">${x.bw ? (x.weight ? '+' + store.fmtKg(x.weight) + ' kg' : 'Körpergewicht') : store.fmtKg(x.weight) + ' kg'} × ${x.reps}${pr ? ' <span class="tag kraft">Rekord</span>' : ''}</div>
+        <div class="qa-am">${d.getDate()}.${d.getMonth() + 1}. · 1RM ≈ ${de(store.liftScore(x))} kg</div></span>
+        <button class="qa-rm" data-del="${x.id}">${icon('trash')}</button></div>`;
+    }).join('')}</div>`, { tall: true });
+  $$('[data-del]', sheet).forEach(b => b.onclick = () => { store.deleteLift(b.dataset.del); closeSheet(); router.rerender(); });
+}
+
+function openManualLift() {
+  const names = [...new Set([...Object.values(store.getState().training).flatMap(d => (d.exercises || []).filter(e => e.load !== 'time').map(e => e.n)), ...store.liftExercises().map(x => x.name)])];
+  const sheet = openSheet(`${sheetHead('Satz eintragen', 'Ohne Workout-Modus')}
+    <label class="field"><span>Übung</span><input id="ml-n" list="ml-names" placeholder="z. B. Kreuzheben"><datalist id="ml-names">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
+    <div class="grid2"><label class="field"><span>Gewicht (kg)</span><input id="ml-w" type="number" inputmode="decimal"></label>
+      <label class="field"><span>Wiederholungen</span><input id="ml-r" type="number" inputmode="numeric"></label></div>
+    <div class="sheet-foot"><button class="btn block" id="ml-save">${icon('check')}Speichern</button></div>`);
+  $('#ml-save', sheet).onclick = () => {
+    const n = $('#ml-n', sheet).value.trim(), w = Number(String($('#ml-w', sheet).value).replace(',', '.')), r = Number($('#ml-r', sheet).value);
+    if (!n || !r) return toast('Übung und Wiederholungen eintragen');
+    store.logLift(n, w || 0, r);
+    closeSheet(); router.rerender(); toast('Satz gespeichert');
+  };
+}

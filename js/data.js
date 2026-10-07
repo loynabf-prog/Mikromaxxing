@@ -123,6 +123,9 @@ export const DEFAULT_PROFILE = {
   targetBodyfat: 15,  // Ziel-Körperfett % (Stretch: 12 %)
   photo: null,        // Profilfoto (Data-URL) für den Tages-Ring
   dayGoal: 80,        // ab wie viel % Ring gilt der Tag als "geschafft" (Streak)
+  sleepTarget: 8,     // Schlafziel in Stunden (Regeneration-Ring)
+  wakeTime: '07:00',  // übliche Aufstehzeit (für den Schlafenszeit-Hinweis)
+  stepGoal: 10000,    // Schritte-Minimum an Tagen ohne Einheit (Sport-Ring)
 };
 
 // --- Körperanalyse-Metriken (InBody & Co.) ----------------------------------
@@ -189,8 +192,8 @@ export const DEFAULT_SUPPLEMENTS = [
 ];
 
 export const SUPP_TIME_LABELS = {
-  morgens: '🌅 Morgens', mittags: '☀️ Mittags', pre: '🏋️ Ums Training',
-  abends: '🌙 Abends', egal: '🕐 Egal wann',
+  morgens: 'Morgens', mittags: 'Mittags', pre: 'Ums Training',
+  abends: 'Abends', egal: 'Egal wann',
 };
 export const SUPP_TIME_ORDER = ['morgens', 'mittags', 'pre', 'abends', 'egal'];
 
@@ -620,185 +623,75 @@ export const MEAL_SLOTS = [
 ];
 
 // ============================================================================
-// LIFE PLANNER – Tagesstruktur, Training, Gewohnheiten, Ernährungs-Autopilot
-// Alles nur Standard-Vorgaben; in der App (Tab „Setup") frei editierbar.
+// SPORT – Wochen-Split, Sportarten, Knie-Reha, Spielplan
 // Wochentag-Index: 0=So, 1=Mo, 2=Di, 3=Mi, 4=Do, 5=Fr, 6=Sa
 // ============================================================================
 export const WEEKDAYS = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
 export const WEEKDAYS_LONG = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
 
-// block: { id, time:'HH:MM', title, icon, kind, steps?:[...] }
-// kind: wake | routine | meal | work | gym | move | winddown | sleep | custom
-function blk(id, time, title, icon, kind, steps) {
-  const b = { id, time, title, icon, kind };
-  if (steps) b.steps = steps;
-  return b;
+// Übung im Workout-Modus.
+// load: 'weight' (Gewicht × Wdh) | 'bw' (Körpergewicht + Zusatzgewicht × Wdh) | 'time' (Sekunden halten)
+// reps: [min, max] = Wiederholungsbereich für die Doppel-Progression
+// rest: Pause in Sekunden · inc: Steigerung in kg, sobald alle Sätze die Obergrenze schaffen
+function ex(id, n, t, sets, reps, load, rest, inc, muscles) {
+  return { id, n, t, sets, reps, load, rest, inc, muscles };
+}
+function hold(id, n, t, sets, secs, rest, muscles) {
+  return { id, n, t, sets, secs, load: 'time', rest, inc: 0, muscles };
 }
 
-// --- Bausteine ---------------------------------------------------------------
-// Feste Tages-Mini-Blöcke (Reha/Core/Calisthenics) – füllen den Ring mit
-function rcMorning(px) {
-  return blk(`${px}-rc`, '07:40', 'Reha · Core · Calisthenics', '🦵', 'routine',
-    ['Knie-Reha: Wall Sit 5×30–45s', 'Core-Training', 'Calisthenics: Push/Pull/Dips (submaximal)']);
-}
-function caliEvening(px) {
-  return blk(`${px}-pm`, '21:00', 'Calisthenics abends', '🌙', 'routine',
-    ['Push/Pull/Dips (submaximal)']);
-}
+export const MUSCLES = ['Brust', 'Rücken', 'Schulter', 'Bizeps', 'Trizeps', 'Beine', 'Gesäß', 'Core'];
 
-// Tag mit FRÜH-Training (06:30) – Gym/Sprints/Skills
-function morningTrain(px, title, icon) {
-  return [
-    blk(`${px}-0`, '06:15', 'Aufstehen & Wasser', '💧', 'wake',
-      ['Großes Glas Wasser', 'KEIN Handy in der 1. Stunde', 'Tageslicht']),
-    blk(`${px}-1`, '06:30', title, icon, 'gym'),
-    blk(`${px}-2`, '08:00', 'Duschen & Frühstück', '🍳', 'meal',
-      ['Kalt abduschen', 'Morgen-Supplements', 'Protein + Carbs']),
-    rcMorning(px),
-    blk(`${px}-3`, '09:00', 'Deep Work – Block 1', '💻', 'work', ['Wichtigste Aufgabe zuerst', 'Handy weg']),
-    blk(`${px}-4`, '11:30', 'Pause & Bewegung', '🚶', 'move'),
-    blk(`${px}-5`, '12:30', 'Mittagessen', '🥗', 'meal'),
-    blk(`${px}-6`, '13:30', 'Deep Work – Block 2', '💻', 'work'),
-    blk(`${px}-7`, '19:00', 'Abendessen', '🍽️', 'meal'),
-    caliEvening(px),
-    blk(`${px}-8`, '21:30', 'Wind-down', '🌙', 'winddown', ['Handy in anderen Raum', 'Licht dimmen', 'Lesen']),
-    blk(`${px}-9`, '22:30', 'Schlafvorbereitung', '🛏️', 'routine', ['Abend-Supplements (Magnesium)', 'Kurz reflektieren', 'Für morgen vorbereiten']),
-    blk(`${px}-10`, '23:00', 'Schlafen', '😴', 'sleep'),
-  ];
-}
-
-// Tag ohne Früh-Training (Abend-Aktivität separat)
-function deskMorning(px) {
-  return [
-    blk(`${px}-0`, '06:30', 'Aufstehen & Wasser', '💧', 'wake', ['Großes Glas Wasser', 'KEIN Handy in der 1. Stunde', 'Tageslicht']),
-    blk(`${px}-1`, '06:45', 'Morgenroutine', '☀️', 'routine', ['Bett machen', 'Zähne putzen', 'Kalt duschen', 'Morgen-Supplements']),
-    blk(`${px}-2`, '07:15', 'Frühstück', '🍳', 'meal'),
-    rcMorning(px),
-    blk(`${px}-3`, '08:00', 'Deep Work – Block 1', '💻', 'work', ['Wichtigste Aufgabe zuerst', 'Handy weg']),
-    blk(`${px}-4`, '10:30', 'Pause & Bewegung', '🚶', 'move'),
-    blk(`${px}-5`, '12:30', 'Mittagessen', '🥗', 'meal'),
-    blk(`${px}-6`, '13:30', 'Deep Work – Block 2', '💻', 'work'),
-  ];
-}
-
-// Wochenplan (knie-sicher): Mo Gym A · Di Basketball · Mi Yoga · Do Gym B ·
-// Fr Skills/Mobility · Sa Sprints+Schwimmen · So Ruhe/Sauna. Spiele s. GAMES.
-export const DEFAULT_SCHEDULE = {
-  1: [...morningTrain('mo', 'Gym: Oberkörper A (frei)', '🏋️')],
-  2: [
-    ...deskMorning('di'),
-    blk('di-7', '17:30', 'Snack (Pre-Basketball)', '🍌', 'meal'),
-    blk('di-8', '19:00', 'Basketball (Training)', '🏀', 'gym'),
-    blk('di-9', '21:00', 'Duschen & Heimweg', '🚿', 'routine'),
-    blk('di-10', '21:30', 'Abendessen', '🍽️', 'meal'),
-    caliEvening('di'),
-    blk('di-11', '22:45', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Licht dimmen']),
-    blk('di-12', '23:15', 'Schlafen', '😴', 'sleep'),
-  ],
-  3: [
-    ...deskMorning('mi'),
-    blk('mi-7', '17:00', 'Schwimmen + Sauna (gelenkschonend)', '🏊', 'move'),
-    blk('mi-8', '19:00', 'Yoga', '🧘', 'move'),
-    blk('mi-9', '20:15', 'Abendessen', '🍽️', 'meal'),
-    caliEvening('mi'),
-    blk('mi-10', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Licht dimmen']),
-    blk('mi-11', '22:30', 'Schlafvorbereitung', '🛏️', 'routine', ['Abend-Supplements', 'Reflexion']),
-    blk('mi-12', '23:00', 'Schlafen', '😴', 'sleep'),
-  ],
-  4: [
-    ...deskMorning('do'),
-    blk('do-6b', '17:30', 'Snack (Pre-Basketball)', '🍌', 'meal'),
-    blk('do-7', '19:00', 'Basketball (Training)', '🏀', 'gym'),
-    blk('do-8', '21:15', 'Abendessen', '🍽️', 'meal'),
-    caliEvening('do'),
-    blk('do-9', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Licht dimmen']),
-    blk('do-10', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),
-    blk('do-11', '23:00', 'Schlafen', '😴', 'sleep'),
-  ],
-  5: [...morningTrain('fr', 'Gym: Oberkörper B + Kreuzheben leicht', '🏋️')],
-  6: [
-    blk('sa-0', '08:00', 'Aufstehen & Wasser', '💧', 'wake', ['Wasser', 'Tageslicht']),
-    blk('sa-1', '08:15', 'Morgenroutine', '☀️', 'routine', ['Zähne putzen', 'Kalt duschen', 'Morgen-Supplements']),
-    blk('sa-2', '09:00', 'Frühstück', '🍳', 'meal'),
-    rcMorning('sa'),
-    blk('sa-3', '10:30', 'Sprints + Schwimmen + Sauna', '⚡', 'gym'),
-    blk('sa-4', '12:30', 'Mittagessen', '🥗', 'meal'),
-    blk('sa-5', '14:00', 'Freizeit / Erholung', '🌿', 'move'),
-    blk('sa-6', '19:00', 'Abendessen', '🍽️', 'meal'),
-    caliEvening('sa'),
-    blk('sa-7', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Lesen']),
-    blk('sa-8', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),
-    blk('sa-9', '23:00', 'Schlafen', '😴', 'sleep'),
-  ],
-  0: [
-    blk('so-0', '08:00', 'Aufstehen & Wasser', '💧', 'wake', ['Wasser', 'Tageslicht']),
-    blk('so-1', '08:15', 'Morgenroutine', '☀️', 'routine', ['Zähne putzen', 'Morgen-Supplements']),
-    blk('so-2', '09:00', 'Frühstück', '🍳', 'meal'),
-    rcMorning('so'),
-    blk('so-3', '10:00', 'Wochenplanung', '🗓️', 'work', ['Woche planen', 'Spiele checken', 'Einkauf / Meal-Prep']),
-    blk('so-4', '12:30', 'Mittagessen', '🥗', 'meal'),
-    blk('so-5', '15:00', 'Lockere Mobility / Spaziergang', '🌿', 'move'),
-    blk('so-6', '19:00', 'Abendessen', '🍽️', 'meal'),
-    caliEvening('so'),
-    blk('so-7', '21:30', 'Wind-down', '🌙', 'winddown', ['Handy weg', 'Lesen']),
-    blk('so-8', '22:30', 'Schlafvorbereitung', '🛏️', 'routine'),
-    blk('so-9', '23:00', 'Schlafen', '😴', 'sleep'),
-  ],
+// kind: 'gym' (Workout-Modus mit Sätzen) | 'sport' (Einheit: Dauer × Intensität) | 'rest'
+// Knie-sicher: keine Sprünge, keine Beinstrecker-Maschine, Beine über Isometrie + Hinge.
+export const DEFAULT_TRAINING = {
+  1: { kind: 'gym', title: 'Oberkörper A', focus: 'Rücken · Brust · Arme', exercises: [
+    ex('pullup',        'Klimmzüge',                  'Kraft',    4, [5, 8],   'bw',     150, 2.5, ['Rücken', 'Bizeps']),
+    ex('incline_bench', 'Schrägbankdrücken',          'Kraft',    4, [6, 10],  'weight', 150, 2.5, ['Brust', 'Schulter', 'Trizeps']),
+    ex('inv_row',       'Inverted Rows',              'Funktion', 3, [8, 12],  'bw',      90, 0,   ['Rücken', 'Bizeps']),
+    ex('dips',          'Dips',                       'Kraft',    3, [6, 12],  'bw',     120, 2.5, ['Brust', 'Trizeps']),
+    ex('face_pull',     'Face Pulls',                 'Reha',     3, [12, 15], 'weight',  60, 2.5, ['Schulter']),
+    hold('plank',       'Hollow Hold / Plank',        'Core',     3, 40,                 60,      ['Core']),
+  ] },
+  2: { kind: 'sport', sport: 'basketball', title: 'Basketball · Training', focus: '19:00 – 21:00', time: '19:00', min: 120 },
+  3: { kind: 'sport', sport: 'swim', title: 'Schwimmen + Yoga', focus: 'Gelenkschonend · Mobility · Sauna', min: 75 },
+  4: { kind: 'sport', sport: 'basketball', title: 'Basketball · Training', focus: '19:00 – 21:00', time: '19:00', min: 120 },
+  5: { kind: 'gym', title: 'Oberkörper B + Hinge', focus: 'Rücken · Schulter · Hüfte (knieschonend)', exercises: [
+    ex('chinup',        'Chin-ups',                   'Kraft',    4, [5, 8],   'bw',     150, 2.5, ['Rücken', 'Bizeps']),
+    ex('ohp',           'Überkopfdrücken',            'Kraft',    4, [5, 8],   'weight', 150, 2.5, ['Schulter', 'Trizeps']),
+    ex('aus_pull',      'Australian Pull-ups',        'Funktion', 3, [8, 12],  'bw',      90, 0,   ['Rücken']),
+    ex('pushup',        'Liegestütz-Varianten',       'Kraft',    3, [10, 20], 'bw',      90, 0,   ['Brust', 'Trizeps']),
+    ex('rdl',           'Rumänisches Kreuzheben',     'Kraft',    3, [8, 10],  'weight', 150, 5,   ['Gesäß', 'Beine', 'Rücken']),
+    ex('calf',          'Langsame Wadenheben',        'Reha',     3, [12, 15], 'bw',      60, 0,   ['Beine']),
+  ] },
+  6: { kind: 'sport', sport: 'sprint', title: 'Sprints + Schwimmen', focus: '6–8 × 40–60 m submaximal · Sauna', min: 75 },
+  0: { kind: 'rest', title: 'Ruhetag', focus: 'Spaziergang · lockere Mobility' },
 };
 
-// --- Trainingsplan (pro Wochentag) ------------------------------------------
-// Knie-sicher: Oberkörper frei/Calisthenics, Hinge leicht, Sprints submaximal,
-// KEINE Sprünge/Beinstrecker bis schmerzfrei. Viel Abwechslung, freie Übungen.
-// Übungen als { n: Name, t: Zweck-Tag }
-// Tags: Kraft · Funktion · Ausdauer · Explosiv · Reha · Skill · Routine · Mobility
-export const DEFAULT_TRAINING = {
-  1: { title: 'Oberkörper A (frei)', focus: 'Rücken · Brust · Arme · Calisthenics',
-       exercises: [
-         { n: 'Klimmzüge (oder Negative/assistiert)', t: 'Kraft' },
-         { n: 'Schrägbankdrücken', t: 'Kraft' },
-         { n: 'Inverted Rows (horizontal an der Stange)', t: 'Funktion' },
-         { n: 'Dips (oder Bank-Dips)', t: 'Kraft' },
-         { n: 'Face Pulls / Band Pull-Aparts', t: 'Reha' },
-         { n: 'Knie-Isometrie: Wall Sit 5×30–45s', t: 'Reha' },
-       ] },
-  2: { title: 'Basketball (Training)', focus: '19:00 · einfach dabei sein', exercises: [] },
-  3: { title: 'Yoga & Mobility', focus: 'Beweglichkeit · Recovery',
-       exercises: [
-         { n: 'Yoga-Flow 45–60 min', t: 'Mobility' },
-         { n: 'Hüft-/Schulter-Mobility', t: 'Mobility' },
-         { n: 'Optional: Schwimmen 20–30 min', t: 'Ausdauer' },
-         { n: 'Sauna', t: 'Routine' },
-       ] },
-  4: { title: 'Aktiv (flexibel)', focus: 'Basketball ODER Gym B ODER Sprints',
-       exercises: [
-         { n: 'Wenn Basketball-Training: hin (Vorrang)', t: 'Skill' },
-         { n: 'Sonst A: Gym Oberkörper (frei)', t: 'Kraft' },
-         { n: 'Sonst B: Sprints 6–8× submaximal', t: 'Explosiv' },
-         { n: 'Hauptsache aktiv bleiben', t: 'Routine' },
-       ] },
-  5: { title: 'Oberkörper B + Kreuzheben', focus: 'Rücken · Schulter · Hinge (knieschonend)',
-       exercises: [
-         { n: 'Chin-ups / enge Klimmzüge', t: 'Kraft' },
-         { n: 'Überkopfdrücken (frei)', t: 'Kraft' },
-         { n: 'Australian Pull-ups / Inverted Rows', t: 'Funktion' },
-         { n: 'Dips oder Liegestütz-Varianten', t: 'Kraft' },
-         { n: 'Kreuzheben LEICHT (Technik, hüftdominant)', t: 'Kraft' },
-         { n: 'Langsame Wadenheben + Knie-Reha', t: 'Reha' },
-       ] },
-  6: { title: 'Sprints + Schwimmen + Sauna', focus: 'Speed · Wachstumshormon · Gelenke · Recovery',
-       exercises: [
-         { n: 'Dynamisches Warm-up + Steigerungen', t: 'Mobility' },
-         { n: 'Sprints 6–8× 40–60 m (submaximal → steigern)', t: 'Explosiv' },
-         { n: 'Lange Pausen (voll erholen)', t: 'Routine' },
-         { n: 'Schwimmen 20–30 min', t: 'Ausdauer' },
-         { n: 'Sauna nach dem Schwimmen', t: 'Routine' },
-       ] },
-  0: { title: 'Ruhetag', focus: 'Mobility · Spaziergang · Wochenplanung',
-       exercises: [
-         { n: 'Lockere Mobility', t: 'Mobility' },
-         { n: 'Spaziergang an der frischen Luft', t: 'Ausdauer' },
-         { n: 'Woche planen', t: 'Routine' },
-       ] },
+// Sportarten für „Einheit eintragen“ (Trainingsbelastung = Minuten × Intensität)
+export const SPORT_TYPES = [
+  { id: 'basketball', label: 'Basketball', icon: 'ball',     min: 120 },
+  { id: 'game',       label: 'Spiel',      icon: 'trophy',   min: 90 },
+  { id: 'gym',        label: 'Gym',        icon: 'dumbbell', min: 60 },
+  { id: 'swim',       label: 'Schwimmen',  icon: 'wave',     min: 45 },
+  { id: 'sprint',     label: 'Sprints',    icon: 'zap',      min: 45 },
+  { id: 'yoga',       label: 'Yoga',       icon: 'lotus',    min: 45 },
+  { id: 'run',        label: 'Laufen',     icon: 'run',      min: 40 },
+  { id: 'walk',       label: 'Spaziergang',icon: 'walk',     min: 45 },
+  { id: 'other',      label: 'Sonstiges',  icon: 'activity', min: 45 },
+];
+
+// Intensität (RPE 1–10, Borg CR10)
+export const RPE_LABELS = {
+  1: 'sehr leicht', 2: 'leicht', 3: 'locker', 4: 'moderat', 5: 'fordernd',
+  6: 'hart', 7: 'sehr hart', 8: 'richtig hart', 9: 'fast maximal', 10: 'maximal',
+};
+
+// Knie-Reha (Teil des Regeneration-Rings): isometrisch, täglich, schmerzarm
+export const KNEE_REHA = {
+  title: 'Knie-Reha',
+  detail: 'Wall Sit oder Spanish Squat · 5 × 45 s',
+  why: 'Isometrie senkt den Sehnenschmerz und macht die Patellasehne wieder belastbar.',
 };
 
 // --- Basketball-Spielplan (TSC Münster, LL07H 2026/27) ----------------------
@@ -826,46 +719,110 @@ export const GAMES = [
   { date: '2027-04-23', time: '20:30', opponent: 'S.C. Union Lüdinghausen',   home: true,  hall: 'Freiherr vom Stein Gymnasium (Hauptfeld)' },
 ];
 
-// --- Gewohnheiten (Streaks) --------------------------------------------------
-export const DEFAULT_HABITS = [
-  // Die täglichen Must-Dos (füllen den Ring auf 100%)
-  { id: 'h_train',      name: 'Training / Bewegung heute',      icon: '🏋️', why: 'Reiz zum Muskel-/Kraftaufbau – der Motor Richtung Athlet.' },
-  // Tägliches Athletik-/Reha-Volumen (unabhängig vom Trainingstag)
-  { id: 'h_knee',       name: 'Knie-Reha (Isometrie 5×30–45s)', icon: '🦵', why: 'Baut die Patellasehne wieder belastbar auf – schützt vor erneuter Verletzung.' },
-  { id: 'h_core',       name: 'Core-Training',                  icon: '🧱', why: 'Verbindet Ober- & Unterkörper, Basis für Calisthenics-Skills & Explosivität.' },
-  { id: 'h_cali_am',    name: 'Calisthenics morgens (Push/Pull/Dips)', icon: '🌅', why: 'Greasing the Groove: viel Volumen submaximal → stark an Klimmzug/Dip/Push-up.' },
-  { id: 'h_cali_pm',    name: 'Calisthenics abends (Push/Pull/Dips)',  icon: '🌙', why: 'Zweite Volumen-Dosis am Tag, ohne dich auszubrennen.' },
-  { id: 'h_weigh',      name: 'Morgens wiegen',                        icon: '⚖️', why: 'Täglich → 7-Tage-Schnitt zeigt den echten Fettabbau-Trend.' },
-  // Lifestyle (Wasser & Supplements haben eigene Widgets und zählen anteilig)
-  { id: 'h_nophone',   name: 'Kein Handy 1. Stunde',    icon: '📵', why: 'Startet den Tag fokussiert statt reaktiv – weniger Stress, mehr Kontrolle.' },
-  { id: 'h_sun',       name: 'Morgens Tageslicht',      icon: '☀️', why: 'Stellt den Schlaf-Wach-Rhythmus ein → mehr Energie tags, besserer Schlaf nachts.' },
-  { id: 'h_steps',     name: '10.000 Schritte',         icon: '👟', why: 'Grundlagen-Aktivität verbrennt Fett ohne Gelenkbelastung – gut fürs Knie.' },
-  { id: 'h_read',      name: '10 Min lesen',            icon: '📖', why: 'Diszipliniert den Geist & ersetzt sinnloses Scrollen.' },
-  { id: 'h_phoneoff',  name: 'Handy weg 22:30',         icon: '🌙', why: 'Blaulicht-Stopp → schnelleres Einschlafen & bessere Erholung/Testosteron.' },
-];
+// ============================================================================
+// SATZ-ERKENNUNG – Synonyme für das Eintragen per Text & Sprache
+// (Schreibweise egal: Groß/klein und Umlaute werden normalisiert.)
+// ============================================================================
+export const FOOD_ALIASES = {
+  egg: ['ei', 'eier', 'spiegelei', 'spiegeleier', 'rührei', 'rühreier', 'omelett', 'omelette', 'gekochtes ei', 'gekochte eier'],
+  magerquark: ['skyr', 'quark', 'magerquark', 'quark mager'],
+  whey: ['whey', 'shake', 'proteinshake', 'protein shake', 'eiweißshake', 'eiweiß shake', 'proteinpulver', 'eiweißpulver'],
+  chicken_breast: ['hähnchen', 'hähnchenbrust', 'hühnchen', 'hühnerbrust', 'hühnchenbrust', 'hähnchenfilet', 'chicken', 'hähnchenbrustfilet'],
+  beef_lean: ['hack', 'rinderhack', 'hackfleisch', 'gehacktes', 'rinderhackfleisch'],
+  beef_liver: ['leber', 'rinderleber'],
+  salmon: ['lachs', 'lachsfilet'],
+  sardines: ['sardinen', 'sardine'],
+  greek_yogurt: ['joghurt', 'jogurt', 'yoghurt', 'griechischer joghurt', 'griechischen joghurt'],
+  oats: ['haferflocken', 'hafer', 'porridge', 'haferbrei', 'oats', 'overnight oats'],
+  lentils: ['linsen'],
+  almonds: ['mandeln', 'mandel'],
+  pumpkin_seeds: ['kürbiskerne'],
+  walnuts: ['walnüsse', 'walnuss'],
+  tuna_can: ['thunfisch', 'thun'],
+  chicken_thigh: ['hähnchenschenkel', 'hühnerschenkel', 'hähnchenkeule'],
+  tofu: ['tofu'],
+  chickpeas: ['kichererbsen'],
+  kidney_beans: ['kidneybohnen', 'kidney bohnen'],
+  cheese_gouda: ['käse', 'gouda', 'emmentaler', 'scheibe käse', 'käsescheibe'],
+  milk: ['milch'],
+  kefir: ['kefir'],
+  cottage_cheese: ['hüttenkäse', 'körniger frischkäse', 'cottage cheese', 'cottage'],
+  kale: ['grünkohl'],
+  feldsalat: ['feldsalat', 'salat', 'blattsalat'],
+  peas: ['erbsen'],
+  brussels_sprouts: ['rosenkohl'],
+  beetroot: ['rote bete', 'rote beete'],
+  strawberries: ['erdbeeren', 'erdbeere'],
+  raspberries: ['himbeeren', 'himbeere'],
+  brazil_nuts: ['paranüsse', 'paranuss'],
+  sunflower_seeds: ['sonnenblumenkerne'],
+  chia: ['chia', 'chiasamen'],
+  flaxseed: ['leinsamen'],
+  watermelon: ['wassermelone', 'melone'],
+  feta: ['feta', 'schafskäse'],
+  hummus: ['hummus', 'humus'],
+  dates: ['datteln', 'dattel'],
+  rice_cakes: ['reiswaffeln', 'reiswaffel'],
+  dark_choc: ['schokolade', 'zartbitter', 'zartbitterschokolade', 'dunkle schokolade'],
+  cucumber: ['gurke', 'gurken'],
+  turkey_breast: ['pute', 'putenbrust', 'truthahn', 'putenfilet'],
+  pork_loin: ['schweinefilet', 'schwein'],
+  beef_steak: ['steak', 'rindersteak', 'rind', 'rinderfilet'],
+  shrimp: ['garnelen', 'shrimps', 'krabben', 'scampi'],
+  mackerel: ['makrele'],
+  tempeh: ['tempeh'],
+  edamame: ['edamame'],
+  harzer: ['harzer', 'harzer käse'],
+  mozzarella: ['mozzarella'],
+  brown_rice: ['vollkornreis', 'naturreis'],
+  white_rice: ['reis', 'basmati', 'basmatireis', 'jasminreis', 'sushireis'],
+  quinoa: ['quinoa'],
+  pasta_ww: ['nudeln', 'pasta', 'spaghetti', 'vollkornnudeln', 'penne'],
+  couscous: ['couscous'],
+  bulgur: ['bulgur'],
+  ww_bread: ['brot', 'vollkornbrot', 'toast', 'brötchen', 'scheibe brot', 'stulle'],
+  mango: ['mango'],
+  pineapple: ['ananas'],
+  grapes: ['trauben', 'weintrauben'],
+  pear: ['birne', 'birnen'],
+  zucchini: ['zucchini'],
+  mushrooms: ['pilze', 'champignons'],
+  asparagus: ['spargel'],
+  cauliflower: ['blumenkohl'],
+  green_beans: ['grüne bohnen', 'bohnen'],
+  peanuts: ['erdnüsse', 'erdnuss'],
+  popcorn: ['popcorn'],
+  olives: ['oliven', 'olive'],
+  protein_bar: ['proteinriegel', 'protein riegel', 'riegel', 'eiweißriegel'],
+  protein_pudding: ['proteinpudding', 'protein pudding', 'pudding'],
+  sweet_potato: ['süßkartoffel', 'süßkartoffeln', 'süsskartoffel'],
+  potato: ['kartoffel', 'kartoffeln'],
+  broccoli: ['brokkoli', 'broccoli'],
+  spinach: ['spinat'],
+  carrot: ['karotte', 'karotten', 'möhre', 'möhren'],
+  bell_pepper: ['paprika'],
+  tomato: ['tomate', 'tomaten'],
+  onion: ['zwiebel', 'zwiebeln'],
+  banana: ['banane', 'bananen'],
+  apple: ['apfel', 'äpfel'],
+  kiwi: ['kiwi', 'kiwis'],
+  blueberries: ['heidelbeeren', 'blaubeeren', 'beeren'],
+  orange: ['orange', 'orangen', 'apfelsine'],
+  avocado: ['avocado', 'avocados'],
+};
 
-// --- Ernährungs-Autopilot (fester Tages-Grundplan) --------------------------
-// Fokus: Mikros/Vitamine über Obst & Gemüse abdecken. Protein/Carb-Basics
-// fügst du selbst hinzu, sobald du sie in der Bibliothek angelegt hast.
-export const DEFAULT_AUTOPILOT = [
-  // Protein-Basis
-  { foodId: 'egg',           grams: 150 }, // 3 Eier – Protein, Biotin, B12, Selen
-  { foodId: 'magerquark',    grams: 250 }, // Protein, Calcium, B12
-  { foodId: 'whey',          grams: 30 },  // 1 Scoop – Protein
-  // Basis / Carbs
-  { foodId: 'oats',          grams: 50 },  // Carbs, Magnesium, Zink, B1, Ballaststoffe
-  // Gemüse
-  { foodId: 'bell_pepper',   grams: 120 }, // 1 Paprika – Vit C
-  { foodId: 'carrot',        grams: 65 },  // 1 Karotte – Vit A
-  { foodId: 'tomato',        grams: 100 }, // Kalium, Vit C/K
-  { foodId: 'broccoli',      grams: 100 }, // Vit C, K, Folat
-  // Obst
-  { foodId: 'kiwi',          grams: 150 }, // 2 Kiwi – Vit C, K, Folat
-  { foodId: 'blueberries',   grams: 80 },  // Antioxidantien
-  { foodId: 'orange',        grams: 130 }, // 1 Orange – Vit C, Folat
-  { foodId: 'banana',        grams: 120 }, // 1 Banane – Kalium, B6
-  // Fette / Nüsse
-  { foodId: 'pumpkin_seeds', grams: 20 },  // Magnesium, Zink, Eisen
-  { foodId: 'walnuts',       grams: 15 },  // Omega-3 (ALA), Kupfer
-  { foodId: 'avocado',       grams: 70 },  // ½ – gesunde Fette, Vit E/K, Kalium
-];
+export const SUPP_ALIASES = {
+  vitd3: ['d3', 'vitamin d', 'vitamin d3', 'vit d'],
+  vitk2: ['k2', 'vitamin k2', 'vitamin k'],
+  vitb12: ['b12', 'vitamin b12'],
+  iodine: ['jod', 'jodtablette'],
+  omega3: ['omega', 'omega 3', 'omega-3', 'fischöl', 'fischölkapseln'],
+  creatine: ['kreatin', 'creatin', 'creatine'],
+  betaalanin: ['beta alanin', 'betaalanin', 'beta-alanin'],
+  magnesium: ['magnesium'],
+  ashwagandha: ['ashwagandha', 'ashwa'],
+};
+
+// Getränke ohne relevante Kalorien (werden erkannt, aber nicht gezählt)
+export const ZERO_DRINKS = ['kaffee', 'espresso', 'tee', 'schwarztee', 'grüntee', 'grüner tee', 'kräutertee', 'cola zero', 'pepsi max', 'zero'];
+export const WATER_WORDS = ['wasser', 'sprudel', 'mineralwasser', 'leitungswasser', 'sprudelwasser'];

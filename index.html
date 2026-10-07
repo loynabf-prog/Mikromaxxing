@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#f3f5f9">
+  <meta name="theme-color" content="#F4F5F8">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Mikromaxxing">
   <title>Mikromaxxing</title>
   <link rel="manifest" href="./manifest.webmanifest">
@@ -14,31 +15,26 @@
   <link rel="stylesheet" href="./css/styles.css">
 </head>
 <body>
-  <header class="app-header">
-    <span class="brand">Mikro<span class="brand-accent">maxxing</span></span>
-  </header>
+  <main id="app"></main>
 
-  <main id="app"><!-- Views werden hier gerendert --></main>
+  <div class="qfade" id="qfade"></div>
+  <div class="qbar" id="qbar">
+    <button class="q-plus" id="q-plus" aria-label="Eintragen"></button>
+    <button class="q-text" id="q-text">Was hast du gegessen?</button>
+    <button class="q-mic" id="q-mic" aria-label="Per Sprache eintragen"></button>
+  </div>
 
-  <nav class="bottom-nav">
-    <button class="nav-btn active" data-tab="today">
-      <span class="nav-ico">◎</span><span class="nav-lbl">Heute</span>
-    </button>
-    <button class="nav-btn" data-tab="food">
-      <span class="nav-ico">🍽</span><span class="nav-lbl">Essen</span>
-    </button>
-    <button class="nav-btn" data-tab="training">
-      <span class="nav-ico">🏋</span><span class="nav-lbl">Training</span>
-    </button>
-    <button class="nav-btn" data-tab="trends">
-      <span class="nav-ico">📈</span><span class="nav-lbl">Fortschritt</span>
-    </button>
-    <button class="nav-btn" data-tab="profile">
-      <span class="nav-ico">⚙</span><span class="nav-lbl">Setup</span>
-    </button>
+  <nav class="nav" id="nav">
+    <div class="nav-inner">
+      <button class="nav-btn" data-tab="today"><span class="pill" data-ic="home"></span>Heute</button>
+      <button class="nav-btn" data-tab="food"><span class="pill" data-ic="apple"></span>Essen</button>
+      <button class="nav-btn" data-tab="sport"><span class="pill" data-ic="dumbbell"></span>Sport</button>
+      <button class="nav-btn" data-tab="progress"><span class="pill" data-ic="chart"></span>Fortschritt</button>
+    </div>
   </nav>
 
   <div id="modal-root"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
 
   <script type="module" src="./js/app.js"></script>
 </body>
