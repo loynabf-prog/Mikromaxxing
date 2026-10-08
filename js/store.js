@@ -225,7 +225,8 @@ export function addWater(key, ml) { const d = getDay(key); setWater(key, (d.wate
 export function toggleSupp(key, id) { const d = getDay(key); d.supps[id] = !d.supps[id]; save(); }
 export function setSupp(key, id, v) { getDay(key).supps[id] = !!v; save(); }
 export function setWeight(key, kg) {
-  getDay(key).weight = kg === '' || kg == null || isNaN(Number(kg)) ? null : Number(kg);
+  const v = Number(String(kg ?? '').replace(',', '.'));
+  getDay(key).weight = kg === '' || kg == null || isNaN(v) || v <= 0 ? null : v;
   save();
 }
 
@@ -239,9 +240,22 @@ export function upsertFood(food) {
   if (i >= 0) s.foods[i] = food; else s.foods.push(food);
   save();
 }
+export function foodByBarcode(code) { return code ? load().foods.find(f => f.barcode === String(code)) || null : null; }
+// Neues Lebensmittel (z. B. von Claude oder Open Food Facts) in die Bibliothek
+export function saveNewFood(food) {
+  const f = structuredClone(food);
+  if (!f.id || foodById(f.id)) f.id = newFoodId(f.name);
+  if (!f.per100) f.per100 = {};
+  for (const nut of NUTRIENTS) if (typeof f.per100[nut.key] !== 'number') f.per100[nut.key] = 0;
+  if (typeof f.whole !== 'boolean') f.whole = true;
+  f.addedAt = Date.now();
+  upsertFood(f);
+  return f;
+}
 export function deleteFood(id) { const s = load(); s.foods = s.foods.filter(f => f.id !== id); save(); }
 export function newFoodId(name) {
-  const base = 'u_' + String(name || 'food').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 24);
+  const base = 'u_' + String(name || 'food').toLowerCase().replace(/ä/g, 'ae').replace(/ö/g, 'oe').replace(/ü/g, 'ue').replace(/ß/g, 'ss')
+    .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 24);
   let id = base, i = 2;
   while (foodById(id)) id = base + '_' + i++;
   return id;
@@ -303,7 +317,7 @@ export function sourcesFor(key, nutKey, limit = 5) {
     map.set(food.id, cur);
   }
   for (const supp of s.supplements) {
-    if (day.supps[supp.id] && supp.nutrients && supp.nutrients[nutKey]) {
+    if (day.supps && day.supps[supp.id] && supp.nutrients && supp.nutrients[nutKey]) {
       map.set('supp:' + supp.id, { name: supp.name + ' (Supp)', amount: supp.nutrients[nutKey] });
     }
   }
@@ -556,7 +570,8 @@ export function clearDayTemplate() { load().dayTemplate = []; save(); }
 // Regeneration: Schlaf · Knie · Reha
 // ============================================================================
 export function setSleep(key, hours) {
-  getDay(key).sleep = hours === '' || hours == null ? null : Math.max(0, Math.min(14, Number(hours)));
+  const h = Number(String(hours ?? '').replace(',', '.'));
+  getDay(key).sleep = hours === '' || hours == null || isNaN(h) ? null : Math.max(0, Math.min(14, h));
   save();
 }
 export function setKnee(key, score) {

@@ -191,6 +191,8 @@ export const DEFAULT_SUPPLEMENTS = [
     takeWith: 'Abends zum Essen – für Stress-Abbau & besseren Schlaf.' },
 ];
 
+export const FOOD_CATS = ['Protein', 'Fisch', 'Milchprodukte', 'Getreide', 'Hülsenfrüchte', 'Obst', 'Gemüse', 'Nüsse & Samen', 'Snacks', 'Gerichte', 'Getränke', 'Sonstiges'];
+
 export const SUPP_TIME_LABELS = {
   morgens: 'Morgens', mittags: 'Mittags', pre: 'Ums Training',
   abends: 'Abends', egal: 'Egal wann',

@@ -277,21 +277,29 @@ export function openRehaSheet(key) {
     $('#rh-go', sheet).onclick = () => closeSheet();
     toast('Knie-Reha erledigt');
   };
+  // Zeitstempel-basiert: läuft auch korrekt weiter, wenn das iPhone kurz gesperrt war
+  let phaseEnd = 0, pausedLeft = null;
   const tick = () => {
-    left--;
-    if (left <= 0) {
+    left = Math.ceil((phaseEnd - Date.now()) / 1000);
+    while (left <= 0) {
       if (phase === 'hold') {
         if (set >= SETS) return finish();
-        phase = 'rest'; left = REST; beep(2, 660);
-      } else { phase = 'hold'; set++; left = HOLD; beep(1, 990); }
+        phase = 'rest'; phaseEnd += REST * 1000; beep(2, 660);
+      } else { phase = 'hold'; set++; phaseEnd += HOLD * 1000; beep(1, 990); }
+      left = Math.ceil((phaseEnd - Date.now()) / 1000);
     }
     show();
   };
   $('#rh-go', sheet).onclick = () => {
     unlockAudio();
+    if (timer) {
+      clearInterval(timer); timer = null; pausedLeft = left;
+      $('#rh-go', sheet).innerHTML = `${icon('play')}Weiter`; return;
+    }
     if (phase === 'idle') { phase = 'hold'; left = HOLD; beep(1, 990); }
-    if (timer) { clearInterval(timer); timer = null; $('#rh-go', sheet).innerHTML = `${icon('play')}Weiter`; return; }
-    timer = setInterval(tick, 1000);
+    phaseEnd = Date.now() + (pausedLeft != null ? pausedLeft : left) * 1000;
+    pausedLeft = null;
+    timer = setInterval(tick, 250);
     $('#rh-go', sheet).innerHTML = `${icon('pause')}Pause`;
     show();
   };

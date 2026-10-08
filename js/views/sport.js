@@ -244,10 +244,10 @@ function openLiftHistory(name) {
 }
 
 function openManualLift() {
-  const names = [...new Set([...Object.values(store.getState().training).flatMap(d => (d.exercises || []).filter(e => e.load !== 'time').map(e => e.n)), ...store.liftExercises().map(x => x.name)])];
+  const names = [...new Set([...Object.values(store.getState().training).flatMap(d => ((d && d.exercises) || []).filter(e => e.load !== 'time').map(e => e.n)), ...store.liftExercises().map(x => x.name)])];
   const sheet = openSheet(`${sheetHead('Satz eintragen', 'Ohne Workout-Modus')}
     <label class="field"><span>Übung</span><input id="ml-n" list="ml-names" placeholder="z. B. Kreuzheben"><datalist id="ml-names">${names.map(n => `<option value="${esc(n)}">`).join('')}</datalist></label>
-    <div class="grid2"><label class="field"><span>Gewicht (kg)</span><input id="ml-w" type="number" inputmode="decimal"></label>
+    <div class="grid2"><label class="field"><span>Gewicht (kg)</span><input id="ml-w" type="text" inputmode="decimal"></label>
       <label class="field"><span>Wiederholungen</span><input id="ml-r" type="number" inputmode="numeric"></label></div>
     <div class="sheet-foot"><button class="btn block" id="ml-save">${icon('check')}Speichern</button></div>`);
   $('#ml-save', sheet).onclick = () => {

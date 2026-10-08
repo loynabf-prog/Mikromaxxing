@@ -224,7 +224,7 @@ function renderFinish(w) {
     <div class="lbl" style="margin:18px 0 8px;color:#8B93A1">Wie hart war das Workout insgesamt?</div>
     <div class="rpe">${Array.from({ length: 10 }, (_, i) => `<button data-rpe="${i + 1}" class="${finishRpe === i + 1 ? 'on' : ''}">${i + 1}</button>`).join('')}</div>
     <div class="rpe-label" id="wo-rpel">${finishRpe}/10 · ${RPE_LABELS[finishRpe]}</div>
-    <button class="wo-go" id="wo-save" style="margin-top:18px" ${all.length ? '' : 'disabled style="opacity:.4;margin-top:18px"'}>${icon('check')}Workout speichern</button>
+    <button class="wo-go" id="wo-save" style="margin-top:18px;${all.length ? '' : 'opacity:.4'}" ${all.length ? '' : 'disabled'}>${icon('check')}Workout speichern</button>
   </div>`;
   $('#wo-back', el).onclick = () => { view = 'exercise'; render(); };
   $$('[data-rpe]', el).forEach(b => b.onclick = () => { finishRpe = Number(b.dataset.rpe); haptic(4); render(); });

@@ -2,12 +2,16 @@
 // Essen – Tagesbilanz, Vorschläge, Einträge, Mahlzeiten, Nährstoffe
 // ============================================================================
 import * as store from '../store.js';
-import { NUTRIENTS, NUTRIENT_BY_KEY, NUTRIENT_INFO, MEAL_SLOTS, SUPP_TIME_LABELS, SUPP_TIME_ORDER } from '../data.js';
+import { NUTRIENTS, NUTRIENT_BY_KEY, NUTRIENT_INFO, MEAL_SLOTS, SUPP_TIME_LABELS, SUPP_TIME_ORDER, FOOD_CATS } from '../data.js';
 import { amountLabel, defaultGrams, fold } from '../parser.js';
 import { icon } from '../icons.js';
 import { $, $$, esc, de, short, router, openSheet, closeSheet, sheetHead, toast, haptic, foodIcon, longDate } from '../ui.js';
 import { openQuickAdd } from './quickadd.js';
 import { afterChange } from './today.js';
+import { scanAndAdd, openProductSheet } from './scan.js';
+import { openAiSetup } from './aisetup.js';
+import { estimateFoods, hasAI } from '../lookup.js';
+import { NUTRIENT_DETAILS, HOW_LABELS, suppInfo, fatPartners, foodBenefits, foodSummary } from '../knowledge.js';
 
 let foodDate = null;       // null = heute
 let slotSel = null;        // gewählte Tageszeit für Vorschläge
@@ -17,6 +21,7 @@ let nutrOpen = false;
 export function getFoodDate() { return foodDate || store.todayKey(); }
 const LIMIT_KEYS = new Set(NUTRIENTS.filter(n => n.limit).map(n => n.key));
 
+const num = (v) => Number(String(v ?? '').trim().replace(',', '.'));
 function nut(food, grams, k) { return (food.per100[k] || 0) * grams / 100; }
 
 export function renderFood(app) {
@@ -52,8 +57,9 @@ export function renderFood(app) {
       <div class="macros"><span>Carbs <b>${de(tot.carbs)} g</b></span><span>Fett <b>${de(tot.fat)} g</b></span><span>Ballaststoffe <b>${de(tot.fiber)} g</b></span></div>
     </div>
 
-    <div class="grid2" style="margin-bottom:12px">
+    <div class="grid3 f-actions" style="margin-bottom:12px">
       <button class="btn" id="f-add">${icon('plus')}Eintragen</button>
+      <button class="btn white" id="f-scan">${icon('barcode')}Scannen</button>
       <button class="btn white" id="f-search">${icon('search')}Suchen</button>
     </div>
 
@@ -98,15 +104,15 @@ function suggestionCard(key) {
     <div class="slot-why">${esc(sl.why)}</div>
     ${sl.note ? `<div class="slot-note">${esc(sl.note)}</div>` : ''}
     ${foods.map(f => { const g = store.servingGrams(f); return `
-      <button class="sugg" data-quick="${f.id}" data-grams="${g}">
-        ${foodIcon(f)}<span class="qa-main"><b>${esc(short(f.name))}</b><div class="qa-am">${esc(amountLabel(f, g))} · ${de(nut(f, g, 'protein'))} g P · ${de(nut(f, g, 'kcal'))} kcal</div></span>
-        <span class="plus">${icon('plus')}</span>
-      </button>`; }).join('')}
+      <div class="sugg"><button class="sugg-main" data-info="${f.id}" data-grams="${g}">
+        ${foodIcon(f)}<span class="qa-main"><b>${esc(short(f.name))}</b><div class="qa-am">${esc(amountLabel(f, g))} · ${de(nut(f, g, 'protein'))} g P · ${de(nut(f, g, 'kcal'))} kcal</div></span></button>
+        <button class="plus" data-quick="${f.id}" data-grams="${g}" aria-label="Eintragen">${icon('plus')}</button>
+      </div>`; }).join('')}
     ${snacks.map(sn => `
-      <button class="sugg" data-snack="${sn.id}">
-        <span class="fico c-snack">${icon('spark')}</span><span class="qa-main"><b>${esc(sn.name)}</b><div class="qa-am">${esc(sn.why)}</div></span>
-        <span class="plus">${icon('plus')}</span>
-      </button>`).join('')}
+      <div class="sugg"><button class="sugg-main" data-snack="${sn.id}">
+        <span class="fico c-snack">${icon('spark')}</span><span class="qa-main"><b>${esc(sn.name)}</b><div class="qa-am">${esc(sn.why)}</div></span></button>
+        <button class="plus" data-snack="${sn.id}" aria-label="Eintragen">${icon('plus')}</button>
+      </div>`).join('')}
   </div>`;
 }
 
@@ -149,10 +155,10 @@ function suppRows(supps, day) {
     const g = supps.filter(x => (x.time || 'egal') === tk);
     if (!g.length) return '';
     return `<div class="part-head"><b>${SUPP_TIME_LABELS[tk]}</b>${g.some(x => !day.supps[x.id]) ? `<button class="sub" data-suppall="${tk}" style="color:var(--spo);font-weight:800">alle abhaken</button>` : ''}</div>
-      ${g.map(x => `<button class="supp-row ${day.supps[x.id] ? 'on' : ''}" data-supp="${x.id}">
+      ${g.map(x => { const inf = suppInfo(x); return `<div class="supp-line"><button class="supp-row ${day.supps[x.id] ? 'on' : ''}" data-supp="${x.id}">
         <span class="box">${day.supps[x.id] ? icon('check') : ''}</span>
-        <span style="flex:1"><b>${esc(x.name)}${x.dose ? `<em>${esc(x.dose)}</em>` : ''}</b>${x.takeWith ? `<span>${esc(x.takeWith)}</span>` : ''}</span>
-      </button>`).join('')}`;
+        <span style="flex:1"><b>${esc(x.name)}${x.dose ? `<em>${esc(x.dose)}</em>` : ''}</b><span>${esc(HOW_LABELS[inf.how] || '')}</span></span>
+      </button><button class="info-btn" data-suppinfo="${x.id}" aria-label="Infos zu ${esc(x.name)}">${icon('info')}</button></div>`; }).join('')}`;
   }).join('');
 }
 
@@ -163,10 +169,10 @@ function gapsCard(key) {
   return `<div class="card">
     <div class="ch"><span class="ch-title">Lücken schließen</span><span class="sub">größte zuerst</span></div>
     ${gaps.map(g => { const nt = NUTRIENT_BY_KEY[g.nutKey]; const f = g.best.food; return `
-      <button class="sugg" data-quick="${f.id}" data-grams="${g.best.grams}">
+      <div class="sugg"><button class="sugg-main" data-nutr="${g.nutKey}">
         ${foodIcon(f)}<span class="qa-main"><b>${esc(nt.label)} · ${g.currentPct}%</b>
-        <div class="qa-am">${esc(short(f.name))} ${esc(amountLabel(f, g.best.grams))} → ${g.best.addedPct >= 100 ? 'deckt den Tag' : '+' + g.best.addedPct + ' %'}</div></span>
-        <span class="plus">${icon('plus')}</span></button>`; }).join('')}
+        <div class="qa-am">${esc(short(f.name))} ${esc(amountLabel(f, g.best.grams))} → ${g.best.addedPct >= 100 ? 'deckt den Tag' : '+' + g.best.addedPct + ' %'}</div></span></button>
+        <button class="plus" data-quick="${f.id}" data-grams="${g.best.grams}" aria-label="Eintragen">${icon('plus')}</button></div>`; }).join('')}
   </div>`;
 }
 
@@ -205,9 +211,11 @@ function wire(app, key) {
   $('#d-next', app).onclick = () => { const n = store.shiftDate(key, 1); foodDate = n >= store.todayKey() ? null : n; router.rerender(); };
   $('#f-add', app).onclick = () => openQuickAdd({ key });
   $('#f-search', app).onclick = () => openFoodPicker({ key });
+  $('#f-scan', app).onclick = () => scanAndAdd({ title: 'Eintragen', onAdd: ({ foodId, grams }) => quickAdd(key, foodId, grams) });
   $('#f-lib', app).onclick = () => openLibrary();
   $$('[data-slot]', app).forEach(b => b.onclick = () => { slotSel = b.dataset.slot; router.rerender(); });
   $$('[data-quick]', app).forEach(b => b.onclick = () => quickAdd(key, b.dataset.quick, Number(b.dataset.grams)));
+  $$('[data-info]', app).forEach(b => b.onclick = () => openAmountSheet({ key, foodId: b.dataset.info, grams: Number(b.dataset.grams) }));
   $$('[data-snack]', app).forEach(b => b.onclick = () => {
     const before = store.getDay(key).entries.length;
     const sn = store.getSnacks().find(x => x.id === b.dataset.snack);
@@ -226,6 +234,7 @@ function wire(app, key) {
   $$('[data-editmeal]', app).forEach(b => b.onclick = (e) => { e.stopPropagation(); openMealEditor(b.dataset.editmeal); });
   ['#meal-new', '#meal-new2'].forEach(id => { const el = $(id, app); if (el) el.onclick = () => openMealEditor(null); });
   $$('[data-supp]', app).forEach(b => b.onclick = () => { store.toggleSupp(key, b.dataset.supp); haptic(5); afterChange(key); });
+  $$('[data-suppinfo]', app).forEach(b => b.onclick = () => openSuppInfo(key, b.dataset.suppinfo));
   $$('[data-suppall]', app).forEach(b => b.onclick = () => {
     for (const x of store.getState().supplements) if ((x.time || 'egal') === b.dataset.suppall) store.setSupp(key, x.id, true);
     haptic(); afterChange(key);
@@ -262,6 +271,7 @@ export function openAmountSheet({ key, index = null, foodId = null, grams = null
   const sheet = openSheet(`
     <div class="sheet-head"><div style="display:flex;gap:12px;align-items:center">${foodIcon(f)}<div><div class="sheet-title" style="font-size:20px">${esc(short(f.name))}</div><div class="sheet-sub">${esc(f.cat || '')}</div></div></div>
       <div style="display:flex;gap:8px"><button class="sheet-x" id="fav" aria-label="Favorit" style="color:${store.isFavorite(f.id) ? '#F59E0B' : 'var(--dim)'}">${icon('star')}</button><button class="sheet-x" data-close>${icon('x')}</button></div></div>
+    <div class="sheet-body">
     <div class="stepper"><button class="st-btn" data-d="-1">${icon('minus')}</button><div class="st-val num" id="av"></div><button class="st-btn" data-d="1">${icon('plus')}</button></div>
     <div class="chips" style="margin-top:10px">
       ${f.piece ? [1, 2, 3, 4].map(n => `<button class="chipbtn" data-g="${n * f.piece.g}">${n} ${esc(f.piece.name)}</button>`).join('') : ''}
@@ -269,6 +279,8 @@ export function openAmountSheet({ key, index = null, foodId = null, grams = null
       ${[50, 100, 150, 200].map(x => `<button class="chipbtn" data-g="${x}">${x} g</button>`).join('')}
     </div>
     <div class="grid3" id="anut" style="margin-top:14px"></div>
+    <div id="abring"></div>
+    </div>
     <div class="sheet-foot">
       ${entry ? `<button class="btn danger" id="del" style="flex:0 0 auto;width:56px">${icon('trash')}</button>` : ''}
       <button class="btn" id="ok">${icon('check')}${entry ? 'Speichern' : 'Hinzufügen'}</button>
@@ -277,7 +289,10 @@ export function openAmountSheet({ key, index = null, foodId = null, grams = null
     $('#av', sheet).innerHTML = f.piece ? `${de(g / f.piece.g, (g / f.piece.g) % 1 ? 1 : 0)}<small>${esc(f.piece.name.toUpperCase())} · ${g} G</small>` : `${g}<small>GRAMM</small>`;
     $('#anut', sheet).innerHTML = [['kcal', 'kcal', ''], ['protein', 'Protein', ' g'], ['carbs', 'Carbs', ' g']]
       .map(([k, l, u]) => `<div class="wk-tile"><div class="v num" style="font-size:18px">${de(nut(f, g, k))}${u}</div><div class="l">${l}</div></div>`).join('');
+    $('#abring', sheet).innerHTML = bringHtml(f, g);
+    $$('[data-bring]', sheet).forEach(b => b.onclick = () => openNutrientSheet(key, b.dataset.bring));
   };
+  sheet.classList.add('tall');
   $$('[data-d]', sheet).forEach(b => b.onclick = () => { g = Math.max(step, g + Number(b.dataset.d) * step); haptic(4); show(); });
   $$('[data-g]', sheet).forEach(b => b.onclick = () => { g = Number(b.dataset.g); show(); });
   $('#fav', sheet).onclick = () => { const on = store.toggleFavorite(f.id); $('#fav', sheet).style.color = on ? '#F59E0B' : 'var(--dim)'; toast(on ? 'Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt'); };
@@ -296,10 +311,24 @@ export function openAmountSheet({ key, index = null, foodId = null, grams = null
   show();
 }
 
+// Was bringt dir diese Menge? (Anteil am Tagesziel + wofür gut)
+function bringHtml(f, g) {
+  const t = store.getState().profile.targets;
+  const { good, warn } = foodBenefits(f, g, t);
+  const rows = good.map(b => `<button class="bring" data-bring="${b.key}"><span class="pct" style="color:var(--nut)">${Math.round(b.pct)} %</span>
+      <span class="bt"><b>${esc(b.label)}</b><span>${esc(b.short)}</span></span>${icon('chev')}</button>`)
+    .concat(warn.map(b => `<button class="bring" data-bring="${b.key}"><span class="pct" style="color:var(--warn)">${Math.round(b.pct)} %</span>
+      <span class="bt"><b>${esc(b.label)}</b><span>der Obergrenze – in Maßen</span></span>${icon('chev')}</button>`));
+  return `<div class="part-head" style="margin-top:16px"><b>Was bringt dir das</b><span class="sub">vom Tagesziel</span></div>
+    <p class="hint" style="margin:0 0 4px">${esc(foodSummary(f, g, t))}</p>
+    ${rows.length ? rows.join('') : '<div class="empty" style="padding:8px">Keine Vitamine oder Mineralstoffe in nennenswerter Menge.</div>'}`;
+}
+
 // --- Suche ------------------------------------------------------------------
 export function openFoodPicker({ key = getFoodDate(), onPick = null, title = 'Lebensmittel suchen' } = {}) {
   const sheet = openSheet(`${sheetHead(title)}
-    <div class="field" style="margin-bottom:8px"><input type="search" id="fp-q" placeholder="z. B. Skyr, Lachs, Haferflocken" autocomplete="off"></div>
+    <div class="fp-row"><div class="field" style="margin:0;flex:1"><input type="search" id="fp-q" placeholder="z. B. Skyr, Lachs, Haferflocken" autocomplete="off"></div>
+      <button class="icon-btn" id="fp-scan" aria-label="Barcode scannen">${icon('barcode')}</button></div>
     <div class="sheet-body" id="fp-list"></div>`, { tall: true });
   const listEl = $('#fp-list', sheet);
   const draw = () => {
@@ -312,26 +341,46 @@ export function openFoodPicker({ key = getFoodDate(), onPick = null, title = 'Le
       <button class="entry" data-pick="${f.id}">${foodIcon(f)}
         <span class="qa-main"><div class="qa-nm">${favs.has(f.id) ? '★ ' : ''}${esc(short(f.name))}</div><div class="qa-am">${esc(amountLabel(f, g))} · ${de(nut(f, g, 'protein'))} g P · ${de(nut(f, g, 'kcal'))} kcal</div></span>
         ${icon('chev')}</button>`; }).join('') +
-      `<button class="btn ghost block" id="fp-new" style="margin:12px 0">${icon('plus')}${q ? `„${esc($('#fp-q', sheet).value)}" neu anlegen` : 'Neues Lebensmittel anlegen'}</button>`;
+      (q ? `<button class="btn block" id="fp-ai" style="margin:12px 0 0">${icon('spark')}„${esc($('#fp-q', sheet).value.trim())}" mit Claude nachschlagen</button>` : '') +
+      `<button class="btn ghost block" id="fp-new" style="margin:10px 0 12px">${icon('plus')}${q ? 'Selbst anlegen' : 'Neues Lebensmittel anlegen'}</button>`;
     $$('[data-pick]', listEl).forEach(b => b.onclick = () => {
       if (onPick) { onPick(b.dataset.pick); closeSheet(); }
       else openAmountSheet({ key, foodId: b.dataset.pick, onDone: () => closeSheet() });
     });
+    const aiBtn = $('#fp-ai', listEl);
+    if (aiBtn) aiBtn.onclick = () => lookupAndPick($('#fp-q', sheet).value.trim(), aiBtn);
     $('#fp-new', listEl).onclick = () => {
       const raw = $('#fp-q', sheet).value.trim();
       openFoodEditor(null, { name: raw ? raw.charAt(0).toUpperCase() + raw.slice(1) : '', onSave: food => { draw(); if (onPick) { onPick(food.id); closeSheet(); } } });
     };
   };
+  // Ergebnis von Claude/Scan: Vorschau → übernehmen
+  const picked = ({ foodId, grams }) => {
+    if (onPick) { closeSheet(); onPick(foodId); return; }
+    closeSheet(); quickAdd(key, foodId, grams);
+  };
+  async function lookupAndPick(text, btn) {
+    if (!hasAI()) return openAiSetup(() => { if (hasAI()) draw(); });
+    btn.disabled = true; btn.innerHTML = `${icon('loader', 'spin')}Claude schätzt die Werte …`;
+    try {
+      const r = (await estimateFoods([text])).get(text);
+      if (!r || r.notFood) throw new Error('Das klingt nicht nach einem Lebensmittel');
+      openProductSheet({ food: r.food, ai: true, title: onPick ? 'Übernehmen' : 'Eintragen', onAdd: picked });
+    } catch (e) { toast(e.message || 'Nachschlagen fehlgeschlagen'); }
+    if (btn.isConnected) draw();
+  }
+  $('#fp-scan', sheet).onclick = () => scanAndAdd({ title: onPick ? 'Übernehmen' : 'Eintragen', onAdd: picked });
   $('#fp-q', sheet).oninput = draw;
+  $('#fp-q', sheet).onkeydown = (e) => { if (e.key === 'Enter') { const b = $('#fp-ai', sheet); if (b && !$('[data-pick]', sheet)) b.click(); } };
   draw();
   if (!onPick) setTimeout(() => $('#fp-q', sheet).focus(), 60);
 }
 
 // --- Lebensmittel anlegen/bearbeiten ----------------------------------------
-const CATS = ['Protein', 'Fisch', 'Milchprodukte', 'Getreide', 'Hülsenfrüchte', 'Obst', 'Gemüse', 'Nüsse & Samen', 'Snacks', 'Gerichte', 'Sonstiges'];
-export function openFoodEditor(foodId, { name = '', onSave } = {}) {
+const CATS = FOOD_CATS;
+export function openFoodEditor(foodId, { name = '', draft = null, onSave } = {}) {
   const existing = foodId ? store.foodById(foodId) : null;
-  const f = existing ? structuredClone(existing) : {
+  const f = existing ? structuredClone(existing) : draft ? { servings: [], aliases: [], ...structuredClone(draft), id: null, ...(name ? { name } : {}) } : {
     id: null, name, cat: 'Sonstiges', whole: true, servings: [], aliases: [],
     per100: Object.fromEntries(NUTRIENTS.map(n => [n.key, 0])),
   };
@@ -340,6 +389,7 @@ export function openFoodEditor(foodId, { name = '', onSave } = {}) {
   const micros = NUTRIENTS.filter(n => !main.includes(n.key));
   const sheet = openSheet(`${sheetHead(existing ? 'Lebensmittel bearbeiten' : 'Neues Lebensmittel', 'Werte pro 100 g – stehen auf jeder Packung')}
     <div class="sheet-body">
+      ${f.source === 'ai' ? `<div class="prod-src"><span>${icon('spark')}Von Claude geschätzt – passe an, was du besser weißt</span></div>` : f.source === 'off' ? `<div class="prod-src"><span>${icon('barcode')}Packungswerte von Open Food Facts${f.barcode ? ` · ${esc(f.barcode)}` : ''}</span></div>` : ''}
       <label class="field"><span>Name</span><input id="fe-name" value="${esc(f.name)}" placeholder="z. B. Döner Box"></label>
       <div class="grid2">
         <label class="field"><span>Kategorie</span><select id="fe-cat">${CATS.map(c => `<option ${c === f.cat ? 'selected' : ''}>${c}</option>`).join('')}</select></label>
@@ -347,14 +397,14 @@ export function openFoodEditor(foodId, { name = '', onSave } = {}) {
       </div>
       <div class="grid3" id="fe-piece" ${unit === 'piece' ? '' : 'style="display:none"'}>
         <label class="field"><span>Stück heißt</span><input id="fe-pn" value="${esc(f.piece ? f.piece.name : 'Stück')}"></label>
-        <label class="field"><span>g pro Stück</span><input id="fe-pg" type="number" inputmode="decimal" value="${f.piece ? f.piece.g : 100}"></label>
-        <label class="field"><span>Standard</span><input id="fe-pd" type="number" inputmode="decimal" value="${f.piece ? f.piece.def || 1 : 1}"></label>
+        <label class="field"><span>g pro Stück</span><input id="fe-pg" type="text" inputmode="decimal" value="${f.piece ? f.piece.g : 100}"></label>
+        <label class="field"><span>Standard</span><input id="fe-pd" type="text" inputmode="decimal" value="${f.piece ? f.piece.def || 1 : 1}"></label>
       </div>
-      <label class="field" id="fe-serv" ${unit === 'gram' ? '' : 'style="display:none"'}><span>Übliche Portion (g)</span><input id="fe-sg" type="number" inputmode="decimal" value="${f.servings && f.servings[0] ? f.servings[0].grams : 100}"></label>
-      <div class="grid3">${main.map(k => `<label class="field"><span>${NUTRIENT_BY_KEY[k].label} (${NUTRIENT_BY_KEY[k].unit})</span><input type="number" inputmode="decimal" step="any" data-n="${k}" value="${f.per100[k] || 0}"></label>`).join('')}</div>
+      <label class="field" id="fe-serv" ${unit === 'gram' ? '' : 'style="display:none"'}><span>Übliche Portion (g)</span><input id="fe-sg" type="text" inputmode="decimal" value="${f.servings && f.servings[0] ? f.servings[0].grams : 100}"></label>
+      <div class="grid3">${main.map(k => `<label class="field"><span>${NUTRIENT_BY_KEY[k].label} (${NUTRIENT_BY_KEY[k].unit})</span><input type="text" inputmode="decimal" step="any" data-n="${k}" value="${f.per100[k] || 0}"></label>`).join('')}</div>
       <label class="field"><span>Weitere Namen (für Eintragen per Satz, mit Komma)</span><input id="fe-al" value="${esc((f.aliases || []).join(', '))}" placeholder="z. B. döner, dönerbox"></label>
       <button class="more" id="fe-mtog" style="margin:4px 0 10px">Mikronährstoffe ${icon('chevD')}</button>
-      <div class="grid3" id="fe-micros" style="display:none">${micros.map(n => `<label class="field"><span>${esc(n.label)} (${n.unit})</span><input type="number" inputmode="decimal" step="any" data-n="${n.key}" value="${f.per100[n.key] || 0}"></label>`).join('')}</div>
+      <div class="grid3" id="fe-micros" style="display:none">${micros.map(n => `<label class="field"><span>${esc(n.label)} (${n.unit})</span><input type="text" inputmode="decimal" step="any" data-n="${n.key}" value="${f.per100[n.key] || 0}"></label>`).join('')}</div>
     </div>
     <div class="sheet-foot">
       ${existing ? `<button class="btn danger" id="fe-del" style="flex:0 0 auto;width:56px">${icon('trash')}</button>` : ''}
@@ -371,13 +421,13 @@ export function openFoodEditor(foodId, { name = '', onSave } = {}) {
     f.name = nm;
     f.cat = $('#fe-cat', sheet).value;
     if (!f.id) f.id = store.newFoodId(nm);
-    $$('[data-n]', sheet).forEach(inp => { f.per100[inp.dataset.n] = Number(String(inp.value).replace(',', '.')) || 0; });
+    $$('[data-n]', sheet).forEach(inp => { f.per100[inp.dataset.n] = num(inp.value) || 0; });
     if ($('#fe-unit', sheet).value === 'piece') {
-      f.piece = { name: $('#fe-pn', sheet).value.trim() || 'Stück', g: Number($('#fe-pg', sheet).value) || 100, def: Number($('#fe-pd', sheet).value) || 1 };
+      f.piece = { name: $('#fe-pn', sheet).value.trim() || 'Stück', g: num($('#fe-pg', sheet).value) || 100, def: num($('#fe-pd', sheet).value) || 1 };
       f.servings = [];
     } else {
       delete f.piece;
-      const sg = Number($('#fe-sg', sheet).value) || 100;
+      const sg = num($('#fe-sg', sheet).value) || 100;
       f.servings = [{ label: `Portion (${sg} g)`, grams: sg }];
     }
     f.aliases = $('#fe-al', sheet).value.split(',').map(x => x.trim()).filter(Boolean);
@@ -458,12 +508,51 @@ export function openSuppsSheet(key) {
     const day = store.getDay(key);
     $('#sp-body', sheet).innerHTML = suppRows(store.getState().supplements, day);
     $$('[data-supp]', sheet).forEach(b => b.onclick = () => { store.toggleSupp(key, b.dataset.supp); haptic(5); draw(); afterChange(key); });
+    $$('[data-suppinfo]', sheet).forEach(b => b.onclick = () => openSuppInfo(key, b.dataset.suppinfo, draw));
     $$('[data-suppall]', sheet).forEach(b => b.onclick = () => {
       for (const x of store.getState().supplements) if ((x.time || 'egal') === b.dataset.suppall) store.setSupp(key, x.id, true);
       haptic(); draw(); afterChange(key);
     });
   };
   draw();
+}
+
+// --- Supplement-Infos: wann, wie, wofür, was dazu essen --------------------------
+export function openSuppInfo(key, id, onChange) {
+  const sp = store.getState().supplements.find(x => x.id === id);
+  if (!sp) return;
+  const inf = suppInfo(sp);
+  const day = store.getDay(key);
+  const knRow = (ic, title, text) => text ? `<div class="kn-row"><span class="kn-ic">${icon(ic)}</span><div><b>${title}</b><p>${esc(text)}</p></div></div>` : '';
+  let partners = '';
+  if (inf.how === 'fat') {
+    const eatenFat = day.entries.map(e => ({ e, f: store.foodById(e.foodId) }))
+      .filter(x => x.f && (x.f.per100.fat || 0) * x.e.grams / 100 >= 6);
+    const list = fatPartners(store.getState().foods, store.servingGrams);
+    partners = `<div class="part-head"><b>Dazu passt</b><span class="sub">mind. 6 g Fett</span></div>
+      ${eatenFat.length ? `<p class="hint" style="margin:0 0 8px">Heute schon gegessen: ${eatenFat.slice(0, 3).map(x => `${esc(short(x.f.name))} (${new Date(x.e.ts).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })})`).join(', ')} – nimm's am besten dazu.</p>` : ''}
+      ${list.map(x => `<div class="sugg"><button class="sugg-main" data-info="${x.food.id}" data-grams="${x.grams}">${foodIcon(x.food)}<span class="qa-main"><b>${esc(short(x.food.name))}</b><div class="qa-am">${esc(amountLabel(x.food, x.grams))} · ${de(x.fat)} g Fett${x.o3 >= 300 ? ' · Omega-3' : ''}</div></span></button>
+        <button class="plus" data-quick="${x.food.id}" data-grams="${x.grams}" aria-label="Eintragen">${icon('plus')}</button></div>`).join('')}`;
+  }
+  const taken = () => !!store.getDay(key).supps[id];
+  const sheet = openSheet(`${sheetHead(esc(sp.name), esc(sp.dose || ''))}
+    <div class="sheet-body">
+      <div class="kn-tags"><span class="kn-tag time">${icon('clock')} ${esc(inf.when)}</span><span class="kn-tag ${inf.how}">${esc(HOW_LABELS[inf.how])}</span></div>
+      <div class="kn">
+        ${knRow('target', 'Wofür', inf.why)}
+        ${knRow('bulb', 'So nimmst du es', inf.tip)}
+        ${knRow('alert', 'Beachten', inf.avoid)}
+        ${!inf.known && !inf.why ? knRow('info', 'Eigene Infos', 'Trag unter Einstellungen → Supplements ein, wofür es ist und womit du es nimmst.') : ''}
+      </div>
+      ${partners}
+    </div>
+    <div class="sheet-foot"><button class="btn block" id="si-take"></button></div>`, { tall: inf.how === 'fat' });
+  const btn = $('#si-take', sheet);
+  const showBtn = () => { btn.className = `btn block ${taken() ? 'ghost' : ''}`; btn.innerHTML = taken() ? `${icon('check')}Genommen – rückgängig` : `${icon('check')}Als genommen abhaken`; };
+  btn.onclick = () => { store.toggleSupp(key, id); haptic(8); showBtn(); afterChange(key); if (onChange) onChange(); };
+  $$('[data-quick]', sheet).forEach(b => b.onclick = () => { closeSheet(); quickAdd(key, b.dataset.quick, Number(b.dataset.grams)); });
+  $$('[data-info]', sheet).forEach(b => b.onclick = () => openAmountSheet({ key, foodId: b.dataset.info, grams: Number(b.dataset.grams) }));
+  showBtn();
 }
 
 // --- Nährstoff-Detail: Nutzen, Woher, Wochen-Ø, beste Quellen -----------------
@@ -477,8 +566,16 @@ export function openNutrientSheet(key, nutKey) {
     .map(f => ({ f, g: store.servingGrams(f), amt: (f.per100[nutKey] || 0) * store.servingGrams(f) / 100 }))
     .sort((a, b) => b.amt - a.amt).slice(0, 4);
   const fmt = (x) => de(x, x < 10 ? 1 : 0);
-  const sheet = openSheet(`${sheetHead(esc(n.label), esc(NUTRIENT_INFO[nutKey] || ''))}
+  const kd = NUTRIENT_DETAILS[nutKey] || {};
+  const knRow = (ic, title, text) => text ? `<div class="kn-row"><span class="kn-ic">${icon(ic)}</span><div><b>${title}</b><p>${esc(text)}</p></div></div>` : '';
+  const sheet = openSheet(`${sheetHead(esc(n.label), esc(kd.short || NUTRIENT_INFO[nutKey] || ''))}
     <div class="sheet-body">
+      <div class="kn">
+        ${knRow('info', 'Wofür', kd.why || NUTRIENT_INFO[nutKey])}
+        ${knRow('dumbbell', 'Für dich', kd.you)}
+        ${knRow('alert', 'Zu wenig merkst du an', kd.low)}
+        ${knRow('bulb', 'Tipp', kd.tip)}
+      </div>
       <div class="grid2" style="margin-bottom:12px">
         <div class="wk-tile"><div class="v num">${t ? Math.round(v / t * 100) : 0}%</div><div class="l">heute · ${fmt(v)} / ${fmt(t)} ${n.unit}</div></div>
         <div class="wk-tile"><div class="v num">${t ? Math.round(wk.totals[nutKey] / t * 100) : 0}%</div><div class="l">Ø 7 Tage</div></div>
@@ -486,7 +583,8 @@ export function openNutrientSheet(key, nutKey) {
       <div class="part-head"><b>Woher heute</b></div>
       ${src.length ? src.map(x => `<div class="entry"><span class="qa-main"><div class="qa-nm">${esc(short(x.name))}</div></span><span class="qa-kv"><b class="num">${fmt(x.amount)} ${n.unit}</b><span>${x.pct}%</span></span></div>`).join('') : '<div class="empty">Heute noch nichts davon.</div>'}
       <div class="part-head"><b>Beste Quellen</b></div>
-      ${best.map(x => `<button class="sugg" data-q="${x.f.id}" data-g="${x.g}">${foodIcon(x.f)}<span class="qa-main"><b>${esc(short(x.f.name))}</b><div class="qa-am">${esc(amountLabel(x.f, x.g))} → ${fmt(x.amt)} ${n.unit}${t ? ` (${Math.round(x.amt / t * 100)}%)` : ''}</div></span><span class="plus">${icon('plus')}</span></button>`).join('')}
+      ${best.map(x => `<div class="sugg"><button class="sugg-main" data-fi="${x.f.id}" data-g="${x.g}">${foodIcon(x.f)}<span class="qa-main"><b>${esc(short(x.f.name))}</b><div class="qa-am">${esc(amountLabel(x.f, x.g))} → ${fmt(x.amt)} ${n.unit}${t ? ` (${Math.round(x.amt / t * 100)}%)` : ''}</div></span></button><button class="plus" data-q="${x.f.id}" data-g="${x.g}" aria-label="Eintragen">${icon('plus')}</button></div>`).join('')}
     </div>`, { tall: true });
   $$('[data-q]', sheet).forEach(b => b.onclick = () => { closeSheet(); quickAdd(key, b.dataset.q, Number(b.dataset.g)); });
+  $$('[data-fi]', sheet).forEach(b => b.onclick = () => openAmountSheet({ key, foodId: b.dataset.fi, grams: Number(b.dataset.g) }));
 }

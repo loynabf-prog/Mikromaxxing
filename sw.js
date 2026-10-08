@@ -1,5 +1,5 @@
 // Mikromaxxing – Service Worker (Offline-Cache)
-const CACHE = 'mikromaxxing-v40';
+const CACHE = 'mikromaxxing-v41';
 const ASSETS = [
   './',
   './index.html',
@@ -8,6 +8,8 @@ const ASSETS = [
   './js/data.js',
   './js/store.js',
   './js/parser.js',
+  './js/lookup.js',
+  './js/knowledge.js',
   './js/icons.js',
   './js/ui.js',
   './js/views/today.js',
@@ -18,6 +20,9 @@ const ASSETS = [
   './js/views/progress.js',
   './js/views/setup.js',
   './js/views/onboarding.js',
+  './js/views/scan.js',
+  './js/views/aisetup.js',
+  './vendor/zxing.min.js',
   './manifest.webmanifest',
   './icons/icon.svg',
 ];

@@ -36,6 +36,7 @@ export function openSheet(html, { tall = false, onClose } = {}) {
   $$('[data-close]', sheet).forEach(b => b.addEventListener('click', close));
   sheetStack.push({ overlay, onClose });
   document.body.style.overflow = 'hidden';
+  document.body.classList.add('sheet-open');
   return sheet;
 }
 export function closeSheet(overlay) {
@@ -43,7 +44,7 @@ export function closeSheet(overlay) {
   if (idx < 0) return;
   const [entry] = sheetStack.splice(idx, 1);
   entry.overlay.remove();
-  if (!sheetStack.length) document.body.style.overflow = '';
+  if (!sheetStack.length) { document.body.style.overflow = ''; document.body.classList.remove('sheet-open'); }
   if (entry.onClose) entry.onClose();
 }
 export function closeAllSheets() { while (sheetStack.length) closeSheet(); }
@@ -136,6 +137,7 @@ export function miniRings({ nutrition = 0, sport = 0, regen = 0 }) {
 const CAT_CLASS = {
   'Protein': 'c-protein', 'Fisch': 'c-fisch', 'Milchprodukte': 'c-milch', 'Obst': 'c-obst', 'Gemüse': 'c-gemuse',
   'Getreide': 'c-getreide', 'Nüsse & Samen': 'c-nuss', 'Hülsenfrüchte': 'c-huelse', 'Snacks': 'c-snack',
+  'Gerichte': 'c-meal', 'Getränke': 'c-water',
 };
 export function foodIcon(food) {
   const cls = (food && CAT_CLASS[food.cat]) || 'c-zero';
@@ -177,7 +179,9 @@ export function pickFile(accept = 'image/*') {
   return new Promise(resolve => {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = accept;
-    input.onchange = () => resolve(input.files[0] || null);
+    input.style.cssText = 'position:fixed;left:-9999px;opacity:0';
+    document.body.appendChild(input);
+    input.onchange = () => { resolve(input.files[0] || null); input.remove(); };
     input.click();
   });
 }

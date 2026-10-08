@@ -153,12 +153,19 @@ function aliasScore(phrase, alias) {
   return 0;
 }
 
+const SOFT_WORDS = new Set(['rot', 'rote', 'roter', 'rotes', 'grun', 'grune', 'gelb', 'gelbe', 'weiss', 'weisse', 'schwarz', 'schwarze', 'normal', 'normale', 'naturell', 'natur', 'stuck', 'stucke', 'portion', 'mittelgross', 'reif', 'reife', 'light', 'leicht']);
 function bestFood(phrase, index) {
   let best = null;
   for (const entry of index.foods) {
-    let score = 0;
-    for (const a of entry.aliases) score = Math.max(score, aliasScore(phrase, a));
-    if (score > 0 && (!best || score > best.score)) best = { food: entry.food, score };
+    let score = 0, alias = '';
+    for (const a of entry.aliases) { const sc = aliasScore(phrase, a); if (sc > score) { score = sc; alias = a; } }
+    if (score > 0 && (!best || score > best.score)) best = { food: entry.food, score, alias };
+  }
+  // Wörter, die das Lebensmittel nicht erklärt („dal" in „linsen dal") → unsicher
+  if (best && best.score < 100) {
+    const aw = best.alias.split(' ').map(stem);
+    const extra = phrase.split(' ').filter(w => w.length >= 3 && !SOFT_WORDS.has(w) && !aw.some(a => a === stem(w) || w.includes(a) || a.includes(stem(w))));
+    if (extra.length) best.extra = extra;
   }
   return best;
 }
@@ -280,6 +287,24 @@ export function plural(word) {
   return w;
 }
 
+// Originalschreibweise einer normalisierten Phrase („doner" → „Döner")
+export function originalPhrase(text, phrase) {
+  const words = String(text || '').split(/[\s,;+&]+/).filter(Boolean);
+  const target = fold(phrase);
+  const n = target.split(' ').length;
+  for (let i = 0; i + n <= words.length; i++) {
+    const cand = words.slice(i, i + n).join(' ').replace(/[.!?:]+$/, '');
+    if (fold(cand) === target) return cand;
+  }
+  return phrase;
+}
+
+// Menge aus dem Original-Satzteil für ein (neu angelegtes) Lebensmittel
+export function amountFromRaw(food, raw) {
+  const q = splitQuantity(fold(raw || '').replace(/(\d),(\d)/g, '$1.$2'));
+  return amountFor(food, q).grams;
+}
+
 export function amountLabel(food, grams) {
   if (food && food.piece) {
     const n = grams / food.piece.g;
@@ -350,8 +375,8 @@ export function parseEntry(text, ctx, prebuilt) {
       let { grams, estimated } = amountFor(food.food, q);
       // „Kaffee mit Milch" ohne Mengenangabe → nur ein Schuss Milch
       if (lastWasHotDrink && food.food.id === 'milk' && q.count == null && !q.unit) { grams = 30; estimated = true; }
-      out.push({ raw, type: 'food', foodId: food.food.id, grams, estimated,
-        confidence: food.score >= 68 ? 'high' : 'low' });
+      out.push({ raw, type: 'food', foodId: food.food.id, grams, estimated, phrase,
+        confidence: food.score >= 68 && !food.extra ? 'high' : 'low' });
       lastWasHotDrink = false;
       continue;
     }

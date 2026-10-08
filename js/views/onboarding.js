@@ -24,9 +24,9 @@ export function openOnboarding() {
       `<div class="ob-title">Deine Ziele</div>
        <p class="ob-text">Schon sinnvoll vorbelegt – passe sie an, wenn du willst.</p>
        <div style="max-width:320px;margin:0 auto;text-align:left">
-         <label class="field"><span>Zielgewicht (kg)</span><input type="number" inputmode="decimal" id="ob-tw" value="${p.targetWeight ?? ''}"></label>
-         <label class="field"><span>Ziel-Körperfett (%)</span><input type="number" inputmode="decimal" id="ob-tbf" value="${p.targetBodyfat ?? ''}"></label>
-         <label class="field"><span>Schlafziel (Stunden)</span><input type="number" inputmode="decimal" id="ob-sl" value="${p.sleepTarget ?? 8}"></label>
+         <label class="field"><span>Zielgewicht (kg)</span><input type="text" inputmode="decimal" id="ob-tw" value="${p.targetWeight ?? ''}"></label>
+         <label class="field"><span>Ziel-Körperfett (%)</span><input type="text" inputmode="decimal" id="ob-tbf" value="${p.targetBodyfat ?? ''}"></label>
+         <label class="field"><span>Schlafziel (Stunden)</span><input type="text" inputmode="decimal" id="ob-sl" value="${p.sleepTarget ?? 8}"></label>
        </div>`,
       `<div class="ob-title">Einfach sagen,<br>was war</div>
        <p class="ob-text">Unten auf jeder Seite: schreib oder sprich es einfach hin.</p>
@@ -34,6 +34,7 @@ export function openOnboarding() {
          <div><span class="fico c-protein">Ei</span><span><b>„3 Eier und 200 g Skyr"</b><br>wird erkannt und gezählt</span></div>
          <div><span class="fico c-meal">${icon('bowl')}</span><span><b>„Poke Bowl"</b><br>deine gespeicherten Gerichte</span></div>
          <div><span class="fico c-supp">${icon('pill')}</span><span><b>„D3 und Kreatin genommen"</b><br>hakt Supplements ab</span></div>
+         <div><span class="fico c-water">${icon('barcode')}</span><span><b>Barcode scannen</b><br>Packungswerte von Open Food Facts</span></div>
        </div>
        <p class="ob-text" style="margin-top:16px;font-size:13.5px">Tipp fürs iPhone: In Safari auf <b>Teilen</b> → <b>Zum Home-Bildschirm</b>, dann läuft's wie eine echte App.</p>`,
     ];

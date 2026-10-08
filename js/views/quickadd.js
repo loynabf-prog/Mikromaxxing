@@ -1,27 +1,37 @@
 // ============================================================================
-// Eintragen per Satz oder Sprache
+// Eintragen per Satz, Sprache oder Barcode
+// Unbekanntes schlägt Claude nach – als Vorschau, gespeichert wird erst beim
+// Bestätigen.
 // ============================================================================
 import * as store from '../store.js';
-import { parseEntry, buildIndex, amountLabel, defaultGrams } from '../parser.js';
+import { NUTRIENTS } from '../data.js';
+import { parseEntry, buildIndex, amountLabel, defaultGrams, amountFromRaw, originalPhrase } from '../parser.js';
+import { estimateFoods, hasAI } from '../lookup.js';
 import { icon } from '../icons.js';
 import { $, $$, esc, de, short, openSheet, closeSheet, sheetHead, toast, router, haptic, confetti, foodIcon } from '../ui.js';
 import { openFoodEditor } from './food.js';
+import { scanAndAdd } from './scan.js';
+import { openAiSetup } from './aisetup.js';
 
 const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+const MICRO_KEYS = NUTRIENTS.filter(n => n.group === 'vitamin' || n.group === 'mineral' || n.key === 'omega3').map(n => n.key);
 
-export function openQuickAdd({ key = store.todayKey(), text = '', voice = false } = {}) {
+export function openQuickAdd({ key = store.todayKey(), text = '', voice = false, scan = false } = {}) {
   let index = buildIndex(store.getState());
   let items = [];
-  const overrides = {};   // pro erkanntem Satzteil: { foodId, grams, portions, ml, removed }
-  let editing = null;     // aktuell aufgeklappter Posten (Index)
+  const overrides = {};   // pro Satzteil: { foodId, grams, portions, ml, removed, lookup }
+  const lookups = {};     // pro unbekannter Phrase: { status: 'loading'|'done'|'error'|'none', food, error }
+  const extras = [];      // gescannte Produkte
+  let editing = null;     // aufgeklappter Posten (Index)
   let rec = null, recBase = '';
 
   const sheet = openSheet(`
-    ${sheetHead('Eintragen', key === store.todayKey() ? 'Schreib oder sprich, was du gegessen hast' : store.formatDateLabel(key))}
+    ${sheetHead('Eintragen', key === store.todayKey() ? 'Schreib, sprich oder scanne, was du gegessen hast' : store.formatDateLabel(key))}
     <div class="qa-input" id="qa-input">
-      <textarea class="qa-text" id="qa-text" rows="2" placeholder="z. B. 3 Eier, 200 g Skyr und eine Banane" autocapitalize="sentences" enterkeyhint="done"></textarea>
+      <textarea class="qa-text" id="qa-text" rows="2" placeholder="z. B. 3 Eier, 200 g Skyr und ein Döner" autocapitalize="sentences" enterkeyhint="done"></textarea>
       <div class="qa-bar">
-        <span class="qa-status" id="qa-status">${SR ? 'Mikro antippen zum Sprechen' : 'Tipp: Diktieren über das Tastatur-Mikro'}</span>
+        <span class="qa-status" id="qa-status"></span>
+        <button class="qa-mic qa-scan" id="qa-scan" aria-label="Barcode scannen">${icon('barcode')}</button>
         <button class="qa-mic" id="qa-mic" aria-label="Sprechen">${icon('mic')}</button>
       </div>
     </div>
@@ -36,8 +46,14 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
   let t = null;
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; };
   ta.addEventListener('input', () => { grow(); clearTimeout(t); t = setTimeout(update, 110); });
-  ta.addEventListener('keydown', e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); } });
+  ta.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); update(); lookupUnknown(); }
+  });
   $('#qa-mic', sheet).onclick = () => (rec ? stopVoice() : startVoice());
+  $('#qa-scan', sheet).onclick = () => startScan();
+
+  const idleStatus = () => (SR ? 'Mikro antippen zum Sprechen' : 'Tipp: Diktieren über das Tastatur-Mikro');
+  $('#qa-status', sheet).textContent = idleStatus();
 
   // ---------- Sprache ----------
   function setRec(on) {
@@ -45,7 +61,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
     $('#qa-mic', sheet).classList.toggle('on', on);
     const st = $('#qa-status', sheet);
     st.classList.toggle('rec', on);
-    st.innerHTML = on ? '<i></i>Ich höre zu …' : (SR ? 'Mikro antippen zum Sprechen' : 'Tipp: Diktieren über das Tastatur-Mikro');
+    st.innerHTML = on ? '<i></i>Ich höre zu …' : idleStatus();
   }
   function startVoice() {
     if (!SR) { ta.focus(); toast('Tippe auf das Mikrofon deiner Tastatur und sprich los'); return; }
@@ -53,10 +69,12 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
       rec = new SR();
       rec.lang = 'de-DE'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
       recBase = ta.value.trim() ? ta.value.trim() + ', ' : '';
+      let heard = false;
       rec.onresult = e => {
         let out = '';
         for (const r of e.results) out += r[0].transcript;
         ta.value = recBase + out;
+        heard = true;
         update();
       };
       rec.onerror = e => {
@@ -66,7 +84,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
           toast('Mikrofon hier nicht erlaubt – nutze das Mikro auf der Tastatur');
         }
       };
-      rec.onend = () => { rec = null; setRec(false); };
+      rec.onend = () => { rec = null; setRec(false); if (heard) lookupUnknown(); };
       rec.start();
       setRec(true);
       haptic();
@@ -81,54 +99,112 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
     if (sheet.isConnected) setRec(false);
   }
 
+  // ---------- Scannen ----------
+  function startScan() {
+    stopVoice();
+    scanAndAdd({
+      title: 'Zur Liste',
+      onAdd: ({ foodId, grams }) => {
+        index = buildIndex(store.getState());
+        extras.push({ raw: '#scan' + Date.now(), type: 'food', foodId, grams, scanned: true });
+        update();
+      },
+    });
+  }
+
   // ---------- Erkennen ----------
   function update() {
     grow();
-    const parsed = parseEntry(ta.value, null, index);
+    const parsed = [...parseEntry(ta.value, null, index), ...extras];
     items = parsed.map(it => {
       const o = overrides[it.raw];
+      if (o && o.removed) return null;
+      if (o && o.foodId) return { raw: it.raw, type: 'food', foodId: o.foodId, grams: o.grams ?? defaultGrams(store.foodById(o.foodId)), estimated: false, scanned: it.scanned };
+      // „Falsch erkannt? Nachschlagen" → wie unbekannt behandeln
+      if (o && o.lookup) it = { raw: it.raw, type: 'unknown', phrase: o.lookup, suggestions: [] };
+      if (it.type === 'unknown') {
+        const lk = lookups[it.phrase];
+        if (lk && lk.status === 'done') {
+          const grams = o && 'grams' in o ? o.grams : amountFromRaw(lk.food, it.raw);
+          return { raw: it.raw, type: 'new', phrase: it.phrase, food: lk.food, grams };
+        }
+        return { ...it, lookup: lk || null };
+      }
       if (!o) return it;
-      if (o.removed) return null;
-      if (o.foodId) return { raw: it.raw, type: 'food', foodId: o.foodId, grams: o.grams ?? defaultGrams(store.foodById(o.foodId)), estimated: false };
       return { ...it, ...('grams' in o ? { grams: o.grams, estimated: false } : {}), ...('portions' in o ? { portions: o.portions } : {}), ...('ml' in o ? { ml: o.ml, estimated: false } : {}) };
     }).filter(Boolean);
     render();
   }
 
+  // Alle offenen Unbekannten in einem Rutsch nachschlagen
+  async function lookupUnknown(force = false) {
+    const open = [...new Set(items.filter(it => it.type === 'unknown' && (!lookups[it.phrase] || (force && lookups[it.phrase].status === 'error'))).map(it => it.phrase))];
+    if (!open.length) return;
+    if (!hasAI()) {
+      if (force) openAiSetup(() => { if (hasAI()) lookupUnknown(true); });
+      return;
+    }
+    for (const p of open) lookups[p] = { status: 'loading' };
+    update();
+    try {
+      const res = await estimateFoods(open, { context: ta.value });
+      for (const p of open) {
+        const r = res.get(p);
+        lookups[p] = !r ? { status: 'error', error: 'Keine Antwort erhalten' }
+          : r.notFood ? { status: 'none' } : { status: 'done', food: r.food };
+      }
+    } catch (e) {
+      for (const p of open) lookups[p] = { status: 'error', error: e.message || 'Nachschlagen fehlgeschlagen' };
+      if (e.code === 'auth' || e.code === 'nokey') toast('Claude-Key prüfen: Einstellungen → Nachschlagen mit Claude');
+    }
+    if (sheet.isConnected) update();
+  }
+
   function itemNutrients(it) {
-    if (it.type === 'food') {
-      const f = store.foodById(it.foodId);
+    if (it.type === 'food' || it.type === 'new') {
+      const f = it.type === 'new' ? it.food : store.foodById(it.foodId);
       if (!f) return { kcal: 0, protein: 0 };
       return { kcal: f.per100.kcal * it.grams / 100, protein: f.per100.protein * it.grams / 100 };
     }
     if (it.type === 'meal') {
       const m = store.mealById(it.mealId);
-      const t = m ? store.mealTotals(m) : { kcal: 0, protein: 0 };
-      return { kcal: t.kcal * it.portions, protein: t.protein * it.portions };
+      const tt = m ? store.mealTotals(m) : { kcal: 0, protein: 0 };
+      return { kcal: tt.kcal * it.portions, protein: tt.protein * it.portions };
     }
     return { kcal: 0, protein: 0 };
   }
 
-  function rowHtml(it, i) {
-    const open = editing === i;
-    if (it.type === 'unknown') {
-      const sugg = (it.suggestions || []).map(store.foodById).filter(Boolean);
-      return `<div class="qa-unknown">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:8px">
-          <b>„${esc(it.phrase)}" kenne ich noch nicht</b>
-          <button class="qa-rm" data-rm="${i}" aria-label="Entfernen">${icon('x')}</button>
-        </div>
-        <div class="chips">
-          ${sugg.map(f => `<button class="chipbtn" data-assign="${i}" data-food="${f.id}">${esc(short(f.name))}</button>`).join('')}
-          <button class="chipbtn" data-create="${i}">${icon('plus')}Neu anlegen</button>
-        </div>
-      </div>`;
+  function unknownHtml(it, i) {
+    const lk = it.lookup;
+    const shown = originalPhrase(ta.value, it.phrase);
+    const sugg = (it.suggestions || []).map(store.foodById).filter(Boolean);
+    if (lk && lk.status === 'loading') {
+      return `<div class="qa-unknown loading"><div class="qa-uh">${icon('loader', 'spin')}<b>Schlage „${esc(shown)}" nach …</b></div></div>`;
     }
-    let ico, name, amount, kv = '';
-    if (it.type === 'food') {
-      const f = store.foodById(it.foodId);
+    const msg = lk && lk.status === 'none' ? `„${esc(shown)}" ist kein Lebensmittel, oder?`
+      : lk && lk.status === 'error' ? `„${esc(shown)}": ${esc(lk.error)}`
+        : `„${esc(shown)}" kenne ich noch nicht`;
+    const canLookup = !lk || lk.status === 'error';
+    return `<div class="qa-unknown">
+      <div class="qa-uh"><b>${msg}</b><button class="qa-rm" data-rm="${i}" aria-label="Entfernen">${icon('x')}</button></div>
+      <div class="chips">
+        ${canLookup ? `<button class="chipbtn ai" data-lookup="${i}">${icon('spark')}${lk ? 'Nochmal versuchen' : 'Nachschlagen'}</button>` : ''}
+        ${sugg.map(f => `<button class="chipbtn" data-assign="${i}" data-food="${f.id}">${esc(short(f.name))}</button>`).join('')}
+        <button class="chipbtn" data-create="${i}">${icon('plus')}Selbst anlegen</button>
+      </div>
+    </div>`;
+  }
+
+  function rowHtml(it, i) {
+    if (it.type === 'unknown') return unknownHtml(it, i);
+    const open = editing === i;
+    let ico, name, amount, kv = '', badge = '';
+    if (it.type === 'food' || it.type === 'new') {
+      const f = it.type === 'new' ? it.food : store.foodById(it.foodId);
       const n = itemNutrients(it);
       ico = foodIcon(f); name = short(f.name);
+      if (it.type === 'new') badge = `<em class="qa-new">${icon('spark')}neu</em>`;
+      else if (it.scanned) badge = `<em class="qa-new scanned">${icon('barcode')}Scan</em>`;
       amount = `${esc(amountLabel(f, it.grams))}${it.estimated ? '<em class="qa-est">geschätzt</em>' : ''}${it.confidence === 'low' ? '<em class="qa-est">prüfen</em>' : ''}`;
       kv = `<div class="qa-kv"><b class="num">${de(n.protein)} g</b><span>${de(n.kcal)} kcal</span></div>`;
     } else if (it.type === 'meal') {
@@ -150,12 +226,12 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
       name = it.label.charAt(0).toUpperCase() + it.label.slice(1);
       amount = '0 kcal · zählt nicht';
     }
-    const editable = it.type === 'food' || it.type === 'meal' || it.type === 'water';
-    return `<div>
+    const editable = ['food', 'new', 'meal', 'water'].includes(it.type);
+    return `<div class="${it.type === 'new' ? 'qa-newwrap' : ''}">
       <div class="qa-item">
         ${ico}
         <button class="qa-main" ${editable ? `data-edit="${i}"` : ''} style="text-align:left">
-          <div class="qa-nm">${esc(name)}</div><div class="qa-am">${amount}</div>
+          <div class="qa-nm">${esc(name)}${badge}</div><div class="qa-am">${amount}</div>
         </button>
         ${kv}
         <button class="qa-rm" data-rm="${i}" aria-label="Entfernen">${icon('x')}</button>
@@ -166,25 +242,41 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
 
   function editorHtml(it, i) {
     let label;
-    if (it.type === 'food') {
-      const f = store.foodById(it.foodId);
+    if (it.type === 'food' || it.type === 'new') {
+      const f = it.type === 'new' ? it.food : store.foodById(it.foodId);
       label = f.piece ? `${de(it.grams / f.piece.g, (it.grams / f.piece.g) % 1 ? 1 : 0)}<small>${esc(f.piece.name.toUpperCase())} · ${it.grams} G</small>` : `${it.grams}<small>GRAMM</small>`;
     } else if (it.type === 'meal') label = `${de(it.portions, it.portions % 1 ? 1 : 0)}<small>PORTIONEN</small>`;
     else label = `${de(it.ml)}<small>ML</small>`;
+    let extra = '';
+    if (it.type === 'new') {
+      const f = it.food, tg = store.getState().profile.targets;
+      const x = it.grams / 100;
+      const top = MICRO_KEYS.map(k => ({ k, pct: tg[k] ? (f.per100[k] || 0) * x / tg[k] * 100 : 0 }))
+        .filter(m => m.pct >= 8).sort((a, b) => b.pct - a.pct).slice(0, 4);
+      extra = `<div class="qa-preview">
+        <div class="qa-p100"><span>pro 100 g</span><b>${de(f.per100.kcal)} kcal</b><b>${de(f.per100.protein, 1)} P</b><b>${de(f.per100.carbs, 1)} C</b><b>${de(f.per100.fat, 1)} F</b></div>
+        ${top.length ? `<div class="chips">${top.map(m => `<span class="chip">${esc(NUTRIENTS.find(n => n.key === m.k).label)} ${Math.round(m.pct)} %</span>`).join('')}</div>` : ''}
+        ${f.benefit ? `<p class="hint" style="margin:8px 0 0">${esc(f.benefit)}</p>` : ''}
+        <div class="qa-src">${icon('spark')}Von Claude geschätzt${f.confidence === 'niedrig' ? ' · stark schwankend, gern prüfen' : ''}
+          <button class="more" data-refine="${i}">Werte bearbeiten${icon('chev')}</button></div>
+      </div>`;
+    } else if (it.type === 'food' && it.confidence === 'low' && !it.scanned) {
+      extra = `<button class="chipbtn ai" data-wrong="${i}" style="margin-bottom:10px">${icon('spark')}Falsch erkannt? „${esc(it.phrase || it.raw)}" nachschlagen</button>`;
+    }
     return `<div class="stepper" style="margin:2px 0 10px">
       <button class="st-btn" data-step="${i}" data-dir="-1">${icon('minus')}</button>
       <div class="st-val num">${label}</div>
       <button class="st-btn" data-step="${i}" data-dir="1">${icon('plus')}</button>
-    </div>`;
+    </div>${extra}`;
   }
 
   function stepItem(i, dir) {
     const it = items[i];
     const o = overrides[it.raw] || (overrides[it.raw] = {});
-    if (it.type === 'food') {
-      const f = store.foodById(it.foodId);
+    if (it.type === 'food' || it.type === 'new') {
+      const f = it.type === 'new' ? it.food : store.foodById(it.foodId);
       const step = f.piece ? f.piece.g : (it.grams < 60 ? 5 : it.grams < 150 ? 10 : 25);
-      o.foodId = it.foodId;
+      if (it.type === 'food') o.foodId = it.foodId;
       o.grams = Math.max(step, it.grams + dir * step);
     } else if (it.type === 'meal') {
       o.portions = Math.max(0.5, (it.portions || 1) + dir * 0.5);
@@ -209,35 +301,50 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
     }
     return `<div class="sec-title">Schnell</div><div class="chips">${chips.join('')}</div>
       <div class="sec-title">So funktioniert's</div>
-      <p class="hint">Schreib einfach normal: „2 Spiegeleier und eine Scheibe Brot", „Poke Bowl", „500 ml Wasser" oder „D3 und Kreatin genommen". Mengen ohne Angabe schätze ich – tipp auf einen Eintrag, um ihn anzupassen.</p>`;
+      <p class="hint">Schreib einfach normal: „2 Spiegeleier und eine Scheibe Brot", „Poke Bowl", „500 ml Wasser" oder „D3 und Kreatin genommen". Mengen ohne Angabe schätze ich – tipp auf einen Eintrag, um ihn anzupassen.</p>
+      <p class="hint">${hasAI()
+        ? 'Kenne ich etwas noch nicht, schlägt Claude die Nährwerte nach – du siehst sie vorher. Verpacktes einfach mit dem Barcode-Knopf scannen.'
+        : 'Verpacktes einfach scannen. <button class="more" id="qa-ai-setup" style="display:inline-flex">Unbekanntes automatisch nachschlagen lassen →</button>'}</p>`;
   }
 
   function render() {
     if (!items.length) {
       body.innerHTML = quickChips();
       foot.innerHTML = '';
+      const su = $('#qa-ai-setup', body);
+      if (su) su.onclick = () => openAiSetup(() => render());
     } else {
       const known = items.filter(x => x.type !== 'unknown');
+      const unknown = items.filter(x => x.type === 'unknown');
+      const pending = unknown.filter(x => !x.lookup || x.lookup.status === 'error').length;
+      const loading = unknown.some(x => x.lookup && x.lookup.status === 'loading');
       const foods = [];
       let waterMl = 0;
       const suppIds = [];
+      let newKcal = 0, newProt = 0;
       for (const it of known) {
         if (it.type === 'food') foods.push({ foodId: it.foodId, grams: it.grams });
+        if (it.type === 'new') { const n = itemNutrients(it); newKcal += n.kcal; newProt += n.protein; }
         if (it.type === 'meal') foods.push(...store.mealItems(it.mealId, it.portions));
         if (it.type === 'water') waterMl += it.ml;
         if (it.type === 'supp') suppIds.push(it.suppId);
       }
       const pv = store.nutritionPreview(key, { foods, waterMl, suppIds });
       const actionable = known.filter(x => x.type !== 'zero').length;
+      const newCount = known.filter(x => x.type === 'new').length;
       body.innerHTML = `
         <div class="sec-title">Erkannt<span style="color:var(--nut)">${known.length} von ${items.length}</span></div>
         <div class="qa-list">${items.map(rowHtml).join('')}</div>
+        ${pending > 1 && hasAI() ? `<button class="btn ghost block" id="qa-lookall" style="margin-top:10px">${icon('spark')}${pending} unbekannte nachschlagen</button>` : ''}
         ${actionable ? `<div class="qa-sum">
-          <div class="a">Dazu kommen<b class="num">+${de(pv.protein)} g Protein · ${de(pv.kcal)} kcal</b></div>
-          <div class="d"><s>${pv.before}%</s>${icon('chev')}${pv.after}%</div>
+          <div class="a">Dazu kommen<b class="num">+${de(pv.protein + newProt)} g Protein · ${de(pv.kcal + newKcal)} kcal</b></div>
+          ${newCount ? `<div class="d" style="font-size:12px">${newCount} neu</div>` : `<div class="d"><s>${pv.before}%</s>${icon('chev')}${pv.after}%</div>`}
         </div>` : ''}`;
-      foot.innerHTML = `<button class="btn block" id="qa-save" ${actionable ? '' : 'disabled'}>${icon('check')}${actionable === 1 ? '1 Eintrag' : actionable + ' Einträge'} hinzufügen</button>`;
+      const label = loading ? 'Warte auf Claude …' : `${actionable === 1 ? '1 Eintrag' : actionable + ' Einträge'} hinzufügen`;
+      foot.innerHTML = `<button class="btn block" id="qa-save" ${actionable && !loading ? '' : 'disabled'}>${icon(loading ? 'loader' : 'check', loading ? 'spin' : '')}${label}</button>`;
       $('#qa-save', sheet).onclick = () => commit(known);
+      const la = $('#qa-lookall', body);
+      if (la) la.onclick = () => lookupUnknown(true);
     }
     wire();
   }
@@ -250,21 +357,39 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
     });
     $$('[data-edit]', body).forEach(b => b.onclick = () => { editing = editing === +b.dataset.edit ? null : +b.dataset.edit; render(); });
     $$('[data-step]', body).forEach(b => b.onclick = () => stepItem(+b.dataset.step, +b.dataset.dir));
+    $$('[data-lookup]', body).forEach(b => b.onclick = () => lookupUnknown(true));
+    $$('[data-wrong]', body).forEach(b => b.onclick = () => {
+      const it = items[+b.dataset.wrong];
+      overrides[it.raw] = { lookup: it.phrase || it.raw };
+      editing = null; update(); lookupUnknown(true);
+    });
     $$('[data-assign]', body).forEach(b => b.onclick = () => {
       const it = items[+b.dataset.assign];
       const f = store.foodById(b.dataset.food);
-      overrides[it.raw] = { foodId: f.id, grams: defaultGrams(f) };
+      overrides[it.raw] = { foodId: f.id, grams: amountFromRaw(f, it.raw) };
       update();
     });
     $$('[data-create]', body).forEach(b => b.onclick = () => {
       const it = items[+b.dataset.create];
-      const name = it.phrase.charAt(0).toUpperCase() + it.phrase.slice(1);
+      const orig = originalPhrase(ta.value, it.phrase);
+      const name = orig.charAt(0).toUpperCase() + orig.slice(1);
       openFoodEditor(null, {
         name,
         onSave: (food) => {
           index = buildIndex(store.getState());
-          overrides[it.raw] = { foodId: food.id, grams: defaultGrams(food) };
+          overrides[it.raw] = { foodId: food.id, grams: amountFromRaw(food, it.raw) };
           update();
+        },
+      });
+    });
+    $$('[data-refine]', body).forEach(b => b.onclick = () => {
+      const it = items[+b.dataset.refine];
+      openFoodEditor(null, {
+        draft: it.food,
+        onSave: (food) => {
+          index = buildIndex(store.getState());
+          overrides[it.raw] = { foodId: food.id, grams: it.grams };
+          editing = null; update();
         },
       });
     });
@@ -292,9 +417,17 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
     const before = { len: day.entries.length, water: day.water || 0, supps: { ...day.supps } };
     const overallBefore = store.dayPillars(key).overall;
     const foods = [];
+    const created = [];
+    const madeFor = {};
     let n = 0;
     for (const it of known) {
-      if (it.type === 'food') {
+      if (it.type === 'new') {
+        // Erst jetzt in die Bibliothek – beim nächsten Mal wird's direkt erkannt
+        let id = madeFor[it.phrase];
+        if (!id) { id = madeFor[it.phrase] = store.saveNewFood(it.food).id; created.push(id); }
+        foods.push({ foodId: id, grams: it.grams });
+        n++;
+      } else if (it.type === 'food') {
         foods.push({ foodId: it.foodId, grams: it.grams });
         if (it.foodId === 'whey' && store.getState().supplements.some(s => s.id === 'whey')) store.setSupp(key, 'whey', true);
         n++;
@@ -308,16 +441,19 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false 
     haptic(12);
     const after = store.dayPillars(key).overall;
     if (overallBefore < 100 && after >= 100) confetti();
-    toast(`${n === 1 ? '1 Eintrag' : n + ' Einträge'} gespeichert`, 'Rückgängig', () => {
+    const msg = `${n === 1 ? '1 Eintrag' : n + ' Einträge'} gespeichert${created.length ? ` · ${created.length} neu angelegt` : ''}`;
+    toast(msg, 'Rückgängig', () => {
       const d = store.getDay(key);
       store.truncateEntries(key, before.len);
       store.setWater(key, before.water);
       d.supps = before.supps; store.save();
+      for (const id of created) store.deleteFood(id);
       router.rerender();
     });
   }
 
   update();
   if (voice) startVoice();
+  else if (scan) startScan();
   else if (!text) ta.focus();
 }

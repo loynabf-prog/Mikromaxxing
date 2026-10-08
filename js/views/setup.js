@@ -7,6 +7,9 @@ import { icon } from '../icons.js';
 import { $, $$, esc, de, router, openSheet, closeSheet, sheetHead, toast, pickFile, downscalePhoto } from '../ui.js';
 import { openLibrary, openMealEditor } from './food.js';
 import { openOnboarding } from './onboarding.js';
+import { openAiSetup } from './aisetup.js';
+import { hasAI } from '../lookup.js';
+import { HOW_LABELS, suppInfo } from '../knowledge.js';
 
 const row = (id, ic, title, sub, end = '') => `<button class="row" data-row="${id}"><span class="row-ic">${icon(ic)}</span>
   <span class="row-main"><div class="row-t">${title}</div>${sub ? `<div class="row-s">${sub}</div>` : ''}</span><span class="row-end">${end}${icon('chev')}</span></button>`;
@@ -50,6 +53,11 @@ export function renderSetup(app) {
       ${row('games', 'trophy', 'Spielplan TSC', `${s.games.length} Spiele`)}
     </div>
 
+    <div class="sec-title">Nachschlagen</div>
+    <div class="rows">
+      ${row('ai', 'spark', 'Claude für unbekannte Lebensmittel', hasAI() ? 'Aktiv · Haiku 5.5' : 'Noch kein API-Key – tippen zum Einrichten')}
+    </div>
+
     <div class="sec-title">Daten</div>
     <div class="rows">
       ${row('export', 'download', 'Backup exportieren', 'Alle Daten als Datei sichern')}
@@ -87,6 +95,7 @@ function onRow(id) {
     case 'library': return openLibrary();
     case 'meals': return openMealsList();
     case 'games': return openGamesSheet();
+    case 'ai': return openAiSetup(() => router.rerender());
     case 'export': return exportData();
     case 'import': return importData();
     case 'onboarding': return openOnboarding();
@@ -101,7 +110,7 @@ function onRow(id) {
 
 function openValueSheet(label, value, unit, onSave) {
   const sheet = openSheet(`${sheetHead(label)}
-    <div class="field"><input type="number" inputmode="decimal" step="any" id="vs-v" value="${value ?? ''}" style="font-size:28px;font-weight:850;text-align:center"></div>
+    <div class="field"><input type="text" inputmode="decimal" step="any" id="vs-v" value="${value ?? ''}" style="font-size:28px;font-weight:850;text-align:center"></div>
     <div class="sub" style="text-align:center">${esc(unit)}</div>
     <div class="sheet-foot"><button class="btn block" id="vs-save">${icon('check')}Speichern</button></div>`);
   const inp = $('#vs-v', sheet);
@@ -124,7 +133,7 @@ function openTargetsSheet() {
   const t = store.getState().profile.targets;
   const sheet = openSheet(`${sheetHead('Nährstoffziele', 'Tageswerte')}
     <div class="sheet-body"><div class="grid2">${NUTRIENTS.map(n => `<label class="field"><span>${esc(n.label)} (${n.unit})${n.limit ? ' · max' : ''}</span>
-      <input type="number" inputmode="decimal" step="any" data-t="${n.key}" value="${t[n.key] ?? 0}"></label>`).join('')}</div></div>
+      <input type="text" inputmode="decimal" step="any" data-t="${n.key}" value="${t[n.key] ?? 0}"></label>`).join('')}</div></div>
     <div class="sheet-foot"><button class="btn block" id="tg-save">${icon('check')}Speichern</button></div>`, { tall: true });
   $('#tg-save', sheet).onclick = () => {
     $$('[data-t]', sheet).forEach(inp => store.setTarget(inp.dataset.t, String(inp.value).replace(',', '.')));
@@ -152,12 +161,15 @@ function openSuppEditor(id, onDone) {
     <label class="field"><span>Name</span><input id="se-n" value="${esc(sp.name)}"></label>
     <div class="grid2"><label class="field"><span>Dosis</span><input id="se-d" value="${esc(sp.dose || '')}"></label>
       <label class="field"><span>Wann</span><select id="se-t">${SUPP_TIME_ORDER.map(k => `<option value="${k}" ${sp.time === k ? 'selected' : ''}>${SUPP_TIME_LABELS[k]}</option>`).join('')}</select></label></div>
-    <label class="field"><span>Womit nehmen</span><input id="se-w" value="${esc(sp.takeWith || '')}" placeholder="z. B. mit etwas Fett"></label>
+    <label class="field"><span>Einnahme</span><select id="se-h">${Object.entries(HOW_LABELS).map(([k, l]) => `<option value="${k}" ${suppInfo(sp).how === k ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+    <label class="field"><span>Womit / Tipp</span><input id="se-w" value="${esc(sp.takeWith || '')}" placeholder="z. B. zum Frühstück mit Eiern"></label>
+    <label class="field"><span>Wofür (eigene Notiz)</span><input id="se-why" value="${esc(sp.why || '')}" placeholder="${esc(suppInfo(sp).why ? 'Standard-Info vorhanden – optional' : 'z. B. für Haut & Haare')}"></label>
     <div class="sheet-foot">${ex ? `<button class="btn danger" id="se-del" style="flex:0 0 auto;width:56px">${icon('trash')}</button>` : ''}<button class="btn" id="se-save">${icon('check')}Speichern</button></div>`);
   $('#se-save', sheet).onclick = () => {
     sp.name = $('#se-n', sheet).value.trim();
     if (!sp.name) return toast('Name fehlt');
     sp.dose = $('#se-d', sheet).value.trim(); sp.time = $('#se-t', sheet).value; sp.takeWith = $('#se-w', sheet).value.trim();
+    sp.how = $('#se-h', sheet).value; const why = $('#se-why', sheet).value.trim(); if (why) sp.why = why; else delete sp.why;
     store.upsertSupplement(sp); closeSheet(); onDone(); router.rerender();
   };
   const del = $('#se-del', sheet);
@@ -222,7 +234,7 @@ function openDayEditor(wd, onDone) {
       ${d.kind === 'sport' ? `<div class="grid3">
         <label class="field"><span>Sportart</span><select id="de-sport">${SPORT_TYPES.map(t => `<option value="${t.id}" ${d.sport === t.id ? 'selected' : ''}>${t.label}</option>`).join('')}</select></label>
         <label class="field"><span>Uhrzeit</span><input type="time" id="de-time" value="${d.time || ''}"></label>
-        <label class="field"><span>Minuten</span><input type="number" id="de-min" value="${d.min || ''}"></label></div>` : ''}
+        <label class="field"><span>Minuten</span><input type="number" inputmode="numeric" id="de-min" value="${d.min || ''}"></label></div>` : ''}
       ${d.kind === 'gym' ? `${d.exercises.map((ex, i) => `<div class="card tight" data-ex="${i}" style="background:var(--fill);box-shadow:none">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
             <input class="e-n" value="${esc(ex.n)}" style="flex:1;background:#fff;border:none;border-radius:11px;padding:10px;font-weight:750">
@@ -230,12 +242,12 @@ function openDayEditor(wd, onDone) {
             <button class="qa-rm" data-del="${i}" aria-label="Entfernen">${icon('trash')}</button>
           </div>
           <div class="grid3">
-            <label class="field"><span>Sätze</span><input class="e-s" type="number" value="${ex.sets}"></label>
+            <label class="field"><span>Sätze</span><input class="e-s" type="number" inputmode="numeric" value="${ex.sets}"></label>
             <label class="field"><span>Art</span><select class="e-l"><option value="weight" ${ex.load === 'weight' ? 'selected' : ''}>Gewicht</option><option value="bw" ${ex.load === 'bw' ? 'selected' : ''}>Körpergew.</option><option value="time" ${ex.load === 'time' ? 'selected' : ''}>Halten (s)</option></select></label>
-            <label class="field"><span>Pause (s)</span><input class="e-r" type="number" value="${ex.rest || 90}"></label>
-            <label class="field"><span>${ex.load === 'time' ? 'Sekunden' : 'Wdh von'}</span><input class="e-lo" type="number" value="${ex.load === 'time' ? ex.secs : ex.reps[0]}"></label>
-            <label class="field" ${ex.load === 'time' ? 'style="visibility:hidden"' : ''}><span>Wdh bis</span><input class="e-hi" type="number" value="${ex.reps ? ex.reps[1] : 12}"></label>
-            <label class="field"><span>+ kg Schritt</span><input class="e-i" type="number" step="0.5" value="${ex.inc || 0}"></label>
+            <label class="field"><span>Pause (s)</span><input class="e-r" type="number" inputmode="numeric" value="${ex.rest || 90}"></label>
+            <label class="field"><span>${ex.load === 'time' ? 'Sekunden' : 'Wdh von'}</span><input class="e-lo" type="number" inputmode="numeric" value="${ex.load === 'time' ? ex.secs : ex.reps[0]}"></label>
+            <label class="field" ${ex.load === 'time' ? 'style="visibility:hidden"' : ''}><span>Wdh bis</span><input class="e-hi" type="number" inputmode="numeric" value="${ex.reps ? ex.reps[1] : 12}"></label>
+            <label class="field"><span>+ kg Schritt</span><input class="e-i" type="text" inputmode="decimal" value="${ex.inc || 0}"></label>
           </div></div>`).join('')}
         <button class="btn ghost block" id="de-add">${icon('plus')}Übung hinzufügen</button>` : ''}`;
     $$('[data-kind]', sheet).forEach(b => b.onclick = () => { commit(); d.kind = b.dataset.kind; if (d.kind === 'sport' && !d.sport) d.sport = 'basketball'; draw(); });
@@ -265,7 +277,7 @@ function openGamesSheet() {
     $$('[data-gd]', sheet).forEach(b => b.onclick = () => {
       const [date, time, opp] = b.dataset.gd.split('|');
       const s = store.getState();
-      s.games = s.games.filter(g => !(g.date === date && g.time === time && esc(g.opponent) === opp));
+      s.games = s.games.filter(g => !(g.date === date && g.time === time && g.opponent === opp));
       store.save(); draw(); router.rerender();
     });
   };

@@ -107,7 +107,7 @@ function weightCard(today) {
     <div class="ch"><span class="ch-title">Gewicht</span><span class="sub">${avg != null ? `Ø 7 Tage ${de(avg, 1)} kg` : ''}${target ? ` · Ziel ${de(target, 1)} kg` : ''}</span></div>
     ${chart}
     <div style="display:flex;gap:8px;margin-top:12px">
-      <input id="w-in" type="number" inputmode="decimal" step="0.1" placeholder="Heute (kg)" value="${todayW ?? ''}" style="flex:1;min-width:0;background:var(--fill);border:none;border-radius:14px;padding:12px 14px;font-weight:750">
+      <input id="w-in" type="text" inputmode="decimal" step="0.1" placeholder="Heute (kg)" value="${todayW ?? ''}" style="flex:1;min-width:0;background:var(--fill);border:none;border-radius:14px;padding:12px 14px;font-weight:750">
       <button class="btn sm" id="w-save" style="height:48px">${icon('check')}Speichern</button>
     </div>
   </div>`;
@@ -221,7 +221,7 @@ function openMeasurement(date) {
   const sheet = openSheet(`${sheetHead(existing ? 'Messung bearbeiten' : 'Neue Messung', 'InBody, Waage oder Studio-Analyse')}
     <div class="sheet-body">
       <label class="field"><span>Datum</span><input type="date" id="m-date" value="${e.date}"></label>
-      <div class="grid2">${BODYCOMP_METRICS.map(m => `<label class="field"><span>${esc(m.label)} (${m.unit})</span><input type="number" inputmode="decimal" step="any" data-m="${m.key}" value="${e.values[m.key] ?? ''}"></label>`).join('')}</div>
+      <div class="grid2">${BODYCOMP_METRICS.map(m => `<label class="field"><span>${esc(m.label)} (${m.unit})</span><input type="text" inputmode="decimal" step="any" data-m="${m.key}" value="${e.values[m.key] ?? ''}"></label>`).join('')}</div>
       <label class="field"><span>Notiz</span><input id="m-note" value="${esc(e.note || '')}"></label>
     </div>
     <div class="sheet-foot">${existing ? `<button class="btn danger" id="m-del" style="flex:0 0 auto;width:56px">${icon('trash')}</button>` : ''}<button class="btn" id="m-save">${icon('check')}Speichern</button></div>`, { tall: true });
