@@ -1,7 +1,7 @@
 {
   "name": "Mikromaxxing",
   "short_name": "Mikromaxxing",
-  "description": "Gebaut für Fassi – Ernährung, Sport und Regeneration in einer App.",
+  "description": "Gebaut für Fassie – Ernährung, Sport und Regeneration in einer App.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

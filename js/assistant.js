@@ -1,5 +1,5 @@
 // ============================================================================
-// Mikromaxxing – Assistent: versteht alles, was Fassi erzählt, trägt es an der
+// Mikromaxxing – Assistent: versteht alles, was Fassie erzählt, trägt es an der
 // richtigen Stelle ein und ist sein persönlicher Coach (Chat + Wochenrückblick).
 // ============================================================================
 import * as store from './store.js';

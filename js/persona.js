@@ -7,12 +7,12 @@
 
 export const PERSONA = {
   id: 'fassi',
-  name: 'Fassi',
-  version: 1,
+  name: 'Fassie',
+  version: 2,
 
   // --- Wie die App spricht -----------------------------------------------------
   // Direkt, ehrlich, motivierend – kein Slang („Digga" o. Ä.), keine Floskeln.
-  tone: 'Sprich Fassi direkt mit „du" an. Ton: klar, ehrlich, motivierend, wie ein guter Coach, der an ihn glaubt. Kein Jugendslang (kein „Digga", „Bro"), keine Emojis-Flut, keine Floskeln. Kurz und konkret. Wenn er schludert, sag es freundlich, aber deutlich.',
+  tone: 'Sprich Fassie direkt mit „du" an. Ton: klar, ehrlich, motivierend, wie ein guter Coach, der an ihn glaubt. Kein Jugendslang (kein „Digga", „Bro"), keine Emojis-Flut, keine Floskeln. Kurz und konkret. Wenn er schludert, sag es freundlich, aber deutlich.',
 
   // --- Körper & Ziel -----------------------------------------------------------
   body: { sex: 'm', age: 26, height: 180, startWeight: 94.6, targetWeight: 84, targetBodyfat: 15 },

@@ -181,7 +181,7 @@ function pickWeighted(list, weight, r) {
   return list[list.length - 1];
 }
 
-// --- Motivations-Profil: welche Art Mission schafft Fassi wirklich? ----------------------
+// --- Motivations-Profil: welche Art Mission schafft Fassie wirklich? ----------------------
 export const STYLE_LABELS = { target: 'Zahlen erreichen', habit: 'Einfach abhaken', challenge: 'Disziplin-Challenges', record: 'Eigene Rekorde schlagen', streak: 'Serien halten' };
 export function motivationProfile(today = store.todayKey()) {
   const s = store.getState();
