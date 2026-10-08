@@ -7,6 +7,10 @@ import { icon } from '../icons.js';
 import { $, $$, esc, de, router, openSheet, closeSheet, sheetHead, toast, haptic } from '../ui.js';
 import { openWorkout } from './workout.js';
 import { afterChange } from './today.js';
+import { SKILLS, skillState, practiceSkill, advanceSkill, setSkillStage, skillSessionsThisWeek } from '../skills.js';
+import { GYM_TIMES, gymTimeFor } from '../planner.js';
+import { PERSONA } from '../persona.js';
+import { confetti } from '../ui.js';
 
 let selDay = null; // Datum-Key des gewählten Wochentags
 
@@ -37,6 +41,7 @@ export function renderSport(app) {
     }).join('')}</div>
 
     ${planCard(key, plan, isToday, active, sessions)}
+    ${skillsCard(key)}
     ${loadCard(today)}
     ${muscleCard(today)}
     ${liftsCard()}
@@ -55,6 +60,71 @@ export function renderSport(app) {
   $$('[data-lift]', app).forEach(b => b.onclick = () => openLiftHistory(b.dataset.lift));
   const ml = $('#lift-manual', app);
   if (ml) ml.onclick = () => openManualLift();
+  $$('[data-skill]', app).forEach(b => b.onclick = () => openSkill(key, b.dataset.skill));
+  $$('[data-gymt]', app).forEach(b => b.onclick = () => { store.setDayMeta(key, 'gymTime', b.dataset.gymt); haptic(4); router.rerender(); });
+}
+
+// --- Calisthenics-Skills ---------------------------------------------------------
+function nextSkill() {
+  // Der Skill, der am längsten nicht trainiert wurde
+  return Object.keys(SKILLS).map(id => ({ id, last: skillState(id).log.slice(-1)[0] || '' })).sort((a, b) => a.last.localeCompare(b.last))[0].id;
+}
+function skillsCard(key) {
+  const n = skillSessionsThisWeek(key);
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Deine Skills</span><span class="sub">${n}× trainiert diese Woche</span></div>
+    ${Object.entries(SKILLS).map(([id, sk]) => {
+      const st = skillState(id);
+      const stage = sk.stages[st.stage];
+      const today = st.log.includes(key);
+      return `<button class="skill" data-skill="${id}">
+        <span class="skill-ic">${icon(sk.icon)}</span>
+        <span class="skill-main"><b>${esc(sk.name)}${st.done ? ' ✓' : ''}</b><span>Stufe ${st.stage + 1}/${sk.stages.length} · ${esc(stage.name)}</span>
+          <span class="skill-ladder">${sk.stages.map((_, i) => `<i class="${i < st.stage || st.done ? 'on' : i === st.stage ? 'cur' : ''}"></i>`).join('')}</span></span>
+        ${today ? `<span class="done-tag" style="color:var(--nut)">${icon('check')}</span>` : icon('chev')}
+      </button>`;
+    }).join('')}
+    <p class="hint" style="margin:10px 0 0">${esc(PERSONA.skillWhy)} 2–3× pro Woche je 10 Minuten, frisch vor dem Workout.</p>
+  </div>`;
+}
+function openSkill(key, id) {
+  const sk = SKILLS[id];
+  const draw = () => {
+    const st = skillState(id);
+    const cur = sk.stages[st.stage];
+    const today = st.log.includes(key);
+    sheet.querySelector('.sheet-body').innerHTML = `
+      <p class="hint" style="font-size:14px">${esc(sk.why)}</p>
+      <div class="skill-now">
+        <div class="lbl" style="color:var(--nut)">Stufe ${st.stage + 1} von ${sk.stages.length}${st.done ? ' · Ziel erreicht' : ''}</div>
+        <div class="skill-now-t">${esc(cur.name)}</div>
+        <div class="skill-test">${icon('target')}<span>Nächste Stufe, wenn: <b>${esc(cur.test)}</b></span></div>
+        <p>${esc(cur.how)}</p>
+      </div>
+      <div class="part-head"><b>Leiter</b><span class="sub">antippen zum Einstufen</span></div>
+      ${sk.stages.map((s2, i) => `<button class="lad ${i < st.stage || st.done ? 'done' : i === st.stage ? 'cur' : ''}" data-stage="${i}">
+        <span class="lad-n">${i < st.stage || (st.done && i === st.stage) ? icon('check') : i + 1}</span><span><b>${esc(s2.name)}</b><span>${esc(s2.test)}</span></span></button>`).join('')}
+      <div class="skill-safe">${icon('alert')}<span>${esc(sk.safety)}</span></div>`;
+    sheet.querySelector('.sheet-foot').innerHTML = `
+      <button class="btn ghost" id="sk-done" ${today ? 'disabled' : ''}>${icon(today ? 'check' : 'timer')}${today ? 'Erledigt' : 'Trainiert'}</button>
+      <button class="btn volt" id="sk-up" ${st.done ? 'disabled' : ''}>${icon('trophy')}${st.stage >= sk.stages.length - 1 ? 'Geschafft' : 'Bestanden'}</button>`;
+    $('#sk-done', sheet).onclick = () => { practiceSkill(key, id); haptic(10); afterChange(key); toast(`${sk.name}: Session gespeichert`); draw(); };
+    $('#sk-up', sheet).onclick = () => {
+      if (!confirm(`„${cur.test}" wirklich sauber geschafft?`)) return;
+      advanceSkill(id, key);
+      if (!skillState(id).log.includes(key)) practiceSkill(key, id);
+      confetti(); haptic(30); afterChange(key);
+      toast(skillState(id).done ? `${sk.name} – Ziel erreicht! +100 XP` : `Neue Stufe: ${sk.stages[skillState(id).stage].name} · +100 XP`);
+      draw();
+    };
+    $$('[data-stage]', sheet).forEach(b => b.onclick = () => {
+      const i = Number(b.dataset.stage);
+      if (i === skillState(id).stage) return;
+      if (confirm(`Auf Stufe ${i + 1} „${sk.stages[i].name}" einstufen?`)) { setSkillStage(id, i); router.rerender(); draw(); }
+    });
+  };
+  const sheet = openSheet(`${sheetHead(esc(sk.name), 'Calisthenics-Skill')}<div class="sheet-body"></div><div class="sheet-foot"></div>`, { tall: true });
+  draw();
 }
 
 function isoWeek(d) {
@@ -72,7 +142,11 @@ function planCard(key, plan, isToday, active, sessions) {
     body = `<div class="sess"><span class="ic">${icon('walk')}</span><div><div class="t1">${esc(plan ? plan.title : 'Frei')}</div><div class="t2">${esc(plan ? plan.focus : '')}</div></div></div>
       <p class="hint" style="margin:12px 0 0">Ruhetag heißt nicht stillsitzen: ein Spaziergang oder 10.000 Schritte füllen deinen Sport-Ring.</p>`;
   } else if (plan.kind === 'gym') {
+    const gt = gymTimeFor(key);
+    const ns = SKILLS[nextSkill()];
     body = `<div class="sess"><span class="ic">${icon('dumbbell')}</span><div><div class="t1">${esc(plan.title)}</div><div class="t2">${esc(plan.focus || '')} · ${plan.exercises.length} Übungen</div></div></div>
+      <div class="gymt" style="margin:12px 0 0">${Object.entries(GYM_TIMES).map(([k, l]) => `<button class="chipbtn sm ${gt === k ? 'on' : ''}" data-gymt="${k}">${l}</button>`).join('')}</div>
+      <div class="skill-pre">${icon(ns.icon)}<span>Vorher 10 Min Skill: <b>${esc(ns.name)}</b> – ${esc(ns.stages[skillState(nextSkill()).stage].name)}</span></div>
       <div style="margin-top:10px">${plan.exercises.map((ex, i) => {
         const tg = store.progressionFor(ex);
         const sr = ex.load === 'time' ? `${ex.sets} × ${tg.s} s` : `${ex.sets} × ${ex.reps[0]}–${ex.reps[1]}`;
@@ -85,7 +159,7 @@ function planCard(key, plan, isToday, active, sessions) {
   }
   const done = sessions.map(x => {
     const st = store.sportType(x.type);
-    return `<div class="ex-prev"><span class="n" style="background:var(--spo);color:#fff">${icon('check')}</span>
+    return `<div class="ex-prev"><span class="n" style="background:var(--nut);color:var(--on-ink)">${icon('check')}</span>
       <span class="nm">${esc(x.title)}<span class="sub" style="display:block">${x.min} Min · Intensität ${x.rpe}/10 · Last ${de(store.sessionLoad(x))}</span></span>
       <button class="qa-rm" data-rmsess="${x.id}" aria-label="Löschen">${icon('trash')}</button></div>`;
   }).join('');
@@ -131,7 +205,7 @@ function loadCard(today) {
       ${l.weeks.map((w, i) => {
         const h = Math.round(w / max * 64);
         const x = 12 + i * 72;
-        return `<rect x="${x}" y="${70 - h}" width="56" height="${Math.max(2, h)}" rx="8" fill="${i === 3 ? '#1D4ED8' : '#BFDBFE'}"/>
+        return `<rect x="${x}" y="${70 - h}" width="56" height="${Math.max(2, h)}" rx="8" fill="${i === 3 ? '#4D8DFF' : '#26324A'}"/>
           <text x="${x + 28}" y="86" text-anchor="middle">${i === 3 ? 'diese Woche' : `vor ${3 - i} Wo`}</text>
           ${w ? `<text x="${x + 28}" y="${64 - h}" text-anchor="middle" style="fill:var(--ink-2)">${de(w)}</text>` : ''}`;
       }).join('')}

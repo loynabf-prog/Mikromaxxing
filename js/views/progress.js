@@ -3,6 +3,9 @@
 // ============================================================================
 import * as store from '../store.js';
 import { BODYCOMP_METRICS } from '../data.js';
+import { levelInfo, totalXP, dayXP, motivationProfile, RANKS } from '../game.js';
+import { getReview } from '../assistant.js';
+import { weekStart } from '../game.js';
 import { icon } from '../icons.js';
 import { $, $$, esc, de, router, openSheet, closeSheet, sheetHead, toast, miniRings, downscalePhoto, pickFile } from '../ui.js';
 
@@ -11,8 +14,10 @@ export function renderProgress(app) {
   app.innerHTML = `<div class="view">
     <div class="vh"><div><div class="vh-date">Dein Weg</div><div class="vh-title">Fortschritt</div></div>
       <div class="vh-actions"><button class="icon-btn" data-go="setup" aria-label="Einstellungen">${icon('sliders')}</button></div></div>
+    ${levelCard(today)}
     ${projectionCard(today)}
     ${calendarCard(today)}
+    ${motivationCard(today)}
     ${weekCard(today)}
     ${weightCard(today)}
     ${kneeSleepCard(today)}
@@ -21,6 +26,43 @@ export function renderProgress(app) {
     ${bodyCard()}
   </div>`;
   wire(app, today);
+}
+
+function levelCard(today) {
+  const lv = levelInfo(totalXP());
+  const dx = dayXP(today);
+  const rev = getReview(store.shiftDate(weekStart(today), -7));
+  return `<button class="card lvl-card" id="lv-open">
+    <div class="lvl-big"><span class="lvl-badge num">${lv.level}</span>
+      <div style="flex:1;min-width:0"><div class="lbl">Level ${lv.level}</div><div class="lvl-rank">${esc(lv.rank)}</div>
+        <span class="lvl-bar"><i style="width:${lv.pct}%"></i></span>
+        <div class="sub" style="margin-top:6px">${de(lv.need - lv.into)} XP bis Level ${lv.level + 1}${lv.nextRank ? ` · ${esc(lv.nextRank.name)} ab Level ${lv.nextRank.from}` : ''}</div></div></div>
+    <div class="lvl-today"><span>Heute</span><b class="num">+${dx.xp} XP</b></div>
+  </button>
+  ${rev ? `<button class="review-cta" id="rv-open">${icon('spark')}<span><b>${esc(rev.headline)}</b><span>Wochenrückblick ansehen</span></span>${icon('chev')}</button>` : ''}`;
+}
+
+function motivationCard(today) {
+  const m = motivationProfile(today);
+  if (!m.days) return '';
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Was dich antreibt</span><span class="sub">${m.days} Tage Missionen</span></div>
+    ${m.days < 5 ? `<p class="hint">Ich lerne noch, welche Art von Mission du wirklich durchziehst. Nach 5 Tagen siehst du hier dein Profil – und ich stelle die Missionen darauf ein.</p>` : `<p class="hint">Am stärksten bei: <b style="color:var(--nut)">${esc(m.top.label)}</b>. Davon bekommst du mehr.</p>`}
+    ${m.styles.map(x => `<div class="vol wide"><span>${esc(x.label)}</span><span class="bar"><i style="width:${Math.round(x.rate * 100)}%"></i></span><span>${Math.round(x.rate * 100)} %</span></div>`).join('')}
+  </div>`;
+}
+
+function openLevel(today) {
+  const lv = levelInfo(totalXP());
+  const dx = dayXP(today);
+  openSheet(`${sheetHead(`Level ${lv.level} · ${esc(lv.rank)}`, `${de(lv.xp)} XP insgesamt`)}
+    <div class="sheet-body">
+      <div class="part-head"><b>Heute</b><span class="sub">+${dx.xp} XP</span></div>
+      ${dx.parts.length ? dx.parts.map(p => `<div class="entry"><span class="qa-main"><div class="qa-nm">${esc(p.label)}</div></span><b class="num" style="color:var(--gold)">+${p.xp}</b></div>`).join('') : '<div class="empty">Noch keine XP heute – trag was ein.</div>'}
+      <div class="part-head"><b>Ränge</b></div>
+      ${RANKS.map(r => `<div class="entry"><span class="qa-main"><div class="qa-nm" style="${lv.level >= r.from ? 'color:var(--nut)' : ''}">${esc(r.name)}</div><div class="qa-am">ab Level ${r.from}</div></span>${lv.level >= r.from ? icon('check') : ''}</div>`).join('')}
+      <p class="hint" style="margin-top:12px">XP gibt's für Einträge, volle Ringe, Tagesziel im Budget, Training, Workouts, Rekorde, Reha, Skill-Stufen, Missionen und die Wochen-Challenge.</p>
+    </div>`, { tall: true });
 }
 
 function projectionCard(today) {
@@ -35,6 +77,7 @@ function projectionCard(today) {
     const d = store.dateOf(p.date).toLocaleDateString('de-DE', { day: 'numeric', month: 'long', year: 'numeric' });
     line = `Bei ${de(p.rate, 2)} kg pro Woche erreichst du dein Ziel ca. am <b>${d}</b> (${p.weeks} Wochen).`;
   } else if (p.target && p.current <= p.target) line = '<b>Zielgewicht erreicht.</b> Zeit, ein neues Ziel zu setzen.';
+  else if (p.planDate) line = `Mit Tempo „${esc(p.tempo)}" bist du ca. am <b>${store.dateOf(p.planDate).toLocaleDateString('de-DE', { day: 'numeric', month: 'long' })}</b> bei ${de(p.target, 0)} kg (${p.planWeeks} Wochen).`;
   else line = esc(store.kcalSuggestion(today));
   const latest = store.latestMeasurement();
   const bf = latest && latest.values.bodyfat != null ? latest.values.bodyfat : null;
@@ -73,7 +116,7 @@ function weekCard(today) {
       <div class="wk-tile"><div class="v num">${w.complete}/7</div><div class="l">Tage geschafft</div></div>
       <div class="wk-tile"><div class="v num ${w.delta == null ? '' : w.delta <= 0 ? 'good' : 'bad'}">${dTxt}</div><div class="l">kg zur Vorwoche</div></div>
     </div>
-    <div class="slot-note" style="margin:12px 0 0">${esc(store.kcalSuggestion(today))}</div>
+    ${(() => { const a = store.kcalAdvice(today); return `<div class="slot-note" style="margin:12px 0 0">${esc(a.text)}${a.delta ? `<button class="btn sm volt" id="kc-apply" data-delta="${a.delta}" style="margin-top:10px;width:100%">${a.delta < 0 ? 'Ziel um 150 kcal senken' : 'Ziel um 100 kcal erhöhen'}</button>` : ''}</div>`; })()}
     <p class="hint" style="margin:10px 0 0">${w.sessions} Einheit${w.sessions === 1 ? '' : 'en'} · Trainingslast ${de(w.load)}</p>
   </div>`;
 }
@@ -94,10 +137,10 @@ function weightCard(today) {
     const path = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
     const area = `${path} L${pts[pts.length - 1][0].toFixed(1)},${H} L${pts[0][0].toFixed(1)},${H} Z`;
     chart = `<svg class="chart" viewBox="0 0 ${W} ${H + 16}">
-      <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#60A5FA" stop-opacity=".25"/><stop offset="1" stop-color="#60A5FA" stop-opacity="0"/></linearGradient></defs>
+      <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4D8DFF" stop-opacity=".35"/><stop offset="1" stop-color="#4D8DFF" stop-opacity="0"/></linearGradient></defs>
       <path d="${area}" fill="url(#wg)"/>
-      <path d="${path}" fill="none" stroke="#1D4ED8" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-      ${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#fff" stroke="#1D4ED8" stroke-width="2"/>`).join('')}
+      <path d="${path}" fill="none" stroke="#4D8DFF" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
+      ${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#07080B" stroke="#4D8DFF" stroke-width="2"/>`).join('')}
       <text x="${P}" y="${H + 14}">vor 30 Tagen</text><text x="${W - P}" y="${H + 14}" text-anchor="end">heute</text>
       <text x="${W - P}" y="${y(hi - .6) - 4}" text-anchor="end">${de(hi - .6, 1)}</text>
     </svg>`;
@@ -122,7 +165,7 @@ function kneeSleepCard(today) {
   const bars = hist.map((h, i) => {
     if (h.sleep == null) return '';
     const bh = Math.min(1, h.sleep / 10) * (H - 20);
-    return `<rect x="${(P + i * bw + 1.5).toFixed(1)}" y="${(H - bh).toFixed(1)}" width="${(bw - 3).toFixed(1)}" height="${bh.toFixed(1)}" rx="2.5" fill="${h.sleep >= target ? '#C4B5FD' : '#E9E3FD'}"/>`;
+    return `<rect x="${(P + i * bw + 1.5).toFixed(1)}" y="${(H - bh).toFixed(1)}" width="${(bw - 3).toFixed(1)}" height="${bh.toFixed(1)}" rx="2.5" fill="${h.sleep >= target ? '#8B6CE0' : '#3A2F5C'}"/>`;
   }).join('');
   const kp = hist.map((h, i) => h.knee != null ? [P + i * bw + bw / 2, H - 6 - h.knee / 10 * (H - 26)] : null).filter(Boolean);
   const kpath = kp.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
@@ -132,10 +175,10 @@ function kneeSleepCard(today) {
     <div class="ch"><span class="ch-title">Knie & Schlaf</span><span class="sub">28 Tage</span></div>
     <svg class="chart" viewBox="0 0 ${W} ${H + 4}">
       ${bars}
-      ${kp.length > 1 ? `<path d="${kpath}" fill="none" stroke="#DC2626" stroke-width="2.2" stroke-linejoin="round"/>` : ''}
-      ${kp.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6" fill="#DC2626"/>`).join('')}
+      ${kp.length > 1 ? `<path d="${kpath}" fill="none" stroke="#FF6B6B" stroke-width="2.2" stroke-linejoin="round"/>` : ''}
+      ${kp.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6" fill="#FF6B6B"/>`).join('')}
     </svg>
-    <div class="macros"><span><b style="color:#7C3AED">▮</b> Schlaf${avgSleep != null ? ` · Ø ${de(avgSleep, 1)} h` : ''}</span><span><b style="color:#DC2626">●</b> Knie${lastK ? ` · zuletzt ${lastK.knee}/10` : ''}</span></div>
+    <div class="macros"><span><b style="color:#B08CFF">▮</b> Schlaf${avgSleep != null ? ` · Ø ${de(avgSleep, 1)} h` : ''}</span><span><b style="color:#FF6B6B">●</b> Knie${lastK ? ` · zuletzt ${lastK.knee}/10` : ''}</span></div>
   </div>`;
 }
 
@@ -203,6 +246,12 @@ function wire(app, today) {
       <figure><img src="${z.url}" alt=""><figcaption>${store.dateOf(z.date).toLocaleDateString('de-DE')}</figcaption></figure></div>`);
   };
   $('#m-add', app).onclick = () => openMeasurement(null);
+  const kc = $('#kc-apply', app);
+  if (kc) kc.onclick = () => { store.applyKcalOffset(Number(kc.dataset.delta)); router.rerender(); toast('Kalorienziel angepasst'); };
+  const lv = $('#lv-open', app);
+  if (lv) lv.onclick = () => openLevel(today);
+  const rv = $('#rv-open', app);
+  if (rv) rv.onclick = () => router.go('coach');
   const me = $('#m-edit', app);
   if (me) me.onclick = () => { const l = store.latestMeasurement(); openMeasurement(l ? l.date : null); };
 }

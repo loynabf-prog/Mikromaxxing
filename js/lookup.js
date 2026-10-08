@@ -25,23 +25,31 @@ export function setApiKey(key) {
   try { localStorage.setItem(AI_KEY, JSON.stringify(cur)); } catch (e) { /* voll */ }
 }
 export function aiUsage() { const a = readAI(); return { calls: a.calls || 0, inTok: a.inTok || 0, outTok: a.outTok || 0 }; }
-function trackUsage(usage) {
+// Preise pro 1 Mio. Tokens (Input / Output) in $
+const PRICES = { 'claude-haiku-5-5': [0.10, 0.50], 'claude-sonnet-5-5': [2, 10] };
+function trackUsage(usage, model = MODEL) {
   if (!usage) return;
   const a = readAI();
+  const [pi, po] = PRICES[model] || PRICES[MODEL];
+  if (a.usd == null) a.usd = (a.inTok || 0) * 0.10 / 1e6 + (a.outTok || 0) * 0.50 / 1e6;
   a.calls = (a.calls || 0) + 1;
   a.inTok = (a.inTok || 0) + (usage.input_tokens || 0);
   a.outTok = (a.outTok || 0) + (usage.output_tokens || 0);
+  a.usd = (a.usd || 0) + (usage.input_tokens || 0) * pi / 1e6 + (usage.output_tokens || 0) * po / 1e6;
   try { localStorage.setItem(AI_KEY, JSON.stringify(a)); } catch (e) { /* egal */ }
 }
-// Haiku 5.5: 0,10 $ / 1 Mio. Input-Tokens, 0,50 $ / 1 Mio. Output-Tokens
-export function aiCostUSD() { const u = aiUsage(); return u.inTok * 0.10 / 1e6 + u.outTok * 0.50 / 1e6; }
+export function aiCostUSD() { const a = readAI(); return a.usd != null ? a.usd : (a.inTok || 0) * 0.10 / 1e6 + (a.outTok || 0) * 0.50 / 1e6; }
+// Coach-Modell: Standard Haiku 5.5 (günstig), optional Sonnet 5.5 (klüger, teurer)
+export const COACH_MODELS = { 'claude-haiku-5-5': 'Haiku 5.5 – günstig (Standard)', 'claude-sonnet-5-5': 'Sonnet 5.5 – klüger, ca. 20× teurer' };
+export function coachModel() { const m = readAI().coachModel; return COACH_MODELS[m] ? m : MODEL; }
+export function setCoachModel(m) { const a = readAI(); a.coachModel = COACH_MODELS[m] ? m : MODEL; try { localStorage.setItem(AI_KEY, JSON.stringify(a)); } catch (e) { /* voll */ } }
 
 export class LookupError extends Error {
   constructor(msg, code) { super(msg); this.code = code; }
 }
 
 // --- Claude-Aufruf ----------------------------------------------------------
-const PER100_SCHEMA = {
+export const PER100_SCHEMA = {
   type: 'object', additionalProperties: false, required: NUT_KEYS,
   properties: Object.fromEntries(NUT_KEYS.map(k => [k, { type: 'number' }])),
 };
@@ -88,19 +96,19 @@ confidence: wie sicher die Werte sind (hoch bei Grundnahrungsmitteln, niedrig be
 found = false, wenn die Eingabe kein Lebensmittel und kein Getränk ist; dann name = "", per100 mit Nullen, aliases = [] und benefit = "".
 query: die Eingabe genau so, wie sie übergeben wurde.`;
 
-async function callClaude(userText, maxTokens = 8000, plain = false) {
+// Generischer Claude-Aufruf mit JSON-Schema (strukturierte Antwort).
+// Fällt bei abgelehntem Schema einmal auf eine reine JSON-Anweisung zurück.
+export async function claudeJSON({ system, messages, schema, maxTokens = 8000, model = MODEL }, plain = false) {
   const key = getApiKey();
   if (!key) throw new LookupError('Kein API-Key hinterlegt', 'nokey');
   if (typeof navigator !== 'undefined' && navigator.onLine === false) throw new LookupError('Du bist offline', 'offline');
   const body = {
-    model: MODEL,
+    model,
     max_tokens: maxTokens,
-    system: plain
-      ? `${SYSTEM}\n\nAntworte ausschließlich mit einem JSON-Objekt nach diesem JSON-Schema, ohne weiteren Text:\n${JSON.stringify(RESULT_SCHEMA)}`
-      : SYSTEM,
-    messages: [{ role: 'user', content: userText }],
+    system: plain ? `${system}\n\nAntworte ausschließlich mit einem JSON-Objekt nach diesem JSON-Schema, ohne weiteren Text:\n${JSON.stringify(schema)}` : system,
+    messages,
   };
-  if (!plain) body.output_config = { format: { type: 'json_schema', schema: RESULT_SCHEMA } };
+  if (!plain) body.output_config = { format: { type: 'json_schema', schema } };
   let res;
   try {
     res = await fetch(API_URL, {
@@ -122,22 +130,25 @@ async function callClaude(userText, maxTokens = 8000, plain = false) {
     if (res.status === 401 || res.status === 403) throw new LookupError('API-Key ungültig oder ohne Berechtigung', 'auth');
     if (res.status === 429) throw new LookupError('Zu viele Anfragen – kurz warten', 'rate');
     if (res.status === 400 && /credit|balance|billing/i.test(detail)) throw new LookupError('Kein Guthaben auf dem API-Konto', 'billing');
-    // Strukturiertes Format abgelehnt → einmal mit reiner JSON-Anweisung
-    if (res.status === 400 && !plain && /schema|output_config|format|grammar/i.test(detail)) return callClaude(userText, maxTokens, true);
+    if (res.status === 400 && !plain && /schema|output_config|format|grammar/i.test(detail)) return claudeJSON({ system, messages, schema, maxTokens, model }, true);
     if (res.status >= 500) throw new LookupError('Claude ist gerade überlastet – gleich nochmal', 'overloaded');
     throw new LookupError(detail || `Fehler ${res.status}`, 'api');
   }
   const data = await res.json();
-  trackUsage(data.usage);
+  trackUsage(data.usage, model);
   if (data.stop_reason === 'refusal') throw new LookupError('Claude hat die Anfrage abgelehnt', 'refusal');
   if (data.stop_reason === 'max_tokens') throw new LookupError('Antwort zu lang – bitte weniger auf einmal', 'max_tokens');
   let text = (data.content || []).filter(b => b.type === 'text').map(b => b.text).join('').trim();
-  if (plain) { const a = text.indexOf('{'), z = text.lastIndexOf('}'); if (a >= 0 && z > a) text = text.slice(a, z + 1); }
+  if (plain) { const i = text.indexOf('{'), j = text.lastIndexOf('}'); if (i >= 0 && j > i) text = text.slice(i, j + 1); }
   try { return JSON.parse(text); } catch (e) { throw new LookupError('Antwort nicht lesbar', 'parse'); }
 }
 
+function callClaude(userText, maxTokens = 8000) {
+  return claudeJSON({ system: SYSTEM, messages: [{ role: 'user', content: userText }], schema: RESULT_SCHEMA, maxTokens });
+}
+
 // Werte säubern: keine negativen/kaputten Zahlen, kcal plausibel
-function cleanPer100(p) {
+export function cleanPer100(p) {
   const out = {};
   for (const k of NUT_KEYS) {
     const v = Number(p && p[k]);
@@ -149,7 +160,7 @@ function cleanPer100(p) {
 }
 
 // Ergebnis eines KI-Eintrags → Lebensmittel für die Bibliothek
-function toFood(item, extra = {}) {
+export function toFood(item, extra = {}) {
   const piece = item.unit === 'piece' && item.pieceGrams > 0
     ? { name: (item.pieceName || 'Stück').trim(), g: Math.round(item.pieceGrams), def: 1 }
     : null;

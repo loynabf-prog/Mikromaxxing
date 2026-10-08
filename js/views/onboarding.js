@@ -15,8 +15,8 @@ export function openOnboarding() {
     const p = store.getState().profile;
     return [
       `<div class="ob-art">${ringsSVG({ nutrition: 85, sport: 100, regen: 62 }, { photo: p.photo })}</div>
-       <div class="ob-title">Drei Ringe.<br>Jeden Tag.</div>
-       <p class="ob-text">Ernährung, Sport und Regeneration. Mach alle drei voll – dann hast du dir den Schlaf verdient.</p>`,
+       <div class="ob-title">Hey ${esc(p.name || 'du')}.<br>Diese App gibt's nur einmal.</div>
+       <p class="ob-text">Gebaut für deinen Alltag, dein Training und dein Essen. Drei Ringe – Ernährung, Sport, Regeneration. Mach alle drei voll.</p>`,
       `<div class="ob-art">${ringsSVG({ nutrition: 0, sport: 0, regen: 0 }, { photo: p.photo })}</div>
        <div class="ob-title">Dein Gesicht<br>in der Mitte</div>
        <p class="ob-text">Ein Foto von dir im Ring macht's persönlich. Kannst du jederzeit ändern.</p>
@@ -48,7 +48,7 @@ export function openOnboarding() {
     if (sl && sl.value) patch.sleepTarget = Number(sl.value.replace(',', '.'));
     if (Object.keys(patch).length) store.updateProfile(patch);
   };
-  const finish = () => { commitGoals(); store.setOnboarded(true); host.remove(); router.go('today'); };
+  const finish = () => { commitGoals(); store.setOnboarded(true); store.getState()._seenV4 = true; store.save(); host.remove(); router.go('today'); };
 
   const draw = () => {
     const list = steps();
@@ -70,5 +70,31 @@ export function openOnboarding() {
       draw(); toast('Foto gesetzt');
     };
   };
+  draw();
+}
+
+// Einmalig nach dem Persona-Update: was ist neu
+export function openWhatsNew(onDone) {
+  let step = 0;
+  const p = store.getState().profile;
+  const host = document.createElement('div');
+  host.className = 'ob';
+  document.body.appendChild(host);
+  const slides = [
+    { ic: 'user', t: `Gebaut für ${esc(p.name || 'dich')}`, x: 'Deine Zeiten, dein Training, dein Essen: Kalorien je Tagestyp (Basketball-Tag mehr, Ruhetag weniger), Essfenster ab Mittag, Lidl-, Imbiss- und Bowl-Ideen.' },
+    { ic: 'mic', t: 'Erzähl einfach', x: 'Unten ins Feld oder im Coach: „Mittags Bowl, 90 Min Basketball, 7 h geschlafen, Knie 3" – alles landet an der richtigen Stelle.' },
+    { ic: 'clock', t: 'Dein Tag', x: 'Ein Fahrplan, wann du was isst – rund um Training und Spiele. Tipp auf eine Mahlzeit: „Was soll ich essen?"' },
+    { ic: 'trophy', t: 'Level & Missionen', x: 'Jeden Tag 3 Missionen, jede Woche eine Challenge. Ich lerne, was dich wirklich antreibt – und stelle die Missionen darauf ein.' },
+  ];
+  const draw = () => {
+    const s = slides[step], last = step === slides.length - 1;
+    host.innerHTML = `<div class="ob-card">
+      <div class="ob-body"><div class="new-ic">${icon(s.ic)}</div><div class="ob-title">${s.t}</div><p class="ob-text">${s.x}</p></div>
+      <div class="ob-dots">${slides.map((_, i) => `<span class="ob-dot ${i === step ? 'on' : ''}"></span>`).join('')}</div>
+      <div class="ob-nav"><button class="btn ghost" id="wn-skip">${step ? 'Zurück' : 'Überspringen'}</button><button class="btn volt" id="wn-next">${last ? "Los geht's" : 'Weiter'}</button></div></div>`;
+    $('#wn-skip', host).onclick = () => { if (!step) return done(); step--; draw(); };
+    $('#wn-next', host).onclick = () => { if (last) done(); else { step++; draw(); } };
+  };
+  const done = () => { store.getState()._seenV4 = true; store.save(); host.remove(); if (onDone) onDone(); };
   draw();
 }

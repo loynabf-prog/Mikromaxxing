@@ -8,7 +8,10 @@ import {
   $, $$, esc, de, short, router, ringsSVG, toast, haptic, confetti, openSheet, closeSheet, sheetHead,
   greeting, longDate, downscalePhoto, pickFile, fmtHours, fmtClock, beep, unlockAudio,
 } from '../ui.js';
-import { openSuppsSheet } from './food.js';
+import { openSuppsSheet, openRecommendSheet } from './food.js';
+import { PERSONA } from '../persona.js';
+import { dayPlan, fmtH, GYM_TIMES } from '../planner.js';
+import { levelInfo, totalXP, dayXP, missionsFor, weeklyChallenge, MISSIONS } from '../game.js';
 import { openSessionSheet, openStepsSheet } from './sport.js';
 import { openWorkout } from './workout.js';
 import { openQuickAdd } from './quickadd.js';
@@ -21,16 +24,25 @@ export function renderToday(app) {
   const day = store.getDay(key);
   const streak = store.currentStreak(key);
   const hint = store.coachHints(key, now)[0];
+  const lv = levelInfo(totalXP());
+  const dx = dayXP(key).xp;
   lastOverall = p.overall;
 
   app.innerHTML = `<div class="view">
     <div class="vh">
-      <div><div class="vh-date">${esc(longDate(now))}</div><div class="vh-title">${greeting(now)}</div></div>
+      <div><div class="vh-date">${esc(longDate(now))}</div><div class="vh-title">${greeting(now)},<br>${esc(s.profile.name || PERSONA.name)}</div></div>
       <div class="vh-actions">
         <span class="streak ${streak ? '' : 'zero'}" title="Tage in Folge">${icon('flame')}${streak}</span>
         <button class="icon-btn" data-go="setup" aria-label="Einstellungen">${icon('sliders')}</button>
       </div>
     </div>
+
+    <button class="lvl" data-go="progress">
+      <span class="lvl-badge num">${lv.level}</span>
+      <span class="lvl-main"><span class="lvl-top"><b>${esc(lv.rank)}</b><span>${de(lv.into)} / ${de(lv.need)} XP</span></span>
+        <span class="lvl-bar"><i style="width:${lv.pct}%"></i></span></span>
+      <span class="lvl-xp num">+${dx}<small>heute</small></span>
+    </button>
 
     <div class="hero">
       <button class="rings" id="ring-photo" aria-label="Profilfoto">${ringsSVG(p, { photo: s.profile.photo })}</button>
@@ -41,8 +53,10 @@ export function renderToday(app) {
       </div>
     </div>
 
+    ${budgetCard(key, p, day, now)}
     ${hint ? coachCard(hint) : ''}
-    ${nutritionCard(key, p, day, now)}
+    ${planCard(key, now)}
+    ${missionsCard(key, now)}
     ${sportCard(key, p)}
     ${regenCard(key, p)}
   </div>`;
@@ -58,25 +72,28 @@ function coachCard(h) {
   </button>`;
 }
 
-function nutritionCard(key, p, day, now) {
+// Kalorienbudget je Tagestyp + Protein + Wasser/Supps
+function budgetCard(key, p, day, now) {
   const s = store.getState();
-  const t = s.profile.targets;
-  const parts = store.proteinByPart(key);
-  const nowPart = store.partOfHour(now.getHours()).id;
+  const t = store.macroTargets(key);
+  const tot = p.totals;
+  const left = t.kcal - tot.kcal;
+  const over = left < -100;
+  const dt = store.DAY_TYPES[t.type];
   const supps = s.supplements;
   const taken = supps.filter(x => day.supps[x.id]).length;
-  const slot = now.getHours() < 11 ? 'morgens' : now.getHours() < 15 ? 'mittags' : now.getHours() >= 19 ? 'abends' : 'pre';
+  const h = now.getHours();
+  const slot = h < 11 ? 'morgens' : h < 15 ? 'mittags' : h >= 19 ? 'abends' : 'pre';
   const openNow = supps.filter(x => x.time === slot && !day.supps[x.id]).map(x => short(x.name));
-  return `<div class="card">
-    <div class="ch"><span class="chip nut">${icon('leaf')}Ernährung</span><button class="more" data-go="food">Details${icon('chev')}</button></div>
+  return `<div class="card budget ${over ? 'over' : ''}">
+    <div class="ch"><span class="chip nut">${icon(dt.icon)}${esc(dt.label)}</span><button class="more" data-go="food">Essen${icon('chev')}</button></div>
     <div class="big-row">
-      <div><div class="big num">${de(p.totals.protein)}<small>/ ${de(t.protein)} g</small></div><div class="lbl" style="margin-top:6px">Protein</div></div>
-      <div style="text-align:right"><div class="mid num">${de(p.totals.kcal)}</div><div class="lbl" style="margin-top:5px">kcal · Ziel ${de(t.kcal)}</div></div>
+      <div><div class="big num">${de(Math.abs(left))}<small>${left >= 0 ? 'kcal übrig' : 'kcal drüber'}</small></div>
+        <div class="lbl" style="margin-top:6px">Budget ${de(t.kcal)} · gegessen ${de(tot.kcal)}</div></div>
+      <div style="text-align:right"><div class="mid num">${de(tot.protein)}<small>/ ${de(t.protein)} g</small></div><div class="lbl" style="margin-top:5px">Protein</div></div>
     </div>
-    <div class="pdist">${parts.map(pt => `
-      <div class="pd ${pt.id === nowPart ? 'now' : ''}"><div class="bar"><i style="width:${Math.min(100, pt.target ? pt.grams / pt.target * 100 : 0)}%"></i></div>
-      <span><b>${pt.grams} g</b> ${pt.label}</span></div>`).join('')}
-    </div>
+    <div class="bbar"><i style="width:${Math.min(100, tot.kcal / t.kcal * 100)}%"></i><b style="left:${Math.min(100, tot.protein / t.protein * 100)}%"></b></div>
+    <div class="macros"><span>Carbs <b>${de(tot.carbs)}/${de(t.carbs)} g</b></span><span>Fett <b>${de(tot.fat)}/${de(t.fat)} g</b></span><span>Ballastst. <b>${de(tot.fiber)} g</b></span></div>
     <div class="minis">
       <div class="mini" id="water-tile" role="button">
         ${icon('drop', 'w')}<div class="mt num">${de((day.water || 0) / 1000, 1)} L<small>von ${de(s.profile.water / 1000, 1)} L</small></div>
@@ -85,6 +102,56 @@ function nutritionCard(key, p, day, now) {
       <button class="mini" data-act="supps">
         ${icon('pill', 'p')}<div class="mt num">${taken} / ${supps.length}<small>${openNow.length ? esc(openNow.join(', ')) : 'Supplements'}</small></div>
       </button>
+    </div>
+  </div>`;
+}
+
+// Dein Tag: Fahrplan aus Rhythmus, Training und dem, was schon gegessen wurde
+function planCard(key, now) {
+  const plan = dayPlan(key, now);
+  const rows = plan.slots.map(x => {
+    const st = x.status === 'done' || x.status === 'done-none' ? 'done' : x.status;
+    let detail = '';
+    if (x.type === 'meal') {
+      if (x.status === 'done') detail = `${de(x.eaten.kcal)} kcal · ${de(x.eaten.protein)} g Protein`;
+      else if (x.status === 'skipped') detail = 'ausgelassen';
+      else if (x.target) detail = `~${de(x.target.kcal)} kcal · ${de(x.target.protein)} g Protein`;
+    } else detail = x.text || '';
+    const supps = (x.supps || []).filter(sp => !store.getDay(key).supps[sp.id]).map(sp => short(sp.name));
+    const gym = x.type === 'train' && plan.train && plan.train.kind === 'gym'
+      ? `<div class="gymt">${Object.entries(GYM_TIMES).map(([k, l]) => `<button class="chipbtn ${plan.train.gymTime === k ? 'on' : ''}" data-gymt="${k}">${l}</button>`).join('')}</div>` : '';
+    return `<div class="tl ${st} ${x.next ? 'next' : ''} t-${x.type}">
+      <span class="tl-t num">${fmtH(x.t)}</span>
+      <span class="tl-dot">${st === 'done' ? icon('check') : x.type === 'train' ? icon(x.icon || 'dumbbell') : x.type === 'sleep' ? icon('moon') : x.type === 'drink' ? icon('coffee') : ''}</span>
+      <button class="tl-main" data-slot="${x.type === 'meal' ? x.slot : ''}" data-ty="${x.type}">
+        <b>${esc(x.title)}</b>${detail ? `<span>${esc(detail)}</span>` : ''}
+        ${x.type === 'meal' && x.next && x.text ? `<em>${esc(x.text)}</em>` : ''}
+        ${supps.length && st !== 'done' ? `<i class="tl-supp">${icon('pill')}${esc(supps.join(' · '))}</i>` : ''}
+      </button>
+      ${x.type === 'meal' && st !== 'done' && x.status !== 'skipped' ? `<button class="tl-go" data-slot="${x.slot}" aria-label="Was soll ich essen?">${icon('chev')}</button>` : ''}
+      ${gym}
+    </div>`;
+  }).join('');
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Dein Tag</span><span class="sub">${plan.train ? esc(plan.train.title) : 'Kein Training geplant'}</span></div>
+    <div class="timeline">${rows}</div>
+  </div>`;
+}
+
+function missionsCard(key, now) {
+  const ms = missionsFor(key, now);
+  const wc = weeklyChallenge(key);
+  const done = ms.filter(m => m.done).length;
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Missionen</span><span class="sub">${done} / ${ms.length} · +${ms.reduce((a, m) => a + m.xp, 0)} XP möglich</span></div>
+    ${ms.map(m => `<button class="mis ${m.done ? 'done' : ''} ${m.failed ? 'failed' : ''} c-${m.cat}" data-mis="${m.id}">
+      <span class="mis-ring" style="--p:${Math.round(m.p * 100)}">${m.done ? icon('check') : ''}</span>
+      <span class="mis-main"><b>${esc(m.title)}</b><span>${esc(m.label)}</span></span>
+      <span class="mis-xp num">+${m.xp}</span>
+    </button>`).join('')}
+    <div class="wch ${wc.done ? 'done' : ''}">
+      <div class="wch-top"><span>${icon('trophy')}Woche: ${esc(wc.title)}</span><b class="num">+${wc.xp}</b></div>
+      <div class="wch-dots">${Array.from({ length: wc.goal }, (_, i) => `<i class="${i < wc.n ? 'on' : ''}"></i>`).join('')}<span>${wc.done ? 'geschafft' : `${wc.n}/${wc.goal} · noch ${wc.daysLeft} Tage`}</span></div>
     </div>
   </div>`;
 }
@@ -171,6 +238,30 @@ function wire(app, key, hint) {
     store.setKnee(key, Number(b.dataset.knee)); haptic(); afterChange(key);
   });
   $$('[data-act]', app).forEach(b => b.onclick = () => runAction(key, { type: b.dataset.act, sport: b.dataset.sport }));
+  $$('[data-slot]', app).forEach(b => b.onclick = () => {
+    if (b.dataset.slot) return openRecommendSheet(key, b.dataset.slot);
+    const ty = b.dataset.ty;
+    if (ty === 'train') { const pl = store.getTrainingFor(key); if (pl && pl.kind === 'gym') openWorkout(); else openSessionSheet(key, {}); }
+    else if (ty === 'drink') addWaterQuick(key, 500);
+  });
+  $$('[data-gymt]', app).forEach(b => b.onclick = () => { store.setDayMeta(key, 'gymTime', b.dataset.gymt); haptic(4); router.rerender(); });
+  $$('[data-mis]', app).forEach(b => b.onclick = () => openMission(key, b.dataset.mis));
+}
+
+// Mission antippen: worum geht's + direkt loslegen
+function openMission(key, id) {
+  const m = missionsFor(key).find(x => x.id === id);
+  if (!m) return;
+  const go = { reha: 'reha', reha_streak: 'reha', knee: 'knee', sleep: 'sleep', water: 'water', session: 'session', workout: 'workout', pr: 'workout', steps: 'steps', steps_record: 'steps' }[id];
+  const sheet = openSheet(`${sheetHead(esc(m.title), m.done ? 'Geschafft' : esc(m.label))}
+    <p class="hint" style="font-size:15px">${esc(m.desc)}</p>
+    <div class="mis-detail"><span class="mis-ring big" style="--p:${Math.round(m.p * 100)}">${m.done ? icon('check') : Math.round(m.p * 100) + '%'}</span><div><b class="num">+${m.xp} XP</b><span>${esc({ target: 'Ziel erreichen', habit: 'Abhaken', challenge: 'Disziplin', record: 'Bestwert schlagen', streak: 'Serie halten' }[m.style] || '')}</span></div></div>
+    <div class="sheet-foot">${go && !m.done ? `<button class="btn volt block" id="mis-go">${icon('play')}Jetzt erledigen</button>` : id === 'skill' && !m.done ? `<button class="btn volt block" id="mis-skill">${icon('zap')}Zu den Skills</button>` : `<button class="btn ghost block" data-close>Okay</button>`}</div>`);
+  const g = $('#mis-go', sheet);
+  if (g) g.onclick = () => { closeSheet(); runAction(key, { type: go === 'water' ? 'water' : go, ml: 500 }); };
+  const sk = $('#mis-skill', sheet);
+  if (sk) sk.onclick = () => { closeSheet(); router.go('sport'); };
+  $$('[data-close]', sheet).forEach(b => b.onclick = () => closeSheet());
 }
 
 // Nach jeder Änderung: neu zeichnen + Konfetti, wenn der Tag gerade voll wurde
@@ -202,6 +293,7 @@ export function runAction(key, a) {
     case 'water': addWaterQuick(key, a.ml || 500); break;
     case 'knee': $('#regen').scrollIntoView({ behavior: 'smooth', block: 'center' }); break;
     case 'add': openQuickAdd({ key, text: a.text || '' }); break;
+    case 'eat': openRecommendSheet(key, a.slot || 'first'); break;
     case 'food': {
       const before = store.getDay(key).entries.length;
       store.addEntry(key, a.foodId, a.grams);

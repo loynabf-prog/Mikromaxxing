@@ -6,6 +6,7 @@ import {
   NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS, DEFAULT_TRAINING,
   GAMES, DEFAULT_MEASUREMENTS, SNACKS, DEFAULT_MEALS, SPORT_TYPES,
 } from './data.js';
+import { PERSONA, PERSONA_FOODS, PERSONA_SUPP_TIMES } from './persona.js';
 
 const STORAGE_KEY = 'mikromaxxing_v1';
 const SCHEMA = 3;
@@ -47,7 +48,32 @@ export function formatDateLabel(key) {
 // ============================================================================
 // Laden · Migration · Speichern
 // ============================================================================
+function personalize(m) {
+  // Persona: Name, Rhythmus, Tempo, eigene Lebensmittel, Supplement-Zeiten
+  const p = m.profile;
+  p.name = PERSONA.name;
+  if (!p.wakeTime || p.wakeTime === '07:00') p.wakeTime = PERSONA.life.wake;
+  if (!p.sleepTarget || p.sleepTarget === 8) p.sleepTarget = PERSONA.life.sleepTarget;
+  if (!p.tempo) p.tempo = PERSONA.goal.tempo;
+  if (!p.firstMeal) p.firstMeal = PERSONA.eating.firstMeal;
+  if (!p.gymDefault) p.gymDefault = PERSONA.training.gymDefault;
+  if (p.kcalOffset == null) p.kcalOffset = 0;
+  if (!p.targetWeight) p.targetWeight = PERSONA.body.targetWeight;
+  const have = new Set(m.foods.map(f => f.id));
+  for (const f of PERSONA_FOODS) if (!have.has(f.id)) m.foods.push(structuredClone(f));
+  for (const s of m.supplements) {
+    const t = PERSONA_SUPP_TIMES[s.id];
+    if (t && s.time === 'morgens') s.time = t;
+  }
+  m._persona = PERSONA.id + '@' + PERSONA.version;
+}
+
 function freshState() {
+  const s = freshStateRaw();
+  personalize(s);
+  return s;
+}
+function freshStateRaw() {
   return {
     schema: SCHEMA,
     profile: structuredClone(DEFAULT_PROFILE),
@@ -62,6 +88,8 @@ function freshState() {
     log: {}, // key -> { entries, water, supps, weight, sleep, knee, reha, steps, sessions }
     _onboarded: false,
     _ringV3Since: todayKey(),
+    _v4Since: todayKey(),
+    skills: {}, missions: {}, weekly: {}, ratings: {}, chat: [], reviews: {},
     _trainV2: true, _mealsSeed1: true, _gamesV1: true, _bodyseed1: true, _athleteV1: true, _suppV2: true,
   };
 }
@@ -82,7 +110,7 @@ export function load() {
 }
 
 function migrate(parsed) {
-  const base = freshState();
+  const base = freshStateRaw();
   const m = Object.assign(base, parsed);
   // Bestehende Installs gelten als eingerichtet
   if (!('_onboarded' in parsed) || Object.keys(parsed.log || {}).length) m._onboarded = true;
@@ -137,6 +165,10 @@ function migrate(parsed) {
   }
   if (m.activeWorkout === undefined) m.activeWorkout = null;
   if (!m.log) m.log = {};
+  for (const k of ['skills', 'missions', 'weekly', 'ratings', 'reviews']) if (!m[k] || typeof m[k] !== 'object' || Array.isArray(m[k])) m[k] = {};
+  if (!Array.isArray(m.chat)) m.chat = [];
+  if (!('_v4Since' in parsed)) m._v4Since = todayKey();
+  if (m._persona !== PERSONA.id + '@' + PERSONA.version) personalize(m);
 
   // Aufräumen: Bereiche, die es nicht mehr gibt (Tagesplan, Gewohnheiten, Autopilot)
   for (const k of ['schedule', 'habits', 'autopilot']) delete m[k];
@@ -230,6 +262,30 @@ export function setWeight(key, kg) {
   save();
 }
 
+// Kleine Tages-Infos (z. B. Gym-Zeit, Skill-Training)
+export function setDayMeta(key, field, value) { getDay(key)[field] = value; save(); }
+export function dayMeta(key, field) { const d = peekDay(key); return d ? d[field] : undefined; }
+
+// Gerichte aus „Was soll ich essen?" – merkt sich, was du isst und magst
+export function logRecipe(key, recipe, portions = 1, ts = Date.now()) {
+  const items = recipe.items.map(([foodId, grams]) => ({ foodId, grams: Math.round(grams * portions) })).filter(it => foodById(it.foodId));
+  const day = getDay(key);
+  for (const it of items) day.entries.push({ foodId: it.foodId, grams: it.grams, ts, recipe: recipe.id });
+  const s = load();
+  const st = s.ratings[recipe.id] || (s.ratings[recipe.id] = { r: 0, n: 0, last: null });
+  st.n = (st.n || 0) + 1; st.last = key;
+  save();
+  return items.length;
+}
+export function rateRecipe(id, r) {
+  const s = load();
+  const st = s.ratings[id] || (s.ratings[id] = { r: 0, n: 0, last: null });
+  st.r = st.r === r ? 0 : r;
+  save();
+  return st.r;
+}
+export function recipeStat(id) { return load().ratings[id] || { r: 0, n: 0, last: null }; }
+
 // ============================================================================
 // Bibliothek · Supplements · Profil
 // ============================================================================
@@ -276,6 +332,56 @@ export function servingGrams(food) {
   if (!food) return 100;
   if (food.piece) return food.piece.g * (food.piece.def || 1);
   return (food.servings && food.servings[0]) ? food.servings[0].grams : 100;
+}
+
+// ============================================================================
+// Kalorien & Makros je Tag: Tagestyp × Abnehm-Tempo (+ persönliche Korrektur)
+// ============================================================================
+export const TEMPO = {
+  moderate: { label: 'Moderat', deficit: 500, rate: 0.5, desc: 'ca. 0,5 kg pro Woche – sehr muskelschonend' },
+  fast: { label: 'Schnell', deficit: 750, rate: 0.75, desc: 'ca. 0,7–0,8 kg pro Woche – zügig, Muskeln bleiben' },
+  max: { label: 'Maximal', deficit: 1000, rate: 1, desc: 'ca. 1 kg pro Woche – hart, nur mit viel Protein & Schlaf' },
+};
+export const DAY_TYPES = {
+  basketball: { label: 'Basketball-Tag', burn: 750, icon: 'ball' },
+  gym: { label: 'Gym-Tag', burn: 300, icon: 'dumbbell' },
+  active: { label: 'Aktiver Tag', burn: 400, icon: 'activity' },
+  rest: { label: 'Ruhetag', burn: 0, icon: 'moon' },
+};
+export function dayType(key) {
+  const sess = sessionsFor(key);
+  const types = new Set(sess.map(x => x.type));
+  const plan = getTrainingFor(key);
+  if (types.has('basketball') || types.has('game') || gamesForDate(key).length || (plan && plan.kind === 'sport' && plan.sport === 'basketball')) return 'basketball';
+  if (types.has('gym') || (plan && plan.kind === 'gym')) return 'gym';
+  if (sess.some(x => x.type !== 'walk') || (plan && plan.kind === 'sport')) return 'active';
+  return 'rest';
+}
+export function bmr() {
+  const p = load().profile;
+  const w = currentWeight() || p.weight || 90;
+  return 10 * w + 6.25 * (p.height || 180) - 5 * (p.age || 26) + (p.sex === 'f' ? -161 : 5);
+}
+// Viel unterwegs (Drehs) → Alltagsfaktor 1,45
+export function kcalTarget(key = todayKey()) {
+  const p = load().profile;
+  const type = DAY_TYPES[dayType(key)];
+  const tempo = TEMPO[p.tempo] || TEMPO.fast;
+  const b = bmr();
+  const raw = b * 1.45 + type.burn - tempo.deficit + (p.kcalOffset || 0);
+  return Math.round(Math.max(raw, b + 150, 1800) / 50) * 50;
+}
+export function macroTargets(key = todayKey()) {
+  const t = load().profile.targets;
+  const kcal = kcalTarget(key);
+  const protein = t.protein || 200;
+  const fat = Math.round(Math.max(60, (load().profile.targetWeight || 84) * 0.85));
+  const carbs = Math.max(80, Math.round((kcal - protein * 4 - fat * 9) / 4));
+  return { kcal, protein, fat, carbs, type: dayType(key) };
+}
+export function inBudget(key) {
+  const tot = computeTotals(key);
+  return tot.kcal > 0 && tot.kcal <= kcalTarget(key) + 100;
 }
 
 // ============================================================================
@@ -444,7 +550,7 @@ export function getRecommendations(key) {
   const s = load();
   const totals = computeTotals(key);
   const targets = s.profile.targets;
-  const remainingKcal = targets.kcal - (totals.kcal || 0);
+  const remainingKcal = kcalTarget(key) - (totals.kcal || 0);
   const wholeFoods = s.foods.filter(f => f.whole !== false);
   const ranked = wholeFoods.map(food => {
     const g = servingGrams(food);
@@ -889,7 +995,12 @@ export function dayPillars(key = todayKey()) {
   };
 }
 export function ringSummary(key) { const p = dayPillars(key); return { pct: p.overall, ...p }; }
-export function dayComplete(key) { return ringSummary(key).pct >= (load().profile.dayGoal || 80); }
+// Tag geschafft = Ringe ab Tagesziel UND Kalorien im Budget (seit dem Persona-Update)
+export function dayComplete(key) {
+  const s = load();
+  if (ringSummary(key).pct < (s.profile.dayGoal || 80)) return false;
+  return key < (s._v4Since || '0000') || inBudget(key);
+}
 
 export function currentStreak(today = todayKey()) {
   let streak = 0, cursor = today, first = true;
@@ -963,6 +1074,14 @@ export function coachHints(key = todayKey(), now = new Date()) {
       add(74, 'info', sportType(plan.sport).icon, plan.title, 'Einheit eintragen – Dauer und Intensität, das füllt deinen Sport-Ring.', { type: 'session', sport: plan.sport });
     }
   }
+
+  // Persönlich: Essfenster, Budget, späte Snacks
+  const kTarget = kcalTarget(key);
+  const kOver = Math.round((p.totals.kcal || 0) - kTarget);
+  const name = s.profile.name || '';
+  if (isToday && kOver > 150) add(88, 'warn', 'flame', 'Budget überschritten', `${kOver} kcal über dem Plan. Kein Drama – heute nichts mehr nachlegen, morgen ganz normal weiter. Kein Ausgleichs-Hungern.`, null);
+  if (isToday && h < 11.5 && !(day.entries || []).length) add(64, 'info', 'coffee', `Morgen${name ? ', ' + name : ''}`, `Bis Mittag reicht Kaffee + Wasser. Erste Mahlzeit gegen ${s.profile.firstMeal || '12:30'}: richtig Protein rein.`, { type: 'eat', slot: 'first' });
+  if (isToday && h >= 21.5 && kOver <= 0 && (day.entries || []).length) add(56, 'good', 'moon', 'Budget hält', 'Jetzt kommt deine kritische Zeit. Wenn noch Hunger: 250 g Magerquark – sonst ab ins Bett.', { type: 'add', text: '250 g Magerquark' });
 
   const protGap = Math.round((s.profile.targets.protein || 0) - (p.totals.protein || 0));
   if (protGap > 35 && h >= 13) {
@@ -1080,16 +1199,35 @@ export function goalProjection(today = todayKey()) {
       date = todayKey(d);
     }
   }
-  return { current: cur, target, rate, weeks, date };
+  const tempo = TEMPO[s.profile.tempo] || TEMPO.fast;
+  let planDate = null, planWeeks = null;
+  if (cur > target) {
+    planWeeks = Math.ceil((cur - target) / tempo.rate);
+    const d = new Date(); d.setDate(d.getDate() + planWeeks * 7);
+    planDate = todayKey(d);
+  }
+  return { current: cur, target, rate, weeks, date, planDate, planWeeks, tempo: tempo.label };
 }
-export function kcalSuggestion(today = todayKey()) {
+// Abgleich echter Trend vs. gewähltes Tempo → konkreter Vorschlag (delta in kcal)
+export function kcalAdvice(today = todayKey()) {
   const proj = goalProjection(today);
-  const kcal = load().profile.targets.kcal;
-  if (proj.rate == null) return 'Wieg dich ein paar Tage morgens, dann rechne ich deinen Trend.';
-  if (proj.current <= proj.target) return 'Zielgewicht erreicht – Zeit, auf Erhalt umzustellen.';
-  if (proj.rate > -0.2) return `Abnahme stockt (${String(proj.rate).replace('.', ',')} kg/Woche). Vorschlag: ~150 kcal weniger → ${kcal - 150} kcal.`;
-  if (proj.rate < -0.9) return `Du verlierst schnell (${String(proj.rate).replace('.', ',')} kg/Woche) – Muskeln schützen: ~100 kcal mehr → ${kcal + 100} kcal.`;
-  return `Perfektes Tempo (${String(proj.rate).replace('.', ',')} kg/Woche). Nichts ändern.`;
+  const p = load().profile;
+  const tempo = TEMPO[p.tempo] || TEMPO.fast;
+  const kcal = kcalTarget(today);
+  const r = (x) => String(Math.abs(x)).replace('.', ',');
+  if (proj.rate == null) return { text: `Wieg dich ein paar Mal pro Woche morgens nüchtern – nach 2 Wochen gleiche ich dein Ziel (${tempo.label}, ${tempo.desc}) mit deinem echten Trend ab.`, delta: 0 };
+  if (proj.current <= proj.target) return { text: 'Zielgewicht erreicht – Zeit, auf Erhalt umzustellen.', delta: 0 };
+  const loss = -proj.rate;
+  if (loss < tempo.rate * 0.6) return { text: `Du verlierst ${r(loss)} kg/Woche, geplant sind ${r(tempo.rate)}. Vorschlag: 150 kcal weniger pro Tag (heute ${de0(kcal - 150)} statt ${de0(kcal)}).`, delta: -150 };
+  if (loss > Math.max(1.1, tempo.rate * 1.6)) return { text: `Du verlierst ${r(loss)} kg/Woche – schneller als geplant. 100 kcal mehr schützen deine Muskeln.`, delta: 100 };
+  return { text: `${r(loss)} kg pro Woche – genau im Plan (${tempo.label}). Nichts ändern.`, delta: 0 };
+}
+function de0(x) { return Math.round(x).toLocaleString('de-DE'); }
+export function kcalSuggestion(today = todayKey()) { return kcalAdvice(today).text; }
+export function applyKcalOffset(delta) {
+  const p = load().profile;
+  p.kcalOffset = Math.max(-600, Math.min(600, (p.kcalOffset || 0) + delta));
+  save();
 }
 
 export function getBadges() {
@@ -1102,6 +1240,9 @@ export function getBadges() {
   const workouts = s.workouts.length;
   const kneeDays = Object.values(s.log).filter(d => d.knee != null).length;
   const prs = s.lifts.filter(l => isLiftPR(l.id)).length;
+  const budgetDays = Object.keys(s.log).filter(k => k >= (s._v4Since || '0000') && inBudget(k) && s.log[k].entries.length >= 3).length;
+  const skillUpsN = Object.values(s.skills || {}).reduce((a, x) => a + ((x && x.ups) || []).length, 0);
+  const skillDone = Object.values(s.skills || {}).filter(x => x && x.done).length;
   const B = (icon, label, earned, desc) => ({ icon, label, earned: !!earned, desc });
   return [
     B('flame', '3 Tage Streak', best >= 3, 'Drei Tage in Folge dein Tagesziel.'),
@@ -1116,6 +1257,9 @@ export function getBadges() {
     B('scale', '−2 kg', lostW >= 2, 'Zwei Kilo runter seit Start.'),
     B('scale', '−5 kg', lostW >= 5, 'Fünf Kilo runter.'),
     B('chart', '−2 % Körperfett', lostBf >= 2, 'Zwei Prozent Körperfett weniger.'),
+    B('flame', '7× im Budget', budgetDays >= 7, 'Sieben Tage im Kalorien-Budget.'),
+    B('zap', 'Erste Skill-Stufe', skillUpsN >= 1, 'Eine Calisthenics-Stufe geschafft.'),
+    B('trophy', 'Skill gemeistert', skillDone >= 1, 'Handstand, Back Lever oder Muscle-Up geschafft.'),
   ];
 }
 

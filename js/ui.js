@@ -77,7 +77,7 @@ export function confetti() {
   const dpr = window.devicePixelRatio || 1;
   c.width = innerWidth * dpr; c.height = innerHeight * dpr;
   ctx.scale(dpr, dpr);
-  const colors = ['#34D399', '#60A5FA', '#A78BFA', '#FBBF24', '#F472B6'];
+  const colors = ['#B8F23E', '#4D8DFF', '#B08CFF', '#FFC93C', '#FF6FB5'];
   const parts = Array.from({ length: 110 }, () => ({
     x: innerWidth / 2 + (Math.random() - .5) * 80, y: innerHeight * .35,
     vx: (Math.random() - .5) * 11, vy: -Math.random() * 12 - 4,
@@ -101,9 +101,9 @@ let ringSeq = 0;
 export function ringsSVG({ nutrition = 0, sport = 0, regen = 0 }, { photo = null, legacy = false } = {}) {
   const id = 'r' + (++ringSeq);
   const R = [
-    { r: 90, v: nutrition, a: '#6EE7B7', b: '#059669', t: '#D1FAE5' },
-    { r: 73, v: sport, a: '#93C5FD', b: '#1D4ED8', t: '#DBEAFE' },
-    { r: 56, v: legacy ? 0 : regen, a: '#C4B5FD', b: '#6D28D9', t: '#EDE9FE' },
+    { r: 90, v: nutrition, a: '#E4FF8A', b: '#A3E635', t: 'rgba(184,242,62,.13)', g: '#B8F23E' },
+    { r: 73, v: sport, a: '#9CC2FF', b: '#3D72F0', t: 'rgba(77,141,255,.15)', g: '#4D8DFF' },
+    { r: 56, v: legacy ? 0 : regen, a: '#DCCBFF', b: '#8B5CF6', t: 'rgba(176,140,255,.15)', g: '#B08CFF' },
   ];
   const arcs = R.map((x, i) => {
     const c = 2 * Math.PI * x.r;
@@ -111,21 +111,21 @@ export function ringsSVG({ nutrition = 0, sport = 0, regen = 0 }, { photo = null
     return `<defs><linearGradient id="${id}g${i}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${x.a}"/><stop offset="1" stop-color="${x.b}"/></linearGradient></defs>
       <circle cx="100" cy="100" r="${x.r}" fill="none" stroke="${x.t}" stroke-width="14"/>
       ${x.v > 0 ? `<circle class="ring-arc" cx="100" cy="100" r="${x.r}" fill="none" stroke="url(#${id}g${i})" stroke-width="14" stroke-linecap="round"
-        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 100 100)"/>` : ''}`;
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 100 100)" style="filter:drop-shadow(0 0 5px ${x.g}88)"/>` : ''}`;
   }).join('');
   const center = photo
     ? `<image href="${photo}" x="56" y="56" width="88" height="88" clip-path="url(#${id}c)" preserveAspectRatio="xMidYMid slice"/>`
     : `<rect x="50" y="50" width="100" height="100" fill="url(#${id}p)" clip-path="url(#${id}c)"/>
-       <g clip-path="url(#${id}c)"><circle cx="100" cy="90" r="15" fill="#fff" opacity=".95"/><path d="M70 140c3-20 15-30 30-30s27 10 30 30z" fill="#fff" opacity=".95"/></g>`;
+       <g clip-path="url(#${id}c)"><circle cx="100" cy="90" r="15" fill="#5E6674"/><path d="M70 140c3-20 15-30 30-30s27 10 30 30z" fill="#5E6674"/></g>`;
   return `<svg viewBox="0 0 200 200" aria-hidden="true">
     <defs><clipPath id="${id}c"><circle cx="100" cy="100" r="44"/></clipPath>
-    <linearGradient id="${id}p" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#E0E7FF"/><stop offset="1" stop-color="#BFDBFE"/></linearGradient></defs>
+    <linearGradient id="${id}p" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#232838"/><stop offset="1" stop-color="#151821"/></linearGradient></defs>
     ${arcs}${center}</svg>`;
 }
 
 // Mini-Ringe für den Kalender
 export function miniRings({ nutrition = 0, sport = 0, regen = 0 }) {
-  const R = [[17, nutrition, '#10B981', '#D1FAE5'], [12.5, sport, '#2563EB', '#DBEAFE'], [8, regen, '#7C3AED', '#EDE9FE']];
+  const R = [[17, nutrition, '#B8F23E', 'rgba(184,242,62,.12)'], [12.5, sport, '#4D8DFF', 'rgba(77,141,255,.14)'], [8, regen, '#B08CFF', 'rgba(176,140,255,.14)']];
   return `<svg viewBox="0 0 40 40">${R.map(([r, v, col, tr]) => {
     const c = 2 * Math.PI * r;
     return `<circle cx="20" cy="20" r="${r}" fill="none" stroke="${tr}" stroke-width="3.6"/>` +

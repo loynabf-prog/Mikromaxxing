@@ -11,10 +11,12 @@ import { afterChange } from './today.js';
 import { scanAndAdd, openProductSheet } from './scan.js';
 import { openAiSetup } from './aisetup.js';
 import { estimateFoods, hasAI } from '../lookup.js';
+import { recommend, recipeById, dayPlan, currentSlot, PLACES, SLOT_LABELS, fmtH } from '../planner.js';
 import { NUTRIENT_DETAILS, HOW_LABELS, suppInfo, fatPartners, foodBenefits, foodSummary } from '../knowledge.js';
 
 let foodDate = null;       // null = heute
 let slotSel = null;        // gewählte Tageszeit für Vorschläge
+let placeSel = null;       // Ort-Filter für Vorschläge
 let nutrMode = 'day';      // 'day' | 'week'
 let nutrOpen = false;
 
@@ -33,10 +35,7 @@ export function renderFood(app) {
   const p = store.dayPillars(key);
   const day = store.getDay(key);
   const tot = p.totals;
-  if (!slotSel) {
-    const h = new Date().getHours();
-    slotSel = (MEAL_SLOTS.find(x => h >= x.from && h < x.to) || MEAL_SLOTS[0]).id;
-  }
+  const mt = store.macroTargets(key);
 
   app.innerHTML = `<div class="view">
     <div class="datebar">
@@ -49,12 +48,12 @@ export function renderFood(app) {
       <div class="ch"><span class="chip nut">${icon('leaf')}Ernährung</span><span class="mid num" style="color:var(--nut)">${p.nutrition}<small>%</small></span></div>
       <div class="big-row">
         <div><div class="big num">${de(tot.protein)}<small>/ ${de(t.protein)} g</small></div><div class="lbl" style="margin-top:6px">Protein</div></div>
-        <div style="text-align:right"><div class="mid num">${de(tot.kcal)}</div><div class="lbl" style="margin-top:5px">kcal · ${tot.kcal <= t.kcal ? `noch ${de(t.kcal - tot.kcal)}` : `${de(tot.kcal - t.kcal)} drüber`}</div></div>
+        <div style="text-align:right"><div class="mid num">${de(tot.kcal)}</div><div class="lbl" style="margin-top:5px">kcal · ${tot.kcal <= mt.kcal ? `noch ${de(mt.kcal - tot.kcal)}` : `${de(tot.kcal - mt.kcal)} drüber`}</div></div>
       </div>
       <div class="parts4">
         ${p4('Protein', p.parts.protein)}${p4('Mikros', p.parts.micros, 'nutr-open')}${p4('Wasser', p.parts.water, 'water')}${p4('Supps', p.parts.supps, 'supps')}
       </div>
-      <div class="macros"><span>Carbs <b>${de(tot.carbs)} g</b></span><span>Fett <b>${de(tot.fat)} g</b></span><span>Ballaststoffe <b>${de(tot.fiber)} g</b></span></div>
+      <div class="macros"><span>Carbs <b>${de(tot.carbs)}/${de(mt.carbs)} g</b></span><span>Fett <b>${de(tot.fat)}/${de(mt.fat)} g</b></span><span>Ballaststoffe <b>${de(tot.fiber)} g</b></span></div>
     </div>
 
     <div class="grid3 f-actions" style="margin-bottom:12px">
@@ -63,7 +62,7 @@ export function renderFood(app) {
       <button class="btn white" id="f-search">${icon('search')}Suchen</button>
     </div>
 
-    ${suggestionCard(key)}
+    ${eatCard(key)}
     ${eatenCard(key, day)}
 
     <div class="sec-title">Meine Mahlzeiten<button id="meal-new">+ Neu</button></div>
@@ -94,26 +93,103 @@ function p4(label, v, act) {
   return `<button class="p4" ${act ? `data-p4="${act}"` : ''}><div class="v num">${v}<small style="font-size:11px;color:var(--faint)">%</small></div><div class="l">${label}</div><div class="bar"><i style="width:${Math.min(100, v)}%"></i></div></button>`;
 }
 
-function suggestionCard(key) {
-  const sl = MEAL_SLOTS.find(x => x.id === slotSel) || MEAL_SLOTS[0];
-  const foods = sl.foods.map(store.foodById).filter(Boolean).slice(0, 6);
-  const snacks = (sl.snacks || []).map(id => store.getSnacks().find(x => x.id === id)).filter(Boolean);
+// --- Was soll ich essen? --------------------------------------------------------
+function slotsFor(key) {
+  const plan = dayPlan(key);
+  const meals = plan.slots.filter(x => x.type === 'meal');
+  const list = meals.map(x => ({ slot: x.slot, label: SLOT_LABELS[x.slot] || x.title, t: x.t, status: x.status }));
+  if (!list.some(x => x.slot === 'snack')) list.push({ slot: 'snack', label: 'Snack', t: null });
+  return list;
+}
+function recRows(key, res) {
+  return res.list.map(r => `<div class="rec">
+    <button class="rec-main" data-rec="${r.recipe.id}">
+      <span class="rec-top"><b>${esc(r.recipe.name)}</b>${r.rating > 0 ? `<i class="rec-fav">${icon('thumbUp')}</i>` : ''}</span>
+      <span class="rec-nums num"><b>${de(r.totals.protein)} g P</b> · ${de(r.totals.kcal)} kcal · ${esc(PLACES[r.recipe.place] || '')}${r.recipe.prep ? ` · ${r.recipe.prep} Min` : ''}</span>
+      <span class="rec-why">${esc(r.recipe.why)}${r.labels.length ? ` Deckt ${esc(r.labels.join(' & '))}.` : ''}</span>
+      <span class="rec-fit ${r.over ? 'over' : ''}">${esc(r.fit)}</span>
+    </button>
+    <div class="rec-act">
+      <button class="rec-b" data-rate="${r.recipe.id}" data-v="1" aria-label="Mag ich">${icon('thumbUp')}</button>
+      <button class="rec-b" data-rate="${r.recipe.id}" data-v="-1" aria-label="Nicht mehr vorschlagen">${icon('thumbDown')}</button>
+      <button class="plus" data-eat="${r.recipe.id}" aria-label="Eintragen">${icon('plus')}</button>
+    </div>
+  </div>`).join('') || '<div class="empty">Für diesen Filter habe ich gerade nichts Passendes.</div>';
+}
+function eatCard(key) {
+  const slots = slotsFor(key);
+  if (!slotSel || !slots.some(x => x.slot === slotSel)) slotSel = currentSlot(key);
+  if (!slots.some(x => x.slot === slotSel)) slotSel = slots[0].slot;
+  const res = recommend(key, slotSel, { place: placeSel, limit: 4 });
   return `<div class="card">
-    <div class="ch"><span class="ch-title">Was jetzt passt</span><span class="sub">${esc(sl.time)}</span></div>
-    <div class="hscroll slot-tabs">${MEAL_SLOTS.map(x => `<button class="chipbtn ${x.id === sl.id ? 'on' : ''}" data-slot="${x.id}">${esc(x.label.replace(' / vor dem Schlafen', ''))}</button>`).join('')}</div>
-    <div class="slot-why">${esc(sl.why)}</div>
-    ${sl.note ? `<div class="slot-note">${esc(sl.note)}</div>` : ''}
-    ${foods.map(f => { const g = store.servingGrams(f); return `
-      <div class="sugg"><button class="sugg-main" data-info="${f.id}" data-grams="${g}">
-        ${foodIcon(f)}<span class="qa-main"><b>${esc(short(f.name))}</b><div class="qa-am">${esc(amountLabel(f, g))} · ${de(nut(f, g, 'protein'))} g P · ${de(nut(f, g, 'kcal'))} kcal</div></span></button>
-        <button class="plus" data-quick="${f.id}" data-grams="${g}" aria-label="Eintragen">${icon('plus')}</button>
-      </div>`; }).join('')}
-    ${snacks.map(sn => `
-      <div class="sugg"><button class="sugg-main" data-snack="${sn.id}">
-        <span class="fico c-snack">${icon('spark')}</span><span class="qa-main"><b>${esc(sn.name)}</b><div class="qa-am">${esc(sn.why)}</div></span></button>
-        <button class="plus" data-snack="${sn.id}" aria-label="Eintragen">${icon('plus')}</button>
-      </div>`).join('')}
+    <div class="ch"><span class="ch-title">Was soll ich essen?</span><span class="sub num">~${de(res.kcalB)} kcal · ${de(res.protB)} g P</span></div>
+    <div class="hscroll slot-tabs">${slots.map(x => `<button class="chipbtn ${x.slot === slotSel ? 'on' : ''}" data-rslot="${x.slot}">${esc(x.label)}${x.t != null ? ` <small>${fmtH(x.t)}</small>` : ''}</button>`).join('')}</div>
+    <div class="hscroll place-tabs"><button class="chipbtn sm ${!placeSel ? 'on' : ''}" data-place="">Überall</button>${['home', 'lidl', 'imbiss', 'out'].map(pl => `<button class="chipbtn sm ${placeSel === pl ? 'on' : ''}" data-place="${pl}">${esc(PLACES[pl])}</button>`).join('')}</div>
+    ${recRows(key, res)}
   </div>`;
+}
+function wireRecs(root, key, onChange) {
+  $$('[data-rec]', root).forEach(b => b.onclick = () => openRecipe(key, b.dataset.rec, onChange));
+  $$('[data-eat]', root).forEach(b => b.onclick = () => eatRecipe(key, b.dataset.eat, 1, onChange));
+  $$('[data-rate]', root).forEach(b => b.onclick = () => {
+    const v = store.rateRecipe(b.dataset.rate, Number(b.dataset.v));
+    haptic(5);
+    toast(v > 0 ? 'Gemerkt – schlage ich öfter vor' : v < 0 ? 'Okay, kommt nicht mehr' : 'Bewertung entfernt');
+    onChange();
+  });
+}
+function eatRecipe(key, id, portions = 1, onDone) {
+  const r = recipeById(id);
+  if (!r) return;
+  const before = store.getDay(key).entries.length;
+  store.logRecipe(key, r, portions);
+  haptic(10); afterChange(key);
+  if (onDone) onDone(true);
+  toast(`${r.name} eingetragen`, 'Rückgängig', () => { store.truncateEntries(key, before); router.rerender(); });
+}
+export function openRecipe(key, id, onChange) {
+  const r = recipeById(id);
+  if (!r) return;
+  let portions = 1;
+  const sheet = openSheet(`${sheetHead(esc(r.name), esc([PLACES[r.place], r.prep ? r.prep + ' Min' : 'ohne Kochen'].filter(Boolean).join(' · ')))}
+    <div class="sheet-body">
+      <p class="hint" style="font-size:14.5px">${esc(r.why)}</p>
+      <div class="seg" id="rp-seg" style="margin-bottom:12px">${[0.5, 1, 1.5, 2].map(x => `<button data-por="${x}">${String(x).replace('.', ',')}×</button>`).join('')}</div>
+      <div class="grid3" id="rp-nut" style="margin-bottom:10px"></div>
+      <div id="rp-items"></div>
+      <div id="rp-bring"></div>
+    </div>
+    <div class="sheet-foot"><button class="btn volt block" id="rp-eat">${icon('plus')}Eintragen</button></div>`, { tall: true });
+  const draw = () => {
+    $$('[data-por]', sheet).forEach(b => b.classList.toggle('on', Number(b.dataset.por) === portions));
+    const tot = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
+    const rows = r.items.map(([fid, g]) => {
+      const f = store.foodById(fid); if (!f) return '';
+      const gg = Math.round(g * portions);
+      for (const k in tot) tot[k] += (f.per100[k] || 0) * gg / 100;
+      return `<div class="entry">${foodIcon(f)}<span class="qa-main"><div class="qa-nm">${esc(short(f.name))}</div><div class="qa-am">${esc(amountLabel(f, gg))}</div></span><span class="qa-kv"><b class="num">${de(nut(f, gg, 'protein'))} g</b><span>${de(nut(f, gg, 'kcal'))} kcal</span></span></div>`;
+    }).join('');
+    $('#rp-nut', sheet).innerHTML = [['kcal', 'kcal', ''], ['protein', 'Protein', ' g'], ['carbs', 'Carbs', ' g']].map(([k, l, u]) => `<div class="wk-tile"><div class="v num" style="font-size:18px">${de(tot[k])}${u}</div><div class="l">${l}</div></div>`).join('');
+    $('#rp-items', sheet).innerHTML = `<div class="part-head"><b>Zutaten</b><span class="sub">Fett ${de(tot.fat)} g</span></div>${rows}`;
+  };
+  $$('[data-por]', sheet).forEach(b => b.onclick = () => { portions = Number(b.dataset.por); draw(); });
+  $('#rp-eat', sheet).onclick = () => { closeSheet(); eatRecipe(key, id, portions, onChange); };
+  draw();
+}
+// Vorschläge für einen Slot (aus „Dein Tag")
+export function openRecommendSheet(key, slot) {
+  let place = null;
+  const sheet = openSheet(`${sheetHead(esc(SLOT_LABELS[slot] || 'Was soll ich essen?'), 'Passend zu deinem Budget, deinen Lücken und dem, was du magst')}
+    <div class="hscroll place-tabs" id="rs-places"></div>
+    <div class="sheet-body" id="rs-body"></div>`, { tall: true });
+  const draw = () => {
+    const res = recommend(key, slot, { place, limit: 6 });
+    $('#rs-places', sheet).innerHTML = `<button class="chipbtn sm ${!place ? 'on' : ''}" data-pl="">Überall</button>${['home', 'lidl', 'imbiss', 'out'].map(pl => `<button class="chipbtn sm ${place === pl ? 'on' : ''}" data-pl="${pl}">${esc(PLACES[pl])}</button>`).join('')}`;
+    $('#rs-body', sheet).innerHTML = `<p class="hint">Plan für jetzt: ~${de(res.kcalB)} kcal und ${de(res.protB)} g Protein.</p>${recRows(key, res)}`;
+    $$('[data-pl]', sheet).forEach(b => b.onclick = () => { place = b.dataset.pl || null; draw(); });
+    wireRecs(sheet, key, (ate) => { if (ate === true) closeSheet(); else draw(); });
+  };
+  draw();
 }
 
 function eatenCard(key, day) {
@@ -137,7 +213,7 @@ function eatenCard(key, day) {
   }).join('');
   return `<div class="card">
     <div class="ch"><span class="ch-title">Gegessen</span><span class="sub">${day.entries.length} Einträge</span></div>
-    ${body || '<div class="empty">Noch nichts eingetragen.<br>Tipp unten auf „Was hast du gegessen?" und schreib es einfach hin.</div>'}
+    ${body || '<div class="empty">Noch nichts eingetragen.<br>Unten einfach erzählen, was du gegessen hast – oder „Was soll ich essen?" fragen.</div>'}
     ${day.entries.length ? `<div class="chips" style="margin-top:12px"><button class="chipbtn" id="tpl-save">${icon('pin')}Als Standardtag merken</button></div>` : ''}
   </div>`;
 }
@@ -146,7 +222,7 @@ function suppCard(key, day) {
   const supps = store.getState().supplements;
   const taken = supps.filter(x => day.supps[x.id]).length;
   return `<div class="card">
-    <div class="ch"><span class="chip" style="background:#FCE7F3;color:var(--pill)">${icon('pill')}Supplements</span><span class="sub">${taken} / ${supps.length}</span></div>
+    <div class="ch"><span class="chip" style="background:rgba(255,111,181,.14);color:var(--pill)">${icon('pill')}Supplements</span><span class="sub">${taken} / ${supps.length}</span></div>
     ${suppRows(supps, day)}
   </div>`;
 }
@@ -213,7 +289,9 @@ function wire(app, key) {
   $('#f-search', app).onclick = () => openFoodPicker({ key });
   $('#f-scan', app).onclick = () => scanAndAdd({ title: 'Eintragen', onAdd: ({ foodId, grams }) => quickAdd(key, foodId, grams) });
   $('#f-lib', app).onclick = () => openLibrary();
-  $$('[data-slot]', app).forEach(b => b.onclick = () => { slotSel = b.dataset.slot; router.rerender(); });
+  $$('[data-rslot]', app).forEach(b => b.onclick = () => { slotSel = b.dataset.rslot; router.rerender(); });
+  $$('[data-place]', app).forEach(b => b.onclick = () => { placeSel = b.dataset.place || null; router.rerender(); });
+  wireRecs(app, key, () => router.rerender());
   $$('[data-quick]', app).forEach(b => b.onclick = () => quickAdd(key, b.dataset.quick, Number(b.dataset.grams)));
   $$('[data-info]', app).forEach(b => b.onclick = () => openAmountSheet({ key, foodId: b.dataset.info, grams: Number(b.dataset.grams) }));
   $$('[data-snack]', app).forEach(b => b.onclick = () => {
@@ -270,7 +348,7 @@ export function openAmountSheet({ key, index = null, foodId = null, grams = null
   const servings = [...(f.servings || [])];
   const sheet = openSheet(`
     <div class="sheet-head"><div style="display:flex;gap:12px;align-items:center">${foodIcon(f)}<div><div class="sheet-title" style="font-size:20px">${esc(short(f.name))}</div><div class="sheet-sub">${esc(f.cat || '')}</div></div></div>
-      <div style="display:flex;gap:8px"><button class="sheet-x" id="fav" aria-label="Favorit" style="color:${store.isFavorite(f.id) ? '#F59E0B' : 'var(--dim)'}">${icon('star')}</button><button class="sheet-x" data-close>${icon('x')}</button></div></div>
+      <div style="display:flex;gap:8px"><button class="sheet-x" id="fav" aria-label="Favorit" style="color:${store.isFavorite(f.id) ? '#FFC93C' : 'var(--dim)'}">${icon('star')}</button><button class="sheet-x" data-close>${icon('x')}</button></div></div>
     <div class="sheet-body">
     <div class="stepper"><button class="st-btn" data-d="-1">${icon('minus')}</button><div class="st-val num" id="av"></div><button class="st-btn" data-d="1">${icon('plus')}</button></div>
     <div class="chips" style="margin-top:10px">
@@ -295,7 +373,7 @@ export function openAmountSheet({ key, index = null, foodId = null, grams = null
   sheet.classList.add('tall');
   $$('[data-d]', sheet).forEach(b => b.onclick = () => { g = Math.max(step, g + Number(b.dataset.d) * step); haptic(4); show(); });
   $$('[data-g]', sheet).forEach(b => b.onclick = () => { g = Number(b.dataset.g); show(); });
-  $('#fav', sheet).onclick = () => { const on = store.toggleFavorite(f.id); $('#fav', sheet).style.color = on ? '#F59E0B' : 'var(--dim)'; toast(on ? 'Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt'); };
+  $('#fav', sheet).onclick = () => { const on = store.toggleFavorite(f.id); $('#fav', sheet).style.color = on ? '#FFC93C' : 'var(--dim)'; toast(on ? 'Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt'); };
   $('#ok', sheet).onclick = () => {
     if (entry) store.updateEntry(key, index, g); else store.addEntry(key, f.id, g);
     closeSheet(); haptic(); afterChange(key);

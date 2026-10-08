@@ -8,7 +8,9 @@ import { $, $$, esc, de, router, openSheet, closeSheet, sheetHead, toast, pickFi
 import { openLibrary, openMealEditor } from './food.js';
 import { openOnboarding } from './onboarding.js';
 import { openAiSetup } from './aisetup.js';
-import { hasAI } from '../lookup.js';
+import { hasAI, coachModel, setCoachModel, COACH_MODELS } from '../lookup.js';
+import { PERSONA } from '../persona.js';
+import { GYM_TIMES } from '../planner.js';
 import { HOW_LABELS, suppInfo } from '../knowledge.js';
 
 const row = (id, ic, title, sub, end = '') => `<button class="row" data-row="${id}"><span class="row-ic">${icon(ic)}</span>
@@ -22,11 +24,18 @@ export function renderSetup(app) {
       <button class="icon-btn" id="back" aria-label="Zurück">${icon('chevL')}</button>
       <div class="vh-title">Einstellungen</div></div></div>
 
+    <div class="sec-title">Dein Plan</div>
+    <div class="rows">
+      ${row('tempo', 'flame', 'Abnehm-Tempo', (store.TEMPO[p.tempo] || store.TEMPO.fast).desc, esc((store.TEMPO[p.tempo] || store.TEMPO.fast).label))}
+      ${row('daytypes', 'list', 'Kalorien je Tagestyp', `heute ${de(store.kcalTarget(store.todayKey()))} kcal${p.kcalOffset ? ` · Korrektur ${p.kcalOffset > 0 ? '+' : ''}${p.kcalOffset}` : ''}`)}
+      ${row('firstMeal', 'clock', 'Erste Mahlzeit', 'vorher nur Kaffee', esc(p.firstMeal || PERSONA.eating.firstMeal))}
+      ${row('gymDefault', 'dumbbell', 'Gym meistens', 'pro Tag im Plan änderbar', esc(GYM_TIMES[p.gymDefault] || 'Abends'))}
+    </div>
+
     <div class="sec-title">Ziele</div>
     <div class="rows">
       ${row('targetWeight', 'target', 'Zielgewicht', '', `${de(p.targetWeight, 1)} kg`)}
       ${row('targetBodyfat', 'chart', 'Ziel-Körperfett', '', `${de(p.targetBodyfat)} %`)}
-      ${row('kcal', 'flame', 'Kalorien', 'pro Tag', `${de(t.kcal)} kcal`)}
       ${row('protein', 'dumbbell', 'Protein', 'pro Tag', `${de(t.protein)} g`)}
       ${row('water', 'drop', 'Wasser', 'pro Tag', `${de(p.water / 1000, 1)} L`)}
       ${row('sleepTarget', 'moon', 'Schlafziel', '', `${de(p.sleepTarget, 1)} h`)}
@@ -55,7 +64,8 @@ export function renderSetup(app) {
 
     <div class="sec-title">Nachschlagen</div>
     <div class="rows">
-      ${row('ai', 'spark', 'Claude für unbekannte Lebensmittel', hasAI() ? 'Aktiv · Haiku 5.5' : 'Noch kein API-Key – tippen zum Einrichten')}
+      ${row('ai', 'spark', 'Claude-Key', hasAI() ? 'Aktiv – Coach, Erzählen & Nachschlagen' : 'Noch kein API-Key – tippen zum Einrichten')}
+      ${hasAI() ? row('coachModel', 'chat', 'Coach-Modell', 'Eintragen & Nachschlagen laufen immer mit Haiku', esc(COACH_MODELS[coachModel()].split(' – ')[0])) : ''}
     </div>
 
     <div class="sec-title">Daten</div>
@@ -65,7 +75,7 @@ export function renderSetup(app) {
       ${row('onboarding', 'spark', 'Einführung nochmal zeigen', '')}
       ${row('reset', 'trash', 'Alles zurücksetzen', 'Löscht alle Daten auf diesem Gerät')}
     </div>
-    <p class="hint" style="text-align:center">Deine Daten liegen nur auf diesem Gerät. Mach ab und zu ein Backup.</p>
+    <p class="hint" style="text-align:center">Gebaut für ${esc(PERSONA.name)}. Deine Daten liegen nur auf diesem Gerät – mach ab und zu ein Backup.</p>
   </div>`;
 
   $('#back', app).onclick = () => router.go(router.prev || 'today');
@@ -87,7 +97,7 @@ function onRow(id) {
     case 'height': return num('Größe', p.height, 'cm', v => store.updateProfile({ height: v }));
     case 'weight': return num('Startgewicht', p.weight, 'kg', v => store.updateProfile({ weight: v }));
     case 'age': return num('Alter', p.age, 'Jahre', v => store.updateProfile({ age: Math.round(v) }));
-    case 'wakeTime': return openTimeSheet();
+    case 'wakeTime': return openTimeSheet('wakeTime', 'Übliche Aufstehzeit', p.wakeTime || '05:45');
     case 'targets': return openTargetsSheet();
     case 'photo': return (async () => { const f = await pickFile(); if (!f) return; store.updateProfile({ photo: await downscalePhoto(f, { size: 360 }) }); router.rerender(); toast('Foto gesetzt'); })();
     case 'training': return openTrainingSheet();
@@ -96,6 +106,11 @@ function onRow(id) {
     case 'meals': return openMealsList();
     case 'games': return openGamesSheet();
     case 'ai': return openAiSetup(() => router.rerender());
+    case 'coachModel': return openChoice('Coach-Modell', Object.entries(COACH_MODELS).map(([k, l]) => ({ k, l })), coachModel(), (k) => setCoachModel(k));
+    case 'tempo': return openChoice('Abnehm-Tempo', Object.entries(store.TEMPO).map(([k, v]) => ({ k, l: v.label, d: v.desc })), p.tempo || 'fast', (k) => store.updateProfile({ tempo: k }));
+    case 'gymDefault': return openChoice('Gym meistens', Object.entries(GYM_TIMES).map(([k, l]) => ({ k, l, d: PERSONA.training.gymTimes[k] + ' Uhr' })), p.gymDefault || 'evening', (k) => store.updateProfile({ gymDefault: k }));
+    case 'firstMeal': return openTimeSheet('firstMeal', 'Erste Mahlzeit', p.firstMeal || PERSONA.eating.firstMeal);
+    case 'daytypes': return openDayTypes();
     case 'export': return exportData();
     case 'import': return importData();
     case 'onboarding': return openOnboarding();
@@ -122,11 +137,37 @@ function openValueSheet(label, value, unit, onSave) {
   };
 }
 
-function openTimeSheet() {
-  const sheet = openSheet(`${sheetHead('Übliche Aufstehzeit')}
-    <div class="field"><input type="time" id="ts-v" value="${store.getState().profile.wakeTime || '07:00'}" style="font-size:24px;font-weight:850;text-align:center"></div>
+function openTimeSheet(field, title, value) {
+  const sheet = openSheet(`${sheetHead(title)}
+    <div class="field"><input type="time" id="ts-v" value="${esc(value)}" style="font-size:24px;font-weight:850;text-align:center"></div>
     <div class="sheet-foot"><button class="btn block" id="ts-save">${icon('check')}Speichern</button></div>`);
-  $('#ts-save', sheet).onclick = () => { store.updateProfile({ wakeTime: $('#ts-v', sheet).value || '07:00' }); closeSheet(); router.rerender(); };
+  $('#ts-save', sheet).onclick = () => { store.updateProfile({ [field]: $('#ts-v', sheet).value || value }); closeSheet(); router.rerender(); };
+}
+
+function openChoice(title, options, current, onPick) {
+  const sheet = openSheet(`${sheetHead(title)}
+    ${options.map(o => `<button class="row choice ${o.k === current ? 'on' : ''}" data-k="${o.k}" style="padding-left:0;padding-right:0">
+      <span class="row-ic">${o.k === current ? icon('check') : ''}</span><span class="row-main"><div class="row-t">${esc(o.l)}</div>${o.d ? `<div class="row-s">${esc(o.d)}</div>` : ''}</span></button>`).join('')}`);
+  $$('[data-k]', sheet).forEach(b => b.onclick = () => { onPick(b.dataset.k); closeSheet(); router.rerender(); toast(`${title}: gespeichert`); });
+}
+
+function openDayTypes() {
+  const p = store.getState().profile;
+  const today = store.todayKey();
+  const week = Array.from({ length: 7 }, (_, i) => store.shiftDate(today, i));
+  const sheet = openSheet(`${sheetHead('Kalorien je Tagestyp', 'Training kostet Energie – an Basketball-Tagen gibt\'s mehr Carbs')}
+    <div class="sheet-body">
+      ${week.map(k => { const m = store.macroTargets(k); return `<div class="entry"><span class="qa-main"><div class="qa-nm">${esc(store.formatDateLabel(k))} · ${esc(store.DAY_TYPES[m.type].label)}</div>
+        <div class="qa-am">${de(m.protein)} g Protein · ${de(m.carbs)} g Carbs · ${de(m.fat)} g Fett</div></span><b class="num">${de(m.kcal)}</b></div>`; }).join('')}
+      <p class="hint" style="margin-top:12px">Berechnet aus Grundumsatz (aktuelles Gewicht), deinem aktiven Alltag, dem Training und dem Tempo „${esc((store.TEMPO[p.tempo] || store.TEMPO.fast).label)}". Passt dein echter Gewichtstrend nicht zum Tempo, schlage ich unter Fortschritt eine Korrektur vor.</p>
+      <div class="part-head"><b>Korrektur</b><span class="sub">${p.kcalOffset ? (p.kcalOffset > 0 ? '+' : '') + p.kcalOffset + ' kcal/Tag' : 'keine'}</span></div>
+      <div class="grid3"><button class="btn ghost sm" data-off="-100">−100</button><button class="btn ghost sm" data-off="0">Zurücksetzen</button><button class="btn ghost sm" data-off="100">+100</button></div>
+    </div>`, { tall: true });
+  $$('[data-off]', sheet).forEach(b => b.onclick = () => {
+    const d = Number(b.dataset.off);
+    if (d === 0) store.updateProfile({ kcalOffset: 0 }); else store.applyKcalOffset(d);
+    closeSheet(); router.rerender(); toast('Kalorienziel angepasst');
+  });
 }
 
 function openTargetsSheet() {
@@ -147,7 +188,7 @@ function openSuppList() {
     <div class="sheet-foot"><button class="btn block" id="sl-new">${icon('plus')}Supplement hinzufügen</button></div>`, { tall: true });
   const draw = () => {
     $('#sl-body', sheet).innerHTML = store.getState().supplements.map(x => `<button class="row" data-sp="${x.id}" style="padding-left:0;padding-right:0">
-      <span class="row-ic" style="background:#FCE7F3;color:var(--pill)">${icon('pill')}</span><span class="row-main"><div class="row-t">${esc(x.name)}</div>
+      <span class="row-ic" style="background:rgba(255,111,181,.14);color:var(--pill)">${icon('pill')}</span><span class="row-main"><div class="row-t">${esc(x.name)}</div>
       <div class="row-s">${esc(x.dose || '')} · ${SUPP_TIME_LABELS[x.time || 'egal']}</div></span>${icon('chev')}</button>`).join('');
     $$('[data-sp]', sheet).forEach(b => b.onclick = () => openSuppEditor(b.dataset.sp, draw));
   };
@@ -180,7 +221,7 @@ function openMealsList() {
   const sheet = openSheet(`${sheetHead('Meine Mahlzeiten')}<div class="sheet-body" id="ml-body"></div>
     <div class="sheet-foot"><button class="btn block" id="ml-new">${icon('plus')}Neue Mahlzeit</button></div>`, { tall: true });
   $('#ml-body', sheet).innerHTML = store.getMeals().map(m => { const t = store.mealTotals(m); return `<button class="row" data-m="${m.id}" style="padding-left:0;padding-right:0">
-    <span class="row-ic" style="background:var(--ink);color:#fff">${icon('bowl')}</span><span class="row-main"><div class="row-t">${esc(m.name)}</div><div class="row-s">${m.items.length} Zutaten · ${de(t.kcal)} kcal · ${de(t.protein)} g P</div></span>${icon('chev')}</button>`; }).join('') || '<div class="empty">Noch keine Mahlzeiten.</div>';
+    <span class="row-ic" style="background:var(--ink);color:var(--on-ink)">${icon('bowl')}</span><span class="row-main"><div class="row-t">${esc(m.name)}</div><div class="row-s">${m.items.length} Zutaten · ${de(t.kcal)} kcal · ${de(t.protein)} g P</div></span>${icon('chev')}</button>`; }).join('') || '<div class="empty">Noch keine Mahlzeiten.</div>';
   $$('[data-m]', sheet).forEach(b => b.onclick = () => { closeSheet(); openMealEditor(b.dataset.m); });
   $('#ml-new', sheet).onclick = () => { closeSheet(); openMealEditor(null); };
 }
@@ -237,7 +278,7 @@ function openDayEditor(wd, onDone) {
         <label class="field"><span>Minuten</span><input type="number" inputmode="numeric" id="de-min" value="${d.min || ''}"></label></div>` : ''}
       ${d.kind === 'gym' ? `${d.exercises.map((ex, i) => `<div class="card tight" data-ex="${i}" style="background:var(--fill);box-shadow:none">
           <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-            <input class="e-n" value="${esc(ex.n)}" style="flex:1;background:#fff;border:none;border-radius:11px;padding:10px;font-weight:750">
+            <input class="e-n" value="${esc(ex.n)}" style="flex:1;background:var(--raise);border:none;border-radius:11px;padding:10px;font-weight:750">
             <button class="qa-rm" data-up="${i}" aria-label="Nach unten">${icon('chevD')}</button>
             <button class="qa-rm" data-del="${i}" aria-label="Entfernen">${icon('trash')}</button>
           </div>

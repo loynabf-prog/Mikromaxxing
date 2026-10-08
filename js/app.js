@@ -9,10 +9,11 @@ import { renderFood, getFoodDate } from './views/food.js';
 import { renderSport } from './views/sport.js';
 import { renderProgress } from './views/progress.js';
 import { renderSetup } from './views/setup.js';
+import { renderCoach } from './views/coach.js';
 import { openQuickAdd } from './views/quickadd.js';
-import { openOnboarding } from './views/onboarding.js';
+import { openOnboarding, openWhatsNew } from './views/onboarding.js';
 
-const VIEWS = { today: renderToday, food: renderFood, sport: renderSport, progress: renderProgress, setup: renderSetup };
+const VIEWS = { today: renderToday, food: renderFood, coach: renderCoach, sport: renderSport, progress: renderProgress, setup: renderSetup };
 const WITH_QBAR = new Set(['today', 'food']);
 const app = $('#app');
 
@@ -55,7 +56,8 @@ function init() {
   $('#q-mic').onclick = () => openQuickAdd({ key: quickKey(), voice: true });
 
   render(true);
-  if (!store.isOnboarded()) openOnboarding();
+  if (!store.isOnboarded()) { openOnboarding(); store.getState()._seenV4 = true; store.save(); }
+  else if (!store.getState()._seenV4) openWhatsNew();
 
   // Beim Zurückkehren in die App (neuer Tag, Timer) neu zeichnen
   document.addEventListener('visibilitychange', () => { if (!document.hidden) router.rerender(); });

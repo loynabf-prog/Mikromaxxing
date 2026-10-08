@@ -12,6 +12,7 @@ import { $, $$, esc, de, short, openSheet, closeSheet, sheetHead, toast, router,
 import { openFoodEditor } from './food.js';
 import { scanAndAdd } from './scan.js';
 import { openAiSetup } from './aisetup.js';
+import { localIntents, askCoach, applyItems, describe } from '../assistant.js';
 
 const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
 const MICRO_KEYS = NUTRIENTS.filter(n => n.group === 'vitamin' || n.group === 'mineral' || n.key === 'omega3').map(n => n.key);
@@ -23,12 +24,13 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
   const lookups = {};     // pro unbekannter Phrase: { status: 'loading'|'done'|'error'|'none', food, error }
   const extras = [];      // gescannte Produkte
   let editing = null;     // aufgeklappter Posten (Index)
+  let ai = null;          // Claude-Ergebnis: { status, items, reply, error }
   let rec = null, recBase = '';
 
   const sheet = openSheet(`
-    ${sheetHead('Eintragen', key === store.todayKey() ? 'Schreib, sprich oder scanne, was du gegessen hast' : store.formatDateLabel(key))}
+    ${sheetHead('Erzähl\'s mir', key === store.todayKey() ? 'Essen, Training, Schlaf, Knie – einfach alles' : store.formatDateLabel(key))}
     <div class="qa-input" id="qa-input">
-      <textarea class="qa-text" id="qa-text" rows="2" placeholder="z. B. 3 Eier, 200 g Skyr und ein Döner" autocapitalize="sentences" enterkeyhint="done"></textarea>
+      <textarea class="qa-text" id="qa-text" rows="2" placeholder="z. B. mittags Bowl mit Hähnchen, 90 Min Basketball, 7 h geschlafen, Knie 3" autocapitalize="sentences" enterkeyhint="done"></textarea>
       <div class="qa-bar">
         <span class="qa-status" id="qa-status"></span>
         <button class="qa-mic qa-scan" id="qa-scan" aria-label="Barcode scannen">${icon('barcode')}</button>
@@ -45,9 +47,9 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
   ta.value = text;
   let t = null;
   const grow = () => { ta.style.height = 'auto'; ta.style.height = Math.min(140, ta.scrollHeight) + 'px'; };
-  ta.addEventListener('input', () => { grow(); clearTimeout(t); t = setTimeout(update, 110); });
+  ta.addEventListener('input', () => { grow(); ai = null; clearTimeout(t); t = setTimeout(update, 110); });
   ta.addEventListener('keydown', e => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); update(); lookupUnknown(); }
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); update(); smartRun(); }
   });
   $('#qa-mic', sheet).onclick = () => (rec ? stopVoice() : startVoice());
   $('#qa-scan', sheet).onclick = () => startScan();
@@ -84,7 +86,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
           toast('Mikrofon hier nicht erlaubt – nutze das Mikro auf der Tastatur');
         }
       };
-      rec.onend = () => { rec = null; setRec(false); if (heard) lookupUnknown(); };
+      rec.onend = () => { rec = null; setRec(false); if (heard) smartRun(); };
       rec.start();
       setRec(true);
       haptic();
@@ -113,9 +115,37 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
   }
 
   // ---------- Erkennen ----------
+  // Claude nur, wenn's lokal nicht reicht (Unbekanntes oder lange Erzählung)
+  function smartRun() {
+    if (!ta.value.trim()) return;
+    const long = ta.value.trim().split(/\s+/).length > 14;
+    // Lange Erzählung → Claude sortiert alles; sonst nur Unbekanntes einzeln nachschlagen (mit Werte-Vorschau)
+    if (hasAI() && long) runAI();
+    else lookupUnknown();
+  }
+  async function runAI() {
+    stopVoice();
+    const text = ta.value.trim();
+    if (!text) return;
+    if (!hasAI()) return openAiSetup(() => { if (hasAI()) runAI(); });
+    ai = { status: 'loading', text };
+    render();
+    try {
+      const r = await askCoach(text, { mode: 'log' });
+      if (!ai || ai.text !== text) return;
+      ai = { status: 'done', text, items: r.items, reply: r.reply };
+    } catch (e) {
+      if (!ai || ai.text !== text) return;
+      ai = { status: 'error', text, error: e.message || 'Hat nicht geklappt' };
+    }
+    if (sheet.isConnected) render();
+  }
+
   function update() {
     grow();
-    const parsed = [...parseEntry(ta.value, null, index), ...extras];
+    const li = localIntents(ta.value);
+    const intents = li.items.map((it, i) => ({ raw: '#i' + it.kind + i, type: 'intent', it }));
+    const parsed = [...intents, ...parseEntry(li.rest, null, index), ...extras];
     items = parsed.map(it => {
       const o = overrides[it.raw];
       if (o && o.removed) return null;
@@ -197,6 +227,12 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
 
   function rowHtml(it, i) {
     if (it.type === 'unknown') return unknownHtml(it, i);
+    if (it.type === 'intent') {
+      const d = describe(it.it);
+      return `<div><div class="qa-item"><span class="fico c-${d.area === 'Sport' ? 'water' : d.area === 'Regeneration' ? 'snack' : 'zero'}">${icon(d.icon)}</span>
+        <div class="qa-main"><div class="qa-nm">${esc(d.title)}</div><div class="qa-am">${esc(d.area)} · ${esc(d.sub)}${it.it.day !== key ? ' · ' + esc(store.formatDateLabel(it.it.day)) : ''}</div></div>
+        <button class="qa-rm" data-rm="${i}" aria-label="Entfernen">${icon('x')}</button></div></div>`;
+    }
     const open = editing === i;
     let ico, name, amount, kv = '', badge = '';
     if (it.type === 'food' || it.type === 'new') {
@@ -307,7 +343,45 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
         : 'Verpacktes einfach scannen. <button class="more" id="qa-ai-setup" style="display:inline-flex">Unbekanntes automatisch nachschlagen lassen →</button>'}</p>`;
   }
 
+  function renderAI() {
+    if (ai.status === 'loading') {
+      body.innerHTML = `<div class="lookup-wait">${icon('loader', 'spin')}<span>Claude sortiert alles ein …</span></div>`;
+      foot.innerHTML = `<button class="btn block" disabled>${icon('loader', 'spin')}Einen Moment …</button>`;
+      return;
+    }
+    if (ai.status === 'error') {
+      body.innerHTML = `<div class="qa-unknown"><div class="qa-uh"><b>${esc(ai.error)}</b></div>
+        <div class="chips"><button class="chipbtn ai" id="ai-retry">${icon('refresh')}Nochmal</button><button class="chipbtn" id="ai-local">Ohne Claude weiter</button></div></div>`;
+      foot.innerHTML = '';
+      $('#ai-retry', body).onclick = () => runAI();
+      $('#ai-local', body).onclick = () => { ai = null; update(); };
+      return;
+    }
+    const groups = {};
+    ai.items.forEach((it, i) => { const d = describe(it); (groups[d.area] = groups[d.area] || []).push({ it, d, i }); });
+    body.innerHTML = `${ai.reply ? `<div class="ai-reply">${icon('spark')}<span>${esc(ai.reply)}</span></div>` : ''}
+      ${ai.items.length ? Object.entries(groups).map(([area, list]) => `<div class="sec-title">${esc(area)}<span>${list.length}</span></div>
+        <div class="qa-list">${list.map(({ it, d, i }) => `<div class="qa-item"><span class="fico ${area === 'Essen' ? 'c-gemuse' : area === 'Sport' ? 'c-water' : area === 'Regeneration' ? 'c-snack' : 'c-zero'}">${icon(d.icon)}</span>
+          <div class="qa-main"><div class="qa-nm">${esc(d.title)}${d.isNew ? `<em class="qa-new">${icon('spark')}neu</em>` : ''}</div><div class="qa-am">${esc(d.sub)}${it.day !== key ? ' · ' + esc(store.formatDateLabel(it.day)) : ''}</div></div>
+          <button class="qa-rm" data-airm="${i}" aria-label="Entfernen">${icon('x')}</button></div>`).join('')}</div>`).join('')
+        : '<div class="empty">Ich habe nichts zum Eintragen gefunden.</div>'}
+      <button class="more" id="ai-back" style="margin-top:12px">${icon('chevL')}Zurück zur schnellen Erkennung</button>`;
+    foot.innerHTML = `<button class="btn volt block" id="ai-save" ${ai.items.length ? '' : 'disabled'}>${icon('check')}${ai.items.length === 1 ? '1 Eintrag' : ai.items.length + ' Einträge'} speichern</button>`;
+    $$('[data-airm]', body).forEach(b => b.onclick = () => { ai.items.splice(Number(b.dataset.airm), 1); render(); });
+    $('#ai-back', body).onclick = () => { ai = null; update(); };
+    const sv = $('#ai-save', foot);
+    if (sv) sv.onclick = () => {
+      const before = store.dayPillars(key).overall;
+      const undo = applyItems(ai.items);
+      const n = ai.items.length;
+      closeSheet(); router.rerender(); haptic(12);
+      if (before < 100 && store.dayPillars(key).overall >= 100) confetti();
+      toast(`${n === 1 ? '1 Eintrag' : n + ' Einträge'} gespeichert`, 'Rückgängig', () => { undo(); router.rerender(); });
+    };
+  }
+
   function render() {
+    if (ai) { renderAI(); return; }
     if (!items.length) {
       body.innerHTML = quickChips();
       foot.innerHTML = '';
@@ -336,6 +410,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
         <div class="sec-title">Erkannt<span style="color:var(--nut)">${known.length} von ${items.length}</span></div>
         <div class="qa-list">${items.map(rowHtml).join('')}</div>
         ${pending > 1 && hasAI() ? `<button class="btn ghost block" id="qa-lookall" style="margin-top:10px">${icon('spark')}${pending} unbekannte nachschlagen</button>` : ''}
+        ${hasAI() && pending <= 1 ? `<button class="more" id="qa-ai" style="margin-top:10px">${icon('spark')}Nicht richtig erkannt? Claude versteht alles${icon('chev')}</button>` : ''}
         ${actionable ? `<div class="qa-sum">
           <div class="a">Dazu kommen<b class="num">+${de(pv.protein + newProt)} g Protein · ${de(pv.kcal + newKcal)} kcal</b></div>
           ${newCount ? `<div class="d" style="font-size:12px">${newCount} neu</div>` : `<div class="d"><s>${pv.before}%</s>${icon('chev')}${pv.after}%</div>`}
@@ -345,6 +420,8 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
       $('#qa-save', sheet).onclick = () => commit(known);
       const la = $('#qa-lookall', body);
       if (la) la.onclick = () => lookupUnknown(true);
+      const ab = $('#qa-ai', body);
+      if (ab) ab.onclick = () => runAI();
     }
     wire();
   }
@@ -436,6 +513,9 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
       else if (it.type === 'supp') { store.setSupp(key, it.suppId, true); n++; }
     }
     store.addEntries(key, foods);
+    const intents = known.filter(x => x.type === 'intent').map(x => x.it);
+    const undoIntents = intents.length ? applyItems(intents) : null;
+    n += intents.length;
     closeSheet();
     router.rerender();
     haptic(12);
@@ -443,6 +523,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
     if (overallBefore < 100 && after >= 100) confetti();
     const msg = `${n === 1 ? '1 Eintrag' : n + ' Einträge'} gespeichert${created.length ? ` · ${created.length} neu angelegt` : ''}`;
     toast(msg, 'Rückgängig', () => {
+      if (undoIntents) undoIntents();
       const d = store.getDay(key);
       store.truncateEntries(key, before.len);
       store.setWater(key, before.water);
