@@ -108,7 +108,7 @@ function freshStateRaw() {
     _onboarded: false,
     _ringV3Since: todayKey(),
     _v4Since: todayKey(),
-    skills: {}, missions: {}, weekly: {}, ratings: {}, chat: [], reviews: {},
+    skills: {}, missions: {}, weekly: {}, ratings: {}, chat: [], notes: [], reviews: {},
     _trainV2: true, _mealsSeed1: true, _gamesV1: true, _bodyseed1: true, _athleteV1: true, _suppV2: true,
   };
 }
@@ -186,6 +186,7 @@ function migrate(parsed) {
   if (!m.log) m.log = {};
   for (const k of ['skills', 'missions', 'weekly', 'ratings', 'reviews']) if (!m[k] || typeof m[k] !== 'object' || Array.isArray(m[k])) m[k] = {};
   if (!Array.isArray(m.chat)) m.chat = [];
+  if (!Array.isArray(m.notes)) m.notes = [];
   if (!('_v4Since' in parsed)) m._v4Since = todayKey();
   if (m._persona !== PERSONA.id + '@' + PERSONA.version) personalize(m);
 
@@ -744,7 +745,7 @@ export function getTrainingFor(key) { return load().training[weekdayOf(key)] || 
 export function setTrainingDay(weekday, plan) { load().training[weekday] = plan; save(); }
 export function sportType(id) { return SPORT_TYPES.find(t => t.id === id) || SPORT_TYPES[SPORT_TYPES.length - 1]; }
 
-export function addSession(key, { type, min, rpe, title, workoutId }) {
+export function addSession(key, { type, min, rpe, title, workoutId, detail }) {
   const d = getDay(key);
   const session = {
     id: 's_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5),
@@ -752,6 +753,7 @@ export function addSession(key, { type, min, rpe, title, workoutId }) {
     title: title || sportType(type).label, ts: Date.now(),
   };
   if (workoutId) session.workoutId = workoutId;
+  if (detail) session.detail = String(detail).slice(0, 400);
   d.sessions.push(session);
   save();
   return session;
@@ -951,13 +953,31 @@ export function liftScore(l) {
   const w = l.bw ? bodyWeight() + (l.weight || 0) : (l.weight || 0);
   return e1rm(w, l.reps || 0);
 }
-export function logLift(name, weight, reps, date = todayKey()) {
+export function logLift(name, weight, reps, date = todayKey(), bw = false) {
   name = String(name || '').trim();
   if (!name) return;
-  load().lifts.push({ id: liftId(), name, weight: Number(weight) || 0, reps: Number(reps) || 0, date });
+  const l = { id: liftId(), name, weight: Number(weight) || 0, reps: Number(reps) || 0, date };
+  if (bw) l.bw = true;
+  load().lifts.push(l);
   save();
 }
 export function deleteLift(id) { const s = load(); s.lifts = s.lifts.filter(l => l.id !== id); save(); }
+// --- Was sich der Coach über Fassie merkt -----------------------------------------
+export function getNotes() { return load().notes || []; }
+export function addNote(text) {
+  text = String(text || '').trim().slice(0, 200);
+  if (!text) return null;
+  const s = load();
+  const low = text.toLowerCase();
+  if (s.notes.some(n => n.text.toLowerCase() === low)) return null;
+  const n = { id: 'n_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 5), text, ts: Date.now() };
+  s.notes.push(n);
+  if (s.notes.length > 60) s.notes.splice(0, s.notes.length - 60);
+  save();
+  return n;
+}
+export function removeNote(id) { const s = load(); s.notes = s.notes.filter(n => n.id !== id); save(); }
+
 export function getLiftsFor(name) {
   return (load().lifts || []).filter(l => l.name === name)
     .sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));

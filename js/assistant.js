@@ -9,6 +9,7 @@ import { claudeJSON, coachModel, PER100_SCHEMA, toFood, hasAI } from './lookup.j
 import { parseEntry, buildIndex, fold } from './parser.js';
 import { dayPlan, fmtH } from './planner.js';
 import { missionsFor, levelInfo, totalXP, weeklyChallenge } from './game.js';
+import { SKILLS, practiceSkill } from './skills.js';
 
 const SPORT_IDS = SPORT_TYPES.map(t => t.id);
 
@@ -28,7 +29,11 @@ function logSchema() {
     }),
     water: arr({ ml: { type: 'number' }, day_offset: dayOff }),
     supplements: arr({ id: { type: 'string', enum: suppIds.length ? suppIds : ['none'] }, day_offset: dayOff }),
-    sessions: arr({ type: { type: 'string', enum: SPORT_IDS }, minutes: { type: 'number' }, rpe: { type: 'integer' }, title: { type: 'string' }, day_offset: dayOff }),
+    sessions: arr({ type: { type: 'string', enum: SPORT_IDS }, minutes: { type: 'number' }, rpe: { type: 'integer' }, title: { type: 'string' }, day_offset: dayOff,
+      notes: { type: 'string' },
+      exercises: arr({ name: { type: 'string' }, sets: { type: 'integer' }, reps: { type: 'integer' }, kg: { type: 'number' }, seconds: { type: 'number' } }) }),
+    skills: arr({ id: { type: 'string', enum: Object.keys(SKILLS) }, day_offset: dayOff }),
+    remember: { type: 'array', items: { type: 'string' } },
     steps: arr({ count: { type: 'integer' }, day_offset: dayOff }),
     sleep: arr({ hours: { type: 'number' }, day_offset: dayOff }),
     knee: arr({ score: { type: 'integer' }, day_offset: dayOff }),
@@ -56,7 +61,7 @@ export function buildContext(now = new Date()) {
   const taken = s.supplements.filter(x => d.supps && d.supps[x.id]).map(x => x.name);
   const open = s.supplements.filter(x => !(d.supps && d.supps[x.id])).map(x => `${x.name} (${x.time})`);
   lines.push(`Supplements genommen: ${taken.join(', ') || 'keine'}. Offen: ${open.join(', ') || 'keine'}.`);
-  lines.push(`Training heute: ${plan.train ? `${plan.train.title} ab ${fmtH(plan.train.start)}` : 'frei'}. Eingetragen: ${(d.sessions || []).map(x => `${x.title} ${x.min} Min RPE ${x.rpe}`).join(', ') || 'nichts'}.`);
+  lines.push(`Training heute: ${plan.train ? `${plan.train.title} ab ${fmtH(plan.train.start)}` : 'frei'}. Eingetragen: ${(d.sessions || []).map(x => `${x.title} ${x.min} Min RPE ${x.rpe}${x.detail ? ` (${x.detail})` : ''}`).join(', ') || 'nichts'}.`);
   lines.push(`Fahrplan: ${plan.slots.filter(x => x.type === 'meal' && x.target).map(x => `${fmtH(x.t)} ${x.title} ~${x.target.kcal} kcal/${x.target.protein} g P`).join('; ') || 'Essfenster für heute durch'}.`);
   lines.push(`Regeneration: Schlaf ${d.sleep != null ? d.sleep + ' h' : 'nicht eingetragen'}, Knie ${d.knee != null ? d.knee + '/10' : 'nicht eingetragen'}, Reha ${d.reha ? 'erledigt' : 'offen'}.`);
   const ms = missionsFor(key, now);
@@ -77,6 +82,10 @@ export function buildContext(now = new Date()) {
   lines.push(`Gewicht: aktuell ${gp.current ?? '?'} kg, Ziel ${gp.target} kg, Tempo ${gp.tempo}${gp.rate != null ? `, Trend ${gp.rate} kg/Woche` : ''}${gp.planDate ? `, Plan-Ziel ca. ${gp.planDate}` : ''}.`);
   const ng = store.nextGame(key);
   if (ng) lines.push(`Nächstes Spiel: ${ng.game.date} ${ng.game.time} ${ng.game.home ? 'vs' : '@'} ${ng.game.opponent}.`);
+  const notes = store.getNotes();
+  if (notes.length) lines.push(`Was du dir über ihn gemerkt hast:\n${notes.map(n => `- ${n.text}`).join('\n')}`);
+  const lifts = store.liftExercises().slice(0, 12);
+  if (lifts.length) lines.push(`Kraftwerte (letzter Satz / Bestwert): ${lifts.map(l => `${l.name} ${l.last.weight || 'KG'}×${l.last.reps} am ${l.last.date}`).join('; ')}.`);
   const names = [...new Set([...store.getQuickPicks(25).map(q => q.food.name), ...RECIPES.map(x => x.name)])];
   lines.push(`Seine typischen Lebensmittel/Gerichte: ${names.join(', ')}.`);
   return lines.join('\n');
@@ -95,7 +104,9 @@ Was du tust:
 4. reply: ${mode === 'log'
     ? 'eine kurze Bestätigung in einem Satz, was du einträgst, plus höchstens ein konkreter Hinweis (z. B. was ihm heute noch fehlt).'
     : 'deine Antwort als Coach. Konkret, mit Zahlen aus seinen Daten, max. ca. 120 Wörter, außer er will mehr. Empfiehl Essen, das zu ihm passt (Bowls, Dönerfleisch-Teller, Lidl/Rewe, seine Gerichte). Kein Markdown außer kurzen Aufzählungen mit „–".'}
-5. quick: 0–3 kurze Folgefragen oder Antworten, die er antippen könnte (aus seiner Sicht formuliert).
+5. Training so detailliert wie erzählt: sessions.exercises = jede Übung mit name (deutsch, z. B. „Bankdrücken", „Klimmzüge"), sets, reps, kg (0 = Körpergewicht), seconds (nur bei Halteübungen, sonst 0). sessions.notes = kurze Details (z. B. „Knie zwickte beim Springen", „Spiel gewonnen 78:70"), sonst "". Hat er an Handstand, Back Lever oder Muscle-Up gearbeitet → zusätzlich skills.
+6. remember: Dinge, die du dir dauerhaft merken sollst – Vorlieben, Abneigungen, Unverträglichkeiten, Beschwerden, Ziele, Lebensumstände (z. B. „Mag keinen Lachs", „Knie zwickt bei Sprüngen"). Kurz, in 3. Person, nichts, was oben schon unter „gemerkt" steht. Sonst leer.
+7. quick: 0–3 kurze Folgefragen oder Antworten, die er antippen könnte (aus seiner Sicht formuliert).
 Keine medizinischen Diagnosen; bei Knieschmerz über 5/10 oder stechendem Schmerz zum Physio raten.
 
 # Aktueller Stand
@@ -138,7 +149,16 @@ export function normalize(json, now = new Date()) {
   }
   for (const w of json.water || []) if (w.ml > 0) items.push({ id: id(), kind: 'water', day: dayKey(w.day_offset), ml: Math.round(w.ml) });
   for (const x of json.supplements || []) if (store.getState().supplements.some(sp => sp.id === x.id)) items.push({ id: id(), kind: 'supp', day: dayKey(x.day_offset), suppId: x.id });
-  for (const x of json.sessions || []) if (x.minutes > 0) items.push({ id: id(), kind: 'session', day: dayKey(x.day_offset), type: SPORT_IDS.includes(x.type) ? x.type : 'other', min: Math.round(x.minutes), rpe: Math.max(1, Math.min(10, Math.round(x.rpe) || 6)), title: x.title || '' });
+  for (const x of json.sessions || []) {
+    const ex = (x.exercises || []).filter(e => e && String(e.name || '').trim()).map(e => ({
+      name: String(e.name).trim().slice(0, 40), sets: Math.max(1, Math.min(20, Math.round(Number(e.sets) || 1))),
+      reps: Math.max(0, Math.min(100, Math.round(Number(e.reps) || 0))), kg: Math.max(0, Math.min(400, Math.round((Number(e.kg) || 0) * 2) / 2)),
+      sec: Math.max(0, Math.min(600, Math.round(Number(e.seconds) || 0))) }));
+    const minutes = Number(x.minutes) > 0 ? x.minutes : ex.length ? Math.max(20, ex.reduce((a, e) => a + e.sets * 3, 0)) : 0;
+    if (minutes > 0) items.push({ id: id(), kind: 'session', day: dayKey(x.day_offset), type: SPORT_IDS.includes(x.type) ? x.type : 'other', min: Math.round(minutes), rpe: Math.max(1, Math.min(10, Math.round(x.rpe) || 6)), title: x.title || '', notes: String(x.notes || '').trim().slice(0, 200), ex });
+  }
+  for (const x of json.skills || []) if (SKILLS[x.id]) items.push({ id: id(), kind: 'skill', day: dayKey(x.day_offset), skill: x.id });
+  for (const t of json.remember || []) if (String(t || '').trim()) items.push({ id: id(), kind: 'note', day: today, text: String(t).trim().slice(0, 200) });
   for (const x of json.steps || []) if (x.count > 0) items.push({ id: id(), kind: 'steps', day: dayKey(x.day_offset), count: Math.round(x.count) });
   for (const x of json.sleep || []) if (x.hours > 0 && x.hours <= 14) items.push({ id: id(), kind: 'sleep', day: dayKey(x.day_offset), hours: Math.round(x.hours * 4) / 4 });
   for (const x of json.knee || []) if (x.score >= 0 && x.score <= 10) items.push({ id: id(), kind: 'knee', day: dayKey(x.day_offset), score: Math.round(x.score) });
@@ -194,7 +214,9 @@ export function describe(it) {
     case 'food': { const f = it.food || store.foodById(it.foodId); return { area: 'Essen', icon: 'apple', title: f ? f.name : '?', sub: `${it.grams} g${it.time ? ' · ' + it.time : ''}${f ? ` · ${Math.round((f.per100.kcal || 0) * it.grams / 100)} kcal · ${Math.round((f.per100.protein || 0) * it.grams / 100)} g P` : ''}`, isNew: !!it.food }; }
     case 'water': return { area: 'Essen', icon: 'drop', title: 'Wasser', sub: `${it.ml} ml` };
     case 'supp': { const sp = st.supplements.find(x => x.id === it.suppId); return { area: 'Essen', icon: 'pill', title: sp ? sp.name : it.suppId, sub: 'genommen' }; }
-    case 'session': return { area: 'Sport', icon: store.sportType(it.type).icon, title: it.title || store.sportType(it.type).label, sub: `${it.min} Min · Intensität ${it.rpe}/10` };
+    case 'session': return { area: 'Sport', icon: store.sportType(it.type).icon, title: it.title || store.sportType(it.type).label, sub: `${it.min} Min · Intensität ${it.rpe}/10${it.ex && it.ex.length ? ' · ' + exText(it.ex) : ''}${it.notes ? ' · ' + it.notes : ''}` };
+    case 'skill': return { area: 'Sport', icon: SKILLS[it.skill].icon, title: SKILLS[it.skill].name, sub: 'geübt' };
+    case 'note': return { area: 'Gemerkt', icon: 'bulb', title: it.text, sub: 'merkt sich der Coach' };
     case 'steps': return { area: 'Sport', icon: 'steps', title: 'Schritte', sub: it.count.toLocaleString('de-DE') };
     case 'sleep': return { area: 'Regeneration', icon: 'moon', title: 'Schlaf', sub: `${String(it.hours).replace('.', ',')} h` };
     case 'knee': return { area: 'Regeneration', icon: 'knee', title: 'Knie-Check', sub: `${it.score}/10` };
@@ -204,10 +226,17 @@ export function describe(it) {
   }
 }
 
+export function exText(ex) {
+  return ex.map(e => `${e.name} ${e.sets}×${e.sec ? e.sec + ' s' : e.reps}${e.kg ? ` @ ${String(e.kg).replace('.', ',')} kg` : ''}`).join(', ');
+}
+
 export function applyItems(items, now = new Date()) {
   const s = store.getState();
   const days = [...new Set(items.map(i => i.day))];
   const snap = Object.fromEntries(days.map(k => [k, s.log[k] ? structuredClone(s.log[k]) : null]));
+  const skillSnap = structuredClone(s.skills || {});
+  const liftCount = s.lifts.length;
+  const notes = [];
   const created = [];
   const madeByName = {};
   for (const it of items) {
@@ -228,7 +257,15 @@ export function applyItems(items, now = new Date()) {
       }
       case 'water': store.addWater(k, it.ml); break;
       case 'supp': store.setSupp(k, it.suppId, true); break;
-      case 'session': store.addSession(k, { type: it.type, min: it.min, rpe: it.rpe, title: it.title || undefined }); break;
+      case 'session': {
+        const ex = it.ex || [];
+        const detail = [ex.length ? exText(ex) : '', it.notes || ''].filter(Boolean).join(' · ');
+        store.addSession(k, { type: it.type, min: it.min, rpe: it.rpe, title: it.title || undefined, detail: detail || undefined });
+        for (const e of ex) if (!e.sec && e.reps) for (let i = 0; i < e.sets; i++) store.logLift(e.name, e.kg, e.reps, k, !e.kg);
+        break;
+      }
+      case 'skill': practiceSkill(k, it.skill); break;
+      case 'note': { const n = store.addNote(it.text); if (n) notes.push(n.id); break; }
       case 'steps': store.setSteps(k, Math.max(it.count, store.getSteps(k))); break;
       case 'sleep': store.setSleep(k, it.hours); break;
       case 'knee': store.setDayMeta(k, 'knee', it.score); break;
@@ -241,6 +278,9 @@ export function applyItems(items, now = new Date()) {
     const st = store.getState();
     for (const [k, v] of Object.entries(snap)) { if (v) st.log[k] = v; else delete st.log[k]; }
     for (const fid of created) store.deleteFood(fid);
+    st.skills = skillSnap;
+    st.lifts.splice(liftCount);
+    for (const nid of notes) store.removeNote(nid);
     store.save();
   };
 }

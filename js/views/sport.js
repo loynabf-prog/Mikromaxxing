@@ -28,20 +28,18 @@ export function renderSport(app) {
   const sessions = store.sessionsFor(key);
   const active = store.getActiveWorkout();
 
-  app.innerHTML = `<div class="view">
-    <div class="vh"><div><div class="vh-date">Woche ${isoWeek(store.dateOf(today))}</div><div class="vh-title">Sport</div></div>
-      <div class="vh-actions"><button class="icon-btn" data-go="setup" aria-label="Plan bearbeiten">${icon('sliders')}</button></div></div>
-
-    <div class="week">${weekKeys(today).map(k => {
-      const pl = store.getTrainingFor(k);
-      const done = store.sessionsFor(k).length > 0;
-      const cls = done ? 'done' : pl && pl.kind === 'gym' ? 'gym' : pl && pl.kind === 'sport' ? 'sport' : '';
-      const ic = done ? 'check' : pl && pl.kind === 'gym' ? 'dumbbell' : pl && pl.kind === 'sport' ? store.sportType(pl.sport).icon : 'moon';
-      return `<button class="wd ${k === key ? 'sel' : ''} ${k === today ? 'today' : ''}" data-day="${k}"><b>${WEEKDAYS[store.weekdayOf(k)]}</b><span class="dot ${cls}">${icon(ic)}</span></button>`;
-    }).join('')}</div>
+  app.innerHTML = `<div class="view simple">
+    <div class="sub-h">
+      <button class="icon-btn" data-back aria-label="Zurück">${icon('chevL')}</button>
+      <div class="vh-title">Sport</div>
+      ${isToday ? '' : `<button class="chipbtn sm" data-day="${today}">Zurück zu heute</button>`}
+    </div>
 
     ${planCard(key, plan, isToday, active, sessions)}
-    ${sportRows(today)}
+    <div class="rows">
+      <button class="row" data-srow="hub"><span class="row-ic">${icon('layers')}</span>
+        <span class="row-main"><div class="row-t">Mehr</div><div class="row-s">Woche, Skills, Belastung, Rekorde, Spielplan</div></span><span class="row-end">${icon('chev')}</span></button>
+    </div>
   </div>`;
 
   $$('[data-go]', app).forEach(b => b.onclick = () => router.go(b.dataset.go));
@@ -54,7 +52,7 @@ export function renderSport(app) {
     store.removeSession(key, b.dataset.rmsess); router.rerender();
   });
   $$('[data-gymt]', app).forEach(b => b.onclick = () => { store.setDayMeta(key, 'gymTime', b.dataset.gymt); haptic(4); router.rerender(); });
-  $$('[data-srow]', app).forEach(b => b.onclick = () => openSportSheet(today, b.dataset.srow));
+  $$('[data-srow]', app).forEach(b => b.onclick = () => openSportHub(today));
 }
 
 // Alles Weitere liegt hinter einer Zeile
@@ -67,11 +65,28 @@ function sportRows(today) {
   const row = (id, ic, title, sub) => `<button class="row" data-srow="${id}"><span class="row-ic">${icon(ic)}</span>
     <span class="row-main"><div class="row-t">${title}</div><div class="row-s">${esc(sub)}</div></span><span class="row-end">${icon('chev')}</span></button>`;
   return `<div class="rows">
+    ${row('week', 'calendar', 'Woche', 'Was an welchem Tag ansteht')}
     ${row('skills', 'zap', 'Skills', skills)}
     ${row('load', 'gauge', 'Belastung', `7 Tage: ${zone}`)}
     ${row('lifts', 'medal', 'Rekorde', prs ? `${prs} Übungen` : 'kommen mit dem ersten Workout')}
+    ${row('plan', 'sliders', 'Trainingsplan ändern', 'Tage, Zeiten, Sportarten')}
     ${row('games', 'trophy', 'Spielplan', ng ? `${ng.days === 0 ? 'heute' : ng.days === 1 ? 'morgen' : `in ${ng.days} Tagen`} · ${ng.game.home ? 'vs' : '@'} ${ng.game.opponent}` : 'keine Spiele')}
   </div>`;
+}
+function openSportHub(today) {
+  const sheet = openSheet(`${sheetHead('Mehr zum Sport')}<div class="sheet-body">${sportRows(today).replace(/data-srow=/g, 'data-sh=')}</div>`);
+  $$('[data-sh]', sheet).forEach(b => b.onclick = () => { closeSheet(); b.dataset.sh === 'week' ? openWeekSheet(today) : b.dataset.sh === 'plan' ? router.go('setup') : openSportSheet(today, b.dataset.sh); });
+}
+function openWeekSheet(today) {
+  const sheet = openSheet(`${sheetHead('Deine Woche', 'Tag antippen, um ihn anzusehen')}<div class="sheet-body"><div class="rows">${weekKeys(today).map(k => {
+    const pl = store.getTrainingFor(k);
+    const done = store.sessionsFor(k);
+    const ic = done.length ? 'check' : pl && pl.kind === 'gym' ? 'dumbbell' : pl && pl.kind === 'sport' ? store.sportType(pl.sport).icon : 'moon';
+    const sub = done.length ? done.map(x => x.title).join(', ') + ' ✓' : pl ? pl.title || (pl.kind === 'gym' ? 'Gym' : store.sportType(pl.sport).label) : 'Pause';
+    return `<button class="row ${k === today ? 'today' : ''}" data-wk="${k}"><span class="row-ic" ${done.length ? 'style="background:var(--nut);color:var(--on-ink)"' : ''}>${icon(ic)}</span>
+      <span class="row-main"><div class="row-t">${WEEKDAYS_LONG[store.weekdayOf(k)]}${k === today ? ' · heute' : ''}</div><div class="row-s">${esc(sub)}</div></span><span class="row-end">${icon('chev')}</span></button>`;
+  }).join('')}</div></div>`, { tall: true });
+  $$('[data-wk]', sheet).forEach(b => b.onclick = () => { selDay = b.dataset.wk; closeSheet(); router.rerender(); window.scrollTo(0, 0); });
 }
 function openSportSheet(today, id) {
   const titles = { skills: 'Deine Skills', load: 'Belastung', lifts: 'Rekorde', games: 'Spielplan TSC' };
@@ -181,7 +196,7 @@ function planCard(key, plan, isToday, active, sessions) {
   const done = sessions.map(x => {
     const st = store.sportType(x.type);
     return `<div class="ex-prev"><span class="n" style="background:var(--nut);color:var(--on-ink)">${icon('check')}</span>
-      <span class="nm">${esc(x.title)}<span class="sub" style="display:block">${x.min} Min · Intensität ${x.rpe}/10 · Last ${de(store.sessionLoad(x))}</span></span>
+      <span class="nm">${esc(x.title)}<span class="sub" style="display:block">${x.min} Min · Intensität ${x.rpe}/10${x.detail ? ` · ${esc(x.detail)}` : ''}</span></span>
       <button class="qa-rm" data-rmsess="${x.id}" aria-label="Löschen">${icon('trash')}</button></div>`;
   }).join('');
   let actions = '';

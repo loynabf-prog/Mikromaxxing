@@ -9,18 +9,22 @@ import { renderFood, getFoodDate } from './views/food.js';
 import { renderSport } from './views/sport.js';
 import { renderProgress } from './views/progress.js';
 import { renderSetup } from './views/setup.js';
-import { renderCoach } from './views/coach.js';
+import { renderCoach, openCoach } from './views/coach.js';
+import { renderMore } from './views/more.js';
+import { hasAI } from './lookup.js';
 import { openQuickAdd } from './views/quickadd.js';
 import { openOnboarding, openWhatsNew } from './views/onboarding.js';
 
-const VIEWS = { today: renderToday, food: renderFood, coach: renderCoach, sport: renderSport, progress: renderProgress, setup: renderSetup };
+const VIEWS = { today: renderToday, food: renderFood, coach: renderCoach, sport: renderSport, progress: renderProgress, setup: renderSetup, more: renderMore };
+// Unterseiten gehören in der Leiste zu „Mehr"
+const NAV_OF = { food: 'more', sport: 'more', progress: 'more', setup: 'more' };
 const WITH_QBAR = new Set(['today', 'food', 'sport']);
 const app = $('#app');
 
 function render(scrollTop = true) {
   const tab = router.tab;
   (VIEWS[tab] || renderToday)(app);
-  $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  $$('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === (NAV_OF[tab] || tab)));
   const showBar = WITH_QBAR.has(tab);
   $('#qbar').classList.toggle('hidden', !showBar);
   $('#qfade').classList.toggle('hidden', !showBar);
@@ -49,10 +53,20 @@ function init() {
     b.querySelector('[data-ic]').innerHTML = icon(b.querySelector('[data-ic]').dataset.ic);
     b.onclick = () => router.go(b.dataset.tab);
   });
-  $('#q-ic').innerHTML = icon('plus');
+  $('#q-plus').innerHTML = icon('plus');
   $('#q-mic').innerHTML = icon('mic');
-  $('#q-text').onclick = () => openQuickAdd({ key: quickKey() });
-  $('#q-mic').onclick = () => openQuickAdd({ key: quickKey(), voice: true });
+  // Reden = Coach. Ohne Claude-Key (oder für vergangene Tage) das lokale Eintragen.
+  const talk = (voice) => (hasAI() && quickKey() === store.todayKey()) ? openCoach({ voice }) : openQuickAdd({ key: quickKey(), voice });
+  $('#q-plus').onclick = () => openQuickAdd({ key: quickKey() });
+  $('#q-text').onclick = () => talk(false);
+  $('#q-mic').onclick = () => talk(true);
+  // Zurück-Knopf der Unterseiten
+  document.addEventListener('click', (e) => {
+    const b = e.target.closest('[data-back]');
+    if (!b) return;
+    const prev = router.prev && router.prev !== router.tab ? router.prev : 'more';
+    router.go(prev);
+  });
 
   render(true);
   if (!store.isOnboarded()) { openOnboarding(); store.getState()._seenV4 = true; store.save(); }

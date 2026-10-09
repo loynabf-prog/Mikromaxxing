@@ -28,7 +28,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
   let rec = null, recBase = '';
 
   const sheet = openSheet(`
-    ${sheetHead('Erzähl\'s mir', key === store.todayKey() ? 'Essen, Training, Schlaf, Knie – einfach alles' : store.formatDateLabel(key))}
+    ${sheetHead('Schnell eintragen', key === store.todayKey() ? 'Scannen, suchen oder kurz tippen' : store.formatDateLabel(key))}
     <div class="qa-input" id="qa-input">
       <textarea class="qa-text" id="qa-text" rows="2" placeholder="z. B. mittags Bowl mit Hähnchen, 90 Min Basketball, 7 h geschlafen, Knie 3" autocapitalize="sentences" enterkeyhint="done"></textarea>
       <div class="qa-bar">

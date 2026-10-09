@@ -33,13 +33,12 @@ export function renderToday(app) {
   app.innerHTML = `<div class="view simple">
     <div class="s-head">
       <div><div class="vh-date">${esc(longDate(store.dateOf(key)))}</div><div class="s-hi">${greeting(now)}, ${esc(s.profile.name || PERSONA.name)}</div></div>
-      <button class="icon-btn" data-go="setup" aria-label="Einstellungen">${icon('sliders')}</button>
     </div>
 
     <button class="lvl-thin" id="lvl" aria-label="Level und Missionen">
       <b class="num">${lv.level}</b><span>${esc(lv.rank)}</span>
       <i class="lvl-bar"><i style="width:${lv.pct}%"></i></i>
-      <em>${ms.filter(m => m.done).length}/${ms.length} Missionen</em>${icon('chev')}
+${icon('chev')}
     </button>
 
     <div class="s-hero">
@@ -52,7 +51,7 @@ export function renderToday(app) {
       </button>
     </div>
     <button class="s-legend" id="legend">
-      <span><i class="d-nut"></i>${p.nutrition}%</span><span><i class="d-spo"></i>${p.sport}%</span><span><i class="d-reg"></i>${p.regen}%</span>${icon('chev')}
+      <span><i class="d-nut"></i>Essen</span><span><i class="d-spo"></i>Sport</span><span><i class="d-reg"></i>Erholung</span>
     </button>
 
     ${nextCard(ns)}
@@ -72,11 +71,8 @@ function nextCard(ns) {
     ${r ? `<button class="next-rec" data-rec="${r.recipe.id}"><b>${esc(r.recipe.name)}</b><span class="num">${de(r.totals.protein)} g Protein · ${de(r.totals.kcal)} kcal</span></button>` : ''}
     ${ns.kind === 'sleep' ? `<div class="next-chips">${ns.chips.map(v => `<button class="chipbtn" data-sleep="${v}">${String(v).replace('.', ',')} h</button>`).join('')}</div>` : ''}
     ${ns.kind === 'knee' ? `<div class="knee-scale big">${Array.from({ length: 11 }, (_, i) => `<button data-kn="${i}">${i}</button>`).join('')}</div>` : ''}
-    ${ns.primary || ns.secondary ? `<div class="next-act">
-      ${ns.primary ? `<button class="btn volt" data-step="${ns.primary.act}">${esc(ns.primary.label)}</button>` : ''}
-      ${ns.secondary ? `<button class="btn ghost" data-step2="${ns.secondary.act}">${esc(ns.secondary.label)}</button>` : ''}
-    </div>` : ''}
-    ${ns.extra ? `<button class="next-extra" data-step3="${ns.extra.act}">${icon('drop')}${esc(ns.extra.label)}</button>` : ''}
+    ${ns.primary ? `<div class="next-act"><button class="btn volt" data-step="${ns.primary.act}">${esc(ns.primary.label)}</button></div>` : ''}
+    ${ns.secondary ? `<button class="next-alt" data-step2="${ns.secondary.act}">${esc(ns.secondary.label)}${icon('chev')}</button>` : ''}
   </div>`;
 }
 

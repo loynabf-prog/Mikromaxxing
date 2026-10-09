@@ -42,10 +42,14 @@ export function renderFood(app) {
     <span class="row-main"><div class="row-t">${title}</div>${sub ? `<div class="row-s">${sub}</div>` : ''}</span><span class="row-end">${end}${icon('chev')}</span></button>`;
 
   app.innerHTML = `<div class="view simple">
-    <div class="datebar">
-      <button class="icon-btn" id="d-prev" aria-label="Vorheriger Tag">${icon('chevL')}</button>
-      <div class="dl"><b>${esc(store.formatDateLabel(key))}</b><span>${esc(longDate(store.dateOf(key)))}</span></div>
-      <button class="icon-btn" id="d-next" aria-label="Nächster Tag" ${isToday ? 'disabled style="opacity:.35"' : ''}>${icon('chev')}</button>
+    <div class="sub-h">
+      <button class="icon-btn" data-back aria-label="Zurück">${icon('chevL')}</button>
+      <div class="vh-title">Essen</div>
+      <div class="daysw">
+        <button id="d-prev" aria-label="Vorheriger Tag">${icon('chevL')}</button>
+        <span>${esc(store.formatDateLabel(key))}</span>
+        <button id="d-next" aria-label="Nächster Tag" ${isToday ? 'disabled' : ''}>${icon('chev')}</button>
+      </div>
     </div>
 
     <div class="card f-sum">
@@ -54,18 +58,13 @@ export function renderFood(app) {
         <div style="text-align:right"><div class="mid num">${de(tot.protein)}<small>/ ${de(mt.protein)} g</small></div><div class="lbl" style="margin-top:5px">Protein</div></div>
       </div>
       <div class="bbar"><i style="width:${Math.min(100, tot.kcal / mt.kcal * 100)}%"></i><b style="left:${Math.min(100, tot.protein / mt.protein * 100)}%"></b></div>
-      <div class="macros"><span>Carbs <b>${de(tot.carbs)}/${de(mt.carbs)} g</b></span><span>Fett <b>${de(tot.fat)}/${de(mt.fat)} g</b></span></div>
     </div>
 
     ${isToday ? simpleEatCard(key) : ''}
     ${eatenCard(key, day)}
 
     <div class="rows">
-      ${row('supps', 'pill', 'Supplements', taken === supps.length ? 'alle genommen' : 'antippen zum Abhaken', `${taken}/${supps.length}`)}
-      ${row('water', 'drop', 'Wasser', '', `${de((day.water || 0) / 1000, 1)} / ${de(s.profile.water / 1000, 1)} L`)}
-      ${row('micros', 'leaf', 'Vitamine & Mineralien', 'Lücken schließen, Wochenschnitt', `${p.parts.micros} %`)}
-      ${row('meals', 'bowl', 'Meine Mahlzeiten', 'mit einem Tipp eintragen')}
-      ${row('library', 'book', 'Lebensmittel-Bibliothek', '')}
+      ${row('more', 'layers', 'Mehr', 'Supplements, Wasser, Vitamine, Mahlzeiten, Bibliothek')}
     </div>
   </div>`;
 
@@ -75,12 +74,12 @@ export function renderFood(app) {
 // Ein Blick: 3 Vorschläge für jetzt, alles andere hinter „Mehr Ideen"
 function simpleEatCard(key) {
   const slot = currentSlot(key);
-  const res = recommend(key, slot, { limit: 3 });
+  const res = recommend(key, slot, { limit: 1 });
   if (!res.list.length) return '';
   return `<div class="card">
     <div class="ch"><span class="ch-title">Jetzt passt · ${esc(SLOT_LABELS[slot] || '')}</span><span class="sub num">~${de(res.kcalB)} kcal</span></div>
     ${recRows(key, res, true)}
-    <button class="s-link" style="margin-top:4px" data-moreideas="${slot}">Mehr Ideen & Filter${icon('chev')}</button>
+    <button class="s-link" style="margin-top:2px" data-moreideas="${slot}">Andere Ideen${icon('chev')}</button>
   </div>`;
 }
 
@@ -341,11 +340,38 @@ function wire(app, key) {
   if (tpl) tpl.onclick = () => { const n = store.saveDayTemplate(key); toast(`Standardtag gemerkt (${n} Einträge)`); };
   $$('[data-frow]', app).forEach(b => b.onclick = () => {
     const r = b.dataset.frow;
-    if (r === 'supps') openSuppsSheet(key);
+    if (r === 'more') openFoodMore(key);
+    else if (r === 'supps') openSuppsSheet(key);
     else if (r === 'water') openWaterSheet(key);
     else if (r === 'micros') openMicrosSheet(key);
     else if (r === 'meals') openMealsSheet(key);
     else if (r === 'library') openLibrary();
+  });
+}
+
+// Hintergrund: alles Weitere rund ums Essen
+function openFoodMore(key) {
+  const s = store.getState();
+  const day = store.getDay(key);
+  const taken = s.supplements.filter(x => day.supps[x.id]).length;
+  const micros = store.dayPillars(key).parts.micros;
+  const row = (id, ic, title, end) => `<button class="row" data-fm="${id}"><span class="row-ic">${icon(ic)}</span>
+    <span class="row-main"><div class="row-t">${title}</div></span><span class="row-end">${end || ''}${icon('chev')}</span></button>`;
+  const sheet = openSheet(`${sheetHead('Mehr zum Essen')}<div class="sheet-body"><div class="rows">
+    ${row('supps', 'pill', 'Supplements', `${taken}/${s.supplements.length}`)}
+    ${row('water', 'drop', 'Wasser', `${de((day.water || 0) / 1000, 1)} / ${de(s.profile.water / 1000, 1)} L`)}
+    ${row('micros', 'leaf', 'Vitamine & Mineralien', `${micros} %`)}
+    ${row('meals', 'bowl', 'Meine Mahlzeiten')}
+    ${row('library', 'book', 'Lebensmittel-Bibliothek')}
+  </div></div>`);
+  $$('[data-fm]', sheet).forEach(b => b.onclick = () => {
+    closeSheet();
+    const r = b.dataset.fm;
+    if (r === 'supps') openSuppsSheet(key);
+    else if (r === 'water') openWaterSheet(key);
+    else if (r === 'micros') openMicrosSheet(key);
+    else if (r === 'meals') openMealsSheet(key);
+    else openLibrary();
   });
 }
 

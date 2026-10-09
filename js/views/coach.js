@@ -4,6 +4,7 @@
 // ============================================================================
 import * as store from '../store.js';
 import { askCoach, applyItems, describe, chatHistory, pushChat, clearChat, weeklyReview, getReview, hasAI } from '../assistant.js';
+import { openQuickAdd } from './quickadd.js';
 import { weekStart } from '../game.js';
 import { PERSONA } from '../persona.js';
 import { icon } from '../icons.js';
@@ -21,22 +22,33 @@ const STARTERS = [
 ];
 let busy = false;
 let draft = '';
+let pending = null;            // { voice } – von der Eingabeleiste
+const undos = new Map();       // Nachrichten-ts → Rückgängig (nur in dieser Sitzung)
+let openLog = null;            // aufgeklappte Eintrags-Liste (ts)
 
-function itemsHtml(items, applied, idx) {
-  const groups = {};
-  for (const it of items) { const d = describe(it); (groups[d.area] = groups[d.area] || []).push({ it, d }); }
+// Von überall: in den Coach springen (optional direkt mit Sprechen)
+export function openCoach({ voice = false } = {}) {
+  pending = { voice };
+  router.go('coach');
+}
+
+function itemsHtml(m, idx) {
+  const items = m.items;
+  if (!m.applied) return `<div class="log-card"><div class="log-sum">${esc(items.length)} ${items.length === 1 ? 'Eintrag' : 'Einträge'} nicht gespeichert</div><button class="btn volt block sm" data-apply="${idx}">${icon('check')}Jetzt eintragen</button></div>`;
+  const open = openLog === m.ts;
   const today = store.todayKey();
-  return `<div class="log-card ${applied ? 'applied' : ''}">
-    ${Object.entries(groups).map(([area, list]) => `<div class="log-area">${esc(area)}</div>${list.map(({ it, d }) => `
-      <div class="log-row"><span class="log-ic">${icon(d.icon)}</span><span class="log-main"><b>${esc(d.title)}${d.isNew ? '<em class="qa-new">neu</em>' : ''}</b><span>${esc(d.sub)}${it.day !== today ? ` · ${esc(store.formatDateLabel(it.day))}` : ''}</span></span></div>`).join('')}`).join('')}
-    ${applied ? `<div class="log-done">${icon('check')}Eingetragen</div>` : `<button class="btn volt block sm" data-apply="${idx}">${icon('check')}Alles eintragen</button>`}
+  const names = items.map(it => describe(it).title);
+  return `<div class="log-card applied">
+    <button class="log-sum" data-logt="${m.ts}">${icon('check')}<span><b>Eingetragen</b> · ${esc(names.slice(0, 3).join(', '))}${names.length > 3 ? ` +${names.length - 3}` : ''}</span>${icon(open ? 'chevD' : 'chev')}</button>
+    ${open ? items.map(it => { const d = describe(it); return `<div class="log-row"><span class="log-ic">${icon(d.icon)}</span><span class="log-main"><b>${esc(d.title)}${d.isNew ? '<em class="qa-new">neu</em>' : ''}</b><span>${esc(d.sub)}${it.day !== today ? ` · ${esc(store.formatDateLabel(it.day))}` : ''}</span></span></div>`; }).join('') : ''}
+    ${undos.has(m.ts) ? `<button class="log-undo" data-undo="${m.ts}">${icon('undo')}Rückgängig</button>` : ''}
   </div>`;
 }
 
 function msgHtml(m, i) {
   if (m.role === 'user') return `<div class="msg me"><div class="bub">${esc(m.text)}</div></div>`;
   return `<div class="msg ai"><div class="bub">${esc(m.text).replace(/\n/g, '<br>')}</div>
-    ${m.items && m.items.length ? itemsHtml(m.items, m.applied, i) : ''}
+    ${m.items && m.items.length ? itemsHtml(m, i) : ''}
     ${m.error ? `<button class="chipbtn" data-retry="${i}">${icon('refresh')}Nochmal</button>` : ''}
   </div>`;
 }
@@ -63,26 +75,32 @@ export function renderCoach(app) {
   const ai = hasAI();
   app.innerHTML = `<div class="view coach-view">
     <div class="vh"><div><div class="vh-date">Kennt deinen Tag</div><div class="vh-title">Coach</div></div>
-      <div class="vh-actions">${hist.length ? `<button class="icon-btn" id="ch-clear" aria-label="Verlauf löschen">${icon('trash')}</button>` : ''}<button class="icon-btn" data-go="setup" aria-label="Einstellungen">${icon('sliders')}</button></div></div>
+      <div class="vh-actions">${hist.length ? `<button class="icon-btn" id="ch-clear" aria-label="Verlauf löschen">${icon('trash')}</button>` : ''}</div></div>
     ${!ai ? `<div class="card coach-setup">
-        <div class="ch-title" style="margin-bottom:6px">Dein Coach braucht einen Claude-Key</div>
-        <p class="hint">Dann kannst du hier alles fragen („Was esse ich heute Abend?") und einfach erzählen, was war – er trägt Essen, Training, Schlaf und Knie selbst ein.</p>
-        <button class="btn volt block" id="ch-setup">${icon('key')}Einrichten</button></div>` : ''}
+        <div class="ch-title" style="margin-bottom:6px">Einmal Claude verbinden</div>
+        <p class="hint">Dann versteht dein Coach alles, was du erzählst, und trägt es selbst ein. Bis dahin kannst du unten trotzdem schreiben – einfache Sachen erkenne ich auch so.</p>
+        <button class="btn volt block" id="ch-setup">${icon('key')}Verbinden</button></div>` : ''}
     ${reviewCard()}
     <div class="chat" id="chat">
-      ${hist.length ? hist.map(msgHtml).join('') : `<div class="msg ai"><div class="bub">Hey ${esc(PERSONA.name)}. Frag mich alles zu Essen, Training und Knie – oder erzähl einfach, was du heute gegessen und gemacht hast. Ich trag's dann ein.</div></div>`}
+      ${hist.length ? hist.map(msgHtml).join('') : `<div class="msg ai"><div class="bub">Hey ${esc(PERSONA.name)}. Erzähl mir einfach, was du gegessen, trainiert oder geschlafen hast – ich trag alles ein. Oder frag mich, was du als Nächstes essen sollst.</div></div>`}
       ${busy ? '<div class="msg ai"><div class="bub typing"><i></i><i></i><i></i></div></div>' : ''}
     </div>
     ${!hist.length || (hist[hist.length - 1].quick || []).length ? `<div class="hscroll starters">${(hist.length ? hist[hist.length - 1].quick || [] : STARTERS).map(q => `<button class="chipbtn" data-q="${esc(q)}">${esc(q)}</button>`).join('')}</div>` : ''}
   </div>
   <div class="cbar" id="cbar">
-    <textarea id="c-in" rows="1" placeholder="${ai ? 'Frag oder erzähl …' : 'Erst Claude-Key einrichten'}" ${ai ? '' : 'disabled'}>${esc(draft)}</textarea>
-    <button class="c-mic" id="c-mic" aria-label="Sprechen" ${ai ? '' : 'disabled'}>${icon('mic')}</button>
-    <button class="c-send" id="c-send" aria-label="Senden" ${ai ? '' : 'disabled'}>${icon('send')}</button>
+    <button class="c-plus" id="c-plus" aria-label="Scannen, suchen, schnell eintragen">${icon('plus')}</button>
+    <textarea id="c-in" rows="1" placeholder="Erzähl oder frag …">${esc(draft)}</textarea>
+    <button class="c-mic" id="c-mic" aria-label="Sprechen">${icon('mic')}</button>
+    <button class="c-send" id="c-send" aria-label="Senden">${icon('send')}</button>
   </div>`;
   wire(app);
   const chat = $('#chat', app);
   if (chat && hist.length) requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
+  if (pending) {
+    const pv = pending; pending = null;
+    const inp = $('#c-in', app);
+    if (pv.voice) voice(inp); else setTimeout(() => inp.focus(), 50);
+  }
 }
 
 function wire(app) {
@@ -105,6 +123,17 @@ function wire(app) {
   $('#c-send', app).onclick = () => send(inp.value);
   $$('[data-q]', app).forEach(b => b.onclick = () => send(b.dataset.q));
   $$('[data-apply]', app).forEach(b => b.onclick = () => apply(Number(b.dataset.apply)));
+  $$('[data-logt]', app).forEach(b => b.onclick = () => { const t = Number(b.dataset.logt); openLog = openLog === t ? null : t; router.rerender(); });
+  $$('[data-undo]', app).forEach(b => b.onclick = () => {
+    const t = Number(b.dataset.undo);
+    const m = chatHistory().find(x => x.ts === t);
+    const u = undos.get(t);
+    if (!m || !u) return;
+    u(); undos.delete(t); m.applied = false; store.save();
+    afterChange(store.todayKey());
+    toast('Rückgängig gemacht');
+  });
+  $('#c-plus', app).onclick = () => openQuickAdd({ key: store.todayKey(), onDone: () => router.rerender() });
   $$('[data-retry]', app).forEach(b => b.onclick = () => {
     const h = chatHistory();
     const lastUser = [...h].reverse().find(m => m.role === 'user');
@@ -117,7 +146,7 @@ function wire(app) {
 async function send(text) {
   text = String(text || '').trim();
   if (!text || busy) return;
-  if (!hasAI()) return openAiSetup(() => router.rerender());
+  if (!hasAI()) { draft = ''; const inp = $('#c-in'); if (inp) inp.value = ''; return openQuickAdd({ key: store.todayKey(), text }); }
   const history = chatHistory().map(m => ({ role: m.role, text: m.text }));
   pushChat({ role: 'user', text });
   draft = '';
@@ -125,7 +154,8 @@ async function send(text) {
   router.rerender();
   try {
     const r = await askCoach(text, { mode: 'chat', history });
-    pushChat({ role: 'ai', text: r.reply || (r.items.length ? 'Hab ich – schau kurz drüber:' : '…'), items: r.items, quick: r.quick });
+    pushChat({ role: 'ai', text: r.reply || (r.items.length ? 'Hab ich eingetragen.' : '…'), items: r.items, quick: r.quick });
+    if (r.items.length) apply(chatHistory().length - 1, true);
   } catch (e) {
     pushChat({ role: 'ai', text: e.message || 'Da ist was schiefgelaufen.', error: true });
   }
@@ -134,7 +164,7 @@ async function send(text) {
   haptic(6);
 }
 
-function apply(idx) {
+function apply(idx, quiet = false) {
   const h = chatHistory();
   const m = h[idx];
   if (!m || !m.items || m.applied) return;
@@ -142,9 +172,10 @@ function apply(idx) {
   const before = store.dayPillars(key).overall;
   const undo = applyItems(m.items);
   m.applied = true; store.save();
+  undos.set(m.ts, undo);
   afterChange(key);
   if (before < 100 && store.dayPillars(key).overall >= 100) confetti();
-  toast(`${m.items.length} ${m.items.length === 1 ? 'Eintrag' : 'Einträge'} gespeichert`, 'Rückgängig', () => { undo(); m.applied = false; store.save(); router.rerender(); });
+  if (!quiet) toast(`${m.items.length} ${m.items.length === 1 ? 'Eintrag' : 'Einträge'} gespeichert`);
 }
 
 let rec = null;
