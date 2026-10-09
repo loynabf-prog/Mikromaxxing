@@ -149,12 +149,14 @@ export function normalize(json, now = new Date()) {
 
 // --- Ohne KI: einfache Muster für Schlaf, Knie, Training, Schritte, Gewicht --------------
 const SPORT_WORDS = [
-  [/basketball|bball|korbball/, 'basketball'], [/\bspiel\b/, 'game'], [/gym|fitness|krafttraining|workout|pumpen/, 'gym'],
-  [/schwimm/, 'swim'], [/sprint/, 'sprint'], [/yoga/, 'yoga'], [/joggen|laufen|gelaufen|lauf\b/, 'run'], [/spazier/, 'walk'],
+  [/\b(?:basketball|bball)/, 'basketball'], [/\bspiel\b/, 'game'], [/\b(?:gym|fitness|krafttraining|workout|pumpen)\b/, 'gym'],
+  [/\b(?:schwimmen|geschwommen|schwimmt?)\b/, 'swim'], [/\bsprints?\b/, 'sprint'], [/\byoga\b/, 'yoga'], [/\b(?:joggen|gejoggt|laufen|gelaufen|lauf)\b/, 'run'], [/\bspazier/, 'walk'],
 ];
 export function localIntents(text, now = new Date()) {
   const items = [];
-  let rest = ' ' + fold(text).replace(/(\d),(\d)/g, '$1.$2') + ' ';
+  const WORDN = { ein: 1, eine: 1, einer: 1, zwei: 2, drei: 3, vier: 4, anderthalb: 1.5, eineinhalb: 1.5, halbe: 0.5 };
+  let rest = ' ' + fold(text).replace(/(\d),(\d)/g, '$1.$2')
+    .replace(/\b(ein|eine|einer|zwei|drei|vier|anderthalb|eineinhalb|halbe)\s+(stunden?|std|minuten)\b/g, (_, w, u) => `${WORDN[w]} ${u}`) + ' ';
   const today = store.todayKey(now);
   const yest = /gestern/.test(rest);
   const day = yest ? store.shiftDate(today, -1) : today;
@@ -164,7 +166,7 @@ export function localIntents(text, now = new Date()) {
   if ((m = take(/(\d+(?:\.\d+)?)\s*(?:h|std|stunden?)\s*(?:lang\s*)?(?:geschlafen|schlaf)/)) || (m = take(/(?:geschlafen|schlaf)\w*\s*(\d+(?:\.\d+)?)\s*(?:h|std|stunden?)?/))) {
     const h = Number(m[1]); if (h > 0 && h <= 14) items.push({ id: 'li' + n++, kind: 'sleep', day: today, hours: Math.round(h * 4) / 4 });
   }
-  if ((m = take(/knie\w*\s*(?:bei|auf|ist|so|heute)?\s*(\d{1,2})(?:\s*(?:\/|von)\s*10)?/))) {
+  if ((m = take(/\bknie(?!beuge)\w*\s*(?:bei|auf|ist|so|heute|war)?\s*(?:bei|auf|so)?\s*(\d{1,2})(?!\d)(?:\s*(?:\/|von)\s*10)?/))) {
     const sc = Number(m[1]); if (sc <= 10) items.push({ id: 'li' + n++, kind: 'knee', day, score: sc });
   }
   if ((m = take(/(\d{3,6}(?:\.\d{3})?)\s*schritte/))) items.push({ id: 'li' + n++, kind: 'steps', day, count: Math.round(Number(m[1].replace('.', ''))) });

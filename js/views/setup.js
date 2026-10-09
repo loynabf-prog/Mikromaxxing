@@ -116,7 +116,7 @@ function onRow(id) {
     case 'onboarding': return openOnboarding();
     case 'reset':
       if (confirm('Wirklich ALLE Daten löschen? Das lässt sich nicht rückgängig machen.') && confirm('Sicher? Am besten vorher ein Backup machen.')) {
-        store.resetAll(); router.go('today'); toast('Alles zurückgesetzt');
+        store.resetAll(); router.go('today'); openOnboarding(); toast('Alles zurückgesetzt');
       }
       return null;
     default: return null;

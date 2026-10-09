@@ -14,17 +14,36 @@ const SCHEMA = 3;
 // ============================================================================
 // Datum
 // ============================================================================
-export function todayKey(d = new Date()) {
+// Kalenderdatum als Schlüssel (ohne Tageswechsel-Logik)
+export function dateKey(d) {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+// Der „App-Tag" wechselt erst um 4 Uhr: der Snack um 0:30 gehört noch zum Vortag
+export const DAY_START = 4;
+export function todayKey(d = new Date()) {
+  const x = new Date(d.getTime());
+  if (x.getHours() < DAY_START) x.setDate(x.getDate() - 1);
+  return dateKey(x);
+}
 export function shiftDate(key, deltaDays) {
   const [y, m, d] = key.split('-').map(Number);
   const dt = new Date(y, m - 1, d);
   dt.setDate(dt.getDate() + deltaDays);
-  return todayKey(dt);
+  return dateKey(dt);
+}
+// Stunden seit Mitternacht des Tages `key` (0:30 am Folgetag = 24,5)
+export function hourOn(key, ts) {
+  const [y, m, d] = key.split('-').map(Number);
+  return (ts - new Date(y, m - 1, d).getTime()) / 3.6e6;
+}
+// Zeitstempel für neue Einträge: heute = jetzt, andere Tage = 13 Uhr
+export function entryTs(key) {
+  if (key === todayKey()) return Date.now();
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(y, m - 1, d, 13, 0).getTime();
 }
 export function dateOf(key) {
   const [y, m, d] = key.split('-').map(Number);
@@ -214,7 +233,7 @@ export function getDay(key) {
 }
 function peekDay(key) { return load().log[key] || null; }
 
-export function addEntry(key, foodId, grams, ts = Date.now()) {
+export function addEntry(key, foodId, grams, ts = entryTs(key)) {
   const day = getDay(key);
   day.entries.push({ foodId, grams: Math.round(Number(grams) || 0), ts });
   save();
@@ -222,7 +241,7 @@ export function addEntry(key, foodId, grams, ts = Date.now()) {
 }
 export function addEntries(key, items) {
   const day = getDay(key);
-  const ts = Date.now();
+  const ts = entryTs(key);
   let n = 0;
   for (const it of items) {
     if (!foodById(it.foodId) || !(it.grams > 0)) continue;
@@ -267,7 +286,7 @@ export function setDayMeta(key, field, value) { getDay(key)[field] = value; save
 export function dayMeta(key, field) { const d = peekDay(key); return d ? d[field] : undefined; }
 
 // Gerichte aus „Was soll ich essen?" – merkt sich, was du isst und magst
-export function logRecipe(key, recipe, portions = 1, ts = Date.now()) {
+export function logRecipe(key, recipe, portions = 1, ts = entryTs(key)) {
   const items = recipe.items.map(([foodId, grams]) => ({ foodId, grams: Math.round(grams * portions) })).filter(it => foodById(it.foodId));
   const day = getDay(key);
   for (const it of items) day.entries.push({ foodId: it.foodId, grams: it.grams, ts, recipe: recipe.id });
@@ -362,14 +381,23 @@ export function bmr() {
   const w = currentWeight() || p.weight || 90;
   return 10 * w + 6.25 * (p.height || 180) - 5 * (p.age || 26) + (p.sex === 'f' ? -161 : 5);
 }
+// Energie-Basis je Tag festhalten (Grundumsatz, Defizit, Korrektur): spätere Gewichts-
+// oder Tempo-Änderungen verschieben vergangene Tage nicht rückwirkend (Streak, XP bleiben stabil)
+function energyBase(key) {
+  const s = load();
+  const day = s.log[key];
+  if (day && day.eb && key < todayKey()) return day.eb;
+  const p = s.profile;
+  const eb = { b: Math.round(bmr()), d: (TEMPO[p.tempo] || TEMPO.fast).deficit, o: p.kcalOffset || 0 };
+  if (day && key <= todayKey()) day.eb = eb;
+  return eb;
+}
 // Viel unterwegs (Drehs) → Alltagsfaktor 1,45
 export function kcalTarget(key = todayKey()) {
-  const p = load().profile;
   const type = DAY_TYPES[dayType(key)];
-  const tempo = TEMPO[p.tempo] || TEMPO.fast;
-  const b = bmr();
-  const raw = b * 1.45 + type.burn - tempo.deficit + (p.kcalOffset || 0);
-  return Math.round(Math.max(raw, b + 150, 1800) / 50) * 50;
+  const eb = energyBase(key);
+  const raw = eb.b * 1.45 + type.burn - eb.d + eb.o;
+  return Math.round(Math.max(raw, eb.b + 150, 1800) / 50) * 50;
 }
 export function macroTargets(key = todayKey()) {
   const t = load().profile.targets;
@@ -465,7 +493,7 @@ export function proteinByPart(key) {
     for (const e of day.entries) {
       const food = s.foods.find(f => f.id === e.foodId);
       if (!food) continue;
-      const h = e.ts ? new Date(e.ts).getHours() : 12;
+      const h = e.ts ? hourOn(key, e.ts) : 12;
       out[partOfHour(h).id] += (food.per100.protein || 0) * (e.grams || 0) / 100;
     }
   }
@@ -944,13 +972,24 @@ export function liftExercises() {
     return { name, sets, last, pr, bw: !!last.bw, count: sets.length };
   }).sort((a, b) => b.last.date.localeCompare(a.last.date));
 }
-export function isLiftPR(id) {
-  const lift = load().lifts.find(l => l.id === id);
-  if (!lift) return false;
-  const e = liftScore(lift);
-  const earlier = getLiftsFor(lift.name).filter(x => x.date < lift.date || (x.date === lift.date && x.id < lift.id));
-  return e > 0 && earlier.every(x => liftScore(x) < e);
+let prCache = { sig: null, ids: new Set() };
+export function prLiftIds() {
+  const s = load();
+  const ls = s.lifts || [];
+  const sig = `${ls.length}:${ls.length ? ls[ls.length - 1].id : ''}:${bodyWeight()}`;
+  if (prCache.sig === sig) return prCache.ids;
+  const byName = {};
+  for (const l of ls) (byName[l.name] = byName[l.name] || []).push(l);
+  const ids = new Set();
+  for (const list of Object.values(byName)) {
+    list.sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+    let best = 0;
+    for (const l of list) { const e = liftScore(l); if (e > 0 && e > best) { ids.add(l.id); best = e; } }
+  }
+  prCache = { sig, ids };
+  return ids;
 }
+export function isLiftPR(id) { return prLiftIds().has(id); }
 
 // ============================================================================
 // Die 3 Säulen: Ernährung · Sport · Regeneration
@@ -1041,7 +1080,7 @@ export function perfectDays() { return Object.keys(load().log).filter(k => ringS
 // ============================================================================
 export function coachHints(key = todayKey(), now = new Date()) {
   const s = load();
-  const h = now.getHours() + now.getMinutes() / 60;
+  const h = hourOn(key, now.getTime());
   const isToday = key === todayKey(now);
   const p = dayPillars(key);
   const day = s.log[key] || {};
@@ -1110,7 +1149,7 @@ export function coachHints(key = todayKey(), now = new Date()) {
     const bed = (wh * 60 + wm - (s.profile.sleepTarget || 8) * 60 + 1440) % 1440;
     add(40, 'info', 'moon', 'Schlaf', `Für ${s.profile.sleepTarget || 8} h Schlaf: spätestens ${String(Math.floor(bed / 60)).padStart(2, '0')}:${String(bed % 60).padStart(2, '0')} ins Bett.`, null);
   }
-  if (p.overall >= 100) add(200, 'good', 'trophy', 'Tag geschafft', 'Alle drei Ringe voll. Du hast dir den Schlaf verdient.', null);
+  if (p.overall >= 100 && kOver <= 100) add(200, 'good', 'trophy', 'Tag geschafft', 'Alle drei Ringe voll und im Budget. Du hast dir den Schlaf verdient.', null);
 
   return hints.sort((a, b) => b.prio - a.prio);
 }
@@ -1196,7 +1235,7 @@ export function goalProjection(today = todayKey()) {
     if (rate < -0.05 && cur > target) {
       weeks = Math.ceil((cur - target) / -rate);
       const d = new Date(); d.setDate(d.getDate() + weeks * 7);
-      date = todayKey(d);
+      date = dateKey(d);
     }
   }
   const tempo = TEMPO[s.profile.tempo] || TEMPO.fast;
@@ -1204,7 +1243,7 @@ export function goalProjection(today = todayKey()) {
   if (cur > target) {
     planWeeks = Math.ceil((cur - target) / tempo.rate);
     const d = new Date(); d.setDate(d.getDate() + planWeeks * 7);
-    planDate = todayKey(d);
+    planDate = dateKey(d);
   }
   return { current: cur, target, rate, weeks, date, planDate, planWeeks, tempo: tempo.label };
 }

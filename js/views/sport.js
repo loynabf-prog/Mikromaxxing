@@ -41,7 +41,7 @@ export function renderSport(app) {
     }).join('')}</div>
 
     ${planCard(key, plan, isToday, active, sessions)}
-    ${skillsCard(key)}
+    ${skillsCard(today)}
     ${loadCard(today)}
     ${muscleCard(today)}
     ${liftsCard()}
@@ -60,7 +60,7 @@ export function renderSport(app) {
   $$('[data-lift]', app).forEach(b => b.onclick = () => openLiftHistory(b.dataset.lift));
   const ml = $('#lift-manual', app);
   if (ml) ml.onclick = () => openManualLift();
-  $$('[data-skill]', app).forEach(b => b.onclick = () => openSkill(key, b.dataset.skill));
+  $$('[data-skill]', app).forEach(b => b.onclick = () => openSkill(today, b.dataset.skill));
   $$('[data-gymt]', app).forEach(b => b.onclick = () => { store.setDayMeta(key, 'gymTime', b.dataset.gymt); haptic(4); router.rerender(); });
 }
 
@@ -166,13 +166,14 @@ function planCard(key, plan, isToday, active, sessions) {
   let actions = '';
   if (isToday && active) actions = `<button class="btn accent" data-start>${icon('play')}Workout fortsetzen</button>`;
   else if (isToday && plan && plan.kind === 'gym' && !sessions.some(x => x.workoutId)) actions = `<button class="btn accent" data-start>${icon('play')}Workout starten</button>`;
-  actions += `<button class="btn ${actions ? 'ghost' : 'accent'}" data-log="${plan && plan.kind === 'sport' ? plan.sport : plan && plan.kind === 'rest' ? 'walk' : ''}">${icon('plus')}Einheit eintragen</button>`;
+  const future = key > store.todayKey();
+  if (!future) actions += `<button class="btn ${actions ? 'ghost' : 'accent'}" data-log="${plan && plan.kind === 'sport' ? plan.sport : plan && plan.kind === 'rest' ? 'walk' : ''}">${icon('plus')}Einheit eintragen</button>`;
   const otherGym = isToday && !active && !(plan && plan.kind === 'gym');
   return `<div class="card">
     <div class="ch"><span class="chip spo">${icon('calendar')}${esc(label)}</span>${sessions.length ? `<span class="done-tag" style="color:var(--spo)">Erledigt${icon('check')}</span>` : ''}</div>
     ${body}
     ${done ? `<div class="part-head" style="margin-top:14px"><b>Eingetragen</b></div>${done}` : ''}
-    <div class="sess-actions">${actions}</div>
+    ${actions ? `<div class="sess-actions">${actions}</div>` : `<p class="hint" style="margin:12px 0 0">Geplant – eintragen kannst du am Tag selbst.</p>`}
     ${otherGym ? `<button class="steps-line" data-gympick style="justify-content:center;font-weight:800;font-size:13.5px">${icon('dumbbell')}Spontan ins Gym? Workout wählen</button>` : ''}
   </div>`;
 }

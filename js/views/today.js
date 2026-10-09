@@ -30,7 +30,7 @@ export function renderToday(app) {
 
   app.innerHTML = `<div class="view">
     <div class="vh">
-      <div><div class="vh-date">${esc(longDate(now))}</div><div class="vh-title">${greeting(now)},<br>${esc(s.profile.name || PERSONA.name)}</div></div>
+      <div><div class="vh-date">${esc(longDate(store.dateOf(key)))}</div><div class="vh-title">${greeting(now)},<br>${esc(s.profile.name || PERSONA.name)}</div></div>
       <div class="vh-actions">
         <span class="streak ${streak ? '' : 'zero'}" title="Tage in Folge">${icon('flame')}${streak}</span>
         <button class="icon-btn" data-go="setup" aria-label="Einstellungen">${icon('sliders')}</button>
@@ -82,7 +82,7 @@ function budgetCard(key, p, day, now) {
   const dt = store.DAY_TYPES[t.type];
   const supps = s.supplements;
   const taken = supps.filter(x => day.supps[x.id]).length;
-  const h = now.getHours();
+  const h = store.hourOn(key, now.getTime());
   const slot = h < 11 ? 'morgens' : h < 15 ? 'mittags' : h >= 19 ? 'abends' : 'pre';
   const openNow = supps.filter(x => x.time === slot && !day.supps[x.id]).map(x => short(x.name));
   return `<div class="card budget ${over ? 'over' : ''}">

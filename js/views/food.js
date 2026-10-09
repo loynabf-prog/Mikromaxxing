@@ -62,7 +62,7 @@ export function renderFood(app) {
       <button class="btn white" id="f-search">${icon('search')}Suchen</button>
     </div>
 
-    ${eatCard(key)}
+    ${isToday ? eatCard(key) : ''}
     ${eatenCard(key, day)}
 
     <div class="sec-title">Meine Mahlzeiten<button id="meal-new">+ Neu</button></div>
@@ -196,7 +196,7 @@ function eatenCard(key, day) {
   const s = store.getState();
   const groups = store.DAY_PARTS.map(pt => ({ pt, items: [] }));
   day.entries.forEach((e, i) => {
-    const h = e.ts ? new Date(e.ts).getHours() : 12;
+    const h = e.ts ? store.hourOn(key, e.ts) : 12;
     groups.find(g => g.pt.id === store.partOfHour(h).id).items.push({ e, i });
   });
   const body = groups.filter(g => g.items.length).map(g => {

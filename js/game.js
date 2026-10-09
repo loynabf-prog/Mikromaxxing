@@ -44,6 +44,7 @@ export function dayXP(key) {
   if (d.weight != null) add('Gewogen', 5);
   if (d.skill) add('Skill-Training', 20);
   const m = s.missions[key];
+  if (m && !m.final && key < store.todayKey()) finalize(key, m);
   if (m && m.done) add('Missionen', Object.keys(m.done).reduce((a, id) => a + ((MISSIONS[id] && MISSIONS[id].xp) || 30), 0));
   return { xp: parts.reduce((a, x) => a + x.xp, 0), parts };
 }
@@ -63,9 +64,9 @@ function ctxFor(key, now) {
   const s = store.getState();
   const d = s.log[key] || { entries: [], sessions: [], supps: {} };
   const today = store.todayKey(now);
-  const nowH = key < today ? 99 : key > today ? -1 : now.getHours() + now.getMinutes() / 60;
+  const nowH = key < today ? 99 : key > today ? -1 : store.hourOn(key, now.getTime());
   const tot = store.computeTotals(key);
-  const ent = (d.entries || []).map(e => ({ ...e, f: store.foodById(e.foodId), h: e.ts ? new Date(e.ts).getHours() + new Date(e.ts).getMinutes() / 60 : 12 })).filter(e => e.f);
+  const ent = (d.entries || []).map(e => ({ ...e, f: store.foodById(e.foodId), h: e.ts ? store.hourOn(key, e.ts) : 12 })).filter(e => e.f);
   return { s, d, key, today, nowH, over: key < today, tot, ent, type: store.dayType(key), tg: store.macroTargets(key), plan: store.getTrainingFor(key) };
 }
 const pct = (a, b) => Math.max(0, Math.min(1, b ? a / b : 0));
@@ -92,7 +93,8 @@ export const MISSIONS = {
     desc: 'Deine Schwachstelle: spät abends. Wenn Hunger, dann Quark oder Hüttenkäse.',
     ev: (c) => {
       const bad = c.ent.some(e => e.h >= 22 && !LIGHT_PROTEIN.has(e.f.id));
-      return { p: bad ? 0 : c.nowH >= 22 ? 0.8 : 0.4, done: !bad && (c.over || c.nowH >= 23.5), failed: bad, label: bad ? 'leider gerissen' : c.nowH >= 22 ? 'läuft – durchhalten' : 'ab 22 Uhr' };
+      const ate = c.ent.length >= 2; // nur zählen, wenn an dem Tag überhaupt gegessen wurde
+      return { p: bad ? 0 : c.nowH >= 22 ? 0.8 : 0.4, done: !bad && ate && (c.over || c.nowH >= 23.5), failed: bad, label: bad ? 'leider gerissen' : c.nowH >= 22 ? 'läuft – durchhalten' : 'ab 22 Uhr' };
     } },
   water: { cat: 'nut', style: 'target', xp: 25, title: '3,5 L trinken',
     desc: 'Viel unterwegs beim Drehen – Flasche immer dabei.',
@@ -189,6 +191,7 @@ export function motivationProfile(today = store.todayKey()) {
   let days = 0;
   for (const [k, m] of Object.entries(s.missions || {})) {
     if (k >= today || !m || !m.ids) continue;
+    if (!m.final) finalize(k, m);
     days++;
     for (const id of m.ids) {
       const def = MISSIONS[id];
@@ -204,6 +207,15 @@ export function motivationProfile(today = store.todayKey()) {
 }
 
 // --- Tagesmissionen ---------------------------------------------------------------------
+// Heute: live aus den Daten (Rückgängig nimmt eine Mission wieder weg).
+// Vergangene Tage: einmal endgültig auswerten und festschreiben.
+function finalize(key, rec) {
+  if (!rec || rec.final || key >= store.todayKey()) return;
+  const c = ctxFor(key, new Date());
+  rec.done = {};
+  for (const id of rec.ids) { const def = MISSIONS[id]; if (def && def.ev(c).done) rec.done[id] = true; }
+  rec.final = true;
+}
 export function missionsFor(key = store.todayKey(), now = new Date()) {
   const s = store.getState();
   const today = store.todayKey(now);
@@ -213,14 +225,18 @@ export function missionsFor(key = store.todayKey(), now = new Date()) {
     rec = s.missions[key] = { ids: chooseMissions(key, now), done: {} };
     store.save();
   }
+  if (key < today && !rec.final) { finalize(key, rec); store.save(); }
   const c = ctxFor(key, now);
+  let changed = false;
   const out = rec.ids.filter(id => MISSIONS[id]).map(id => {
     const def = MISSIONS[id];
     const r = def.ev(c);
-    if (r.done && !rec.done[id]) { rec.done[id] = true; store.save(); }
-    const done = !!rec.done[id];
+    let done;
+    if (rec.final) done = !!rec.done[id];
+    else { done = !!r.done; if (!!rec.done[id] !== done) { if (done) rec.done[id] = true; else delete rec.done[id]; changed = true; } }
     return { id, ...def, title: def.titleFn ? def.titleFn(c) : def.title, done, p: done ? 1 : r.p, label: r.label, failed: !done && !!r.failed };
   });
+  if (changed) store.save();
   return out;
 }
 
@@ -250,7 +266,7 @@ export function weekStart(key) { const wd = store.weekdayOf(key); return store.s
 const WEEKLY = {
   w_budget5: { title: '5 Tage im Kalorien-Budget', goal: 5, count: (k) => store.inBudget(k) && (store.getState().log[k] || { entries: [] }).entries.length >= 3 },
   w_rings4: { title: '4 Tage Tagesziel geschafft', goal: 4, count: (k) => store.dayComplete(k) },
-  w_nolate5: { title: '5 Abende ohne Spät-Snack', goal: 5, count: (k) => { const d = store.getState().log[k]; if (!d || !d.entries.length) return false; return !d.entries.some(e => { const f = store.foodById(e.foodId); return f && e.ts && new Date(e.ts).getHours() >= 22 && !LIGHT_PROTEIN.has(f.id); }); } },
+  w_nolate5: { title: '5 Abende ohne Spät-Snack', goal: 5, count: (k) => { const d = store.getState().log[k]; if (!d || !d.entries.length) return false; return !d.entries.some(e => { const f = store.foodById(e.foodId); return f && e.ts && store.hourOn(k, e.ts) >= 22 && !LIGHT_PROTEIN.has(f.id); }); } },
   w_fish2: { title: '2× Fisch diese Woche', goal: 2, count: (k) => { const d = store.getState().log[k]; return !!d && d.entries.some(e => { const f = store.foodById(e.foodId); return f && f.cat === 'Fisch'; }); } },
   w_reha5: { title: '5× Knie-Reha', goal: 5, count: (k) => !!(store.getState().log[k] || {}).reha },
   w_skill3: { title: '3× Skill-Training', goal: 3, count: (k) => !!(store.getState().log[k] || {}).skill },
@@ -270,7 +286,10 @@ export function weeklyChallenge(key = store.todayKey()) {
   const def = WEEKLY[rec.id];
   let n = 0;
   for (let i = 0; i < 7; i++) { const k = store.shiftDate(wk, i); if (k > key) break; if (def.count(k)) n++; }
-  if (n >= def.goal && !rec.done) { rec.done = true; store.save(); }
+  // Laufende Woche live (Rückgängig zählt), vergangene Wochen festschreiben
+  const current = wk === weekStart(store.todayKey());
+  if (!rec.final && (n >= def.goal) !== !!rec.done) { rec.done = n >= def.goal; store.save(); }
+  if (!current && !rec.final && key >= store.shiftDate(wk, 6)) { rec.final = true; store.save(); }
   const left = 7 - store.daysBetween(wk, key) - 1;
   return { id: rec.id, title: def.title, goal: def.goal, n: Math.min(n, def.goal), done: rec.done, daysLeft: Math.max(0, left), xp: 150 };
 }

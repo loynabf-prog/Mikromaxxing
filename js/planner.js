@@ -30,10 +30,9 @@ export function trainingWindow(key) {
   return { start, end: start + dur, title: plan.title, kind: plan.sport === 'basketball' ? 'basketball' : 'sport', icon: store.sportType(plan.sport).icon };
 }
 
-function entriesBetween(day, from, to) {
+function entriesBetween(key, day, from, to) {
   return (day ? day.entries : []).filter(e => {
-    const d = new Date(e.ts || 0);
-    const h = d.getHours() + d.getMinutes() / 60;
+    const h = e.ts ? store.hourOn(key, e.ts) : 12;
     return h >= from && h < to;
   });
 }
@@ -50,12 +49,14 @@ export function dayPlan(key = store.todayKey(), now = new Date()) {
   const p = s.profile;
   const isToday = key === store.todayKey(now);
   const isPast = key < store.todayKey(now);
-  const nowH = isToday ? now.getHours() + now.getMinutes() / 60 : isPast ? 99 : -1;
+  const nowH = isToday ? store.hourOn(key, now.getTime()) : isPast ? 99 : -1;
   const day = s.log[key];
   const tgt = store.macroTargets(key);
   const tr = trainingWindow(key);
   const wake = toH(p.wakeTime || PERSONA.life.wake);
-  const first = toH(p.firstMeal || PERSONA.eating.firstMeal);
+  let first = toH(p.firstMeal || PERSONA.eating.firstMeal);
+  // Training/Spiel um die Mittagszeit: erste Mahlzeit ca. 2 h vorher
+  if (tr && tr.start >= 11 && tr.start < 15) first = Math.max(wake + 1, Math.min(first, tr.start - 2));
   const bed = (wake - (p.sleepTarget || 7.5) + 24) % 24;
   const slots = [];
   const meal = (id, slot, t, title, text, share, pshare) => slots.push({ id, type: 'meal', slot, t, title, text, share, pshare: pshare ?? share });
@@ -74,6 +75,9 @@ export function dayPlan(key = store.todayKey(), now = new Date()) {
     meal('dinner', 'dinner', 19, 'Abendessen', 'Normal essen, mind. 90 Min vor dem Gym.', 0.38, 0.3);
     slots.push({ id: 'train', type: 'train', t: tr.start, title: tr.title, text: 'Erst 10 Min Skill-Training, dann der Plan.', icon: tr.icon });
     meal('post', 'post', tr.end + 0.15, 'Nach dem Gym', 'Nur ein Shake oder Quark – kein großes Essen mehr so spät.', 0.08, 0.15);
+  } else if (tr && tr.start >= 11 && tr.start < 15) {
+    slots.push({ id: 'train', type: 'train', t: tr.start, title: tr.title, text: tr.kind === 'gym' ? 'Erst 10 Min Skill-Training, dann der Plan.' : 'Knie warm machen: 2 × 45 s Wall Sit vorm Spielen.', icon: tr.icon });
+    meal('dinner', 'dinner', tr.end + 0.3, 'Nach dem Training', 'Protein + Carbs – hier wird regeneriert.', 0.36, 0.33);
   } else {
     if (tr) slots.push({ id: 'train', type: 'train', t: tr.start, title: tr.title, text: '', icon: tr.icon });
     meal('dinner', 'dinner', toH(PERSONA.eating.dinnerRest), 'Abendessen', 'Protein + viel Gemüse. Heute zählt das Budget.', 0.42, 0.38);
@@ -101,7 +105,7 @@ export function dayPlan(key = store.todayKey(), now = new Date()) {
     const prev = meals[i - 1], next = meals[i + 1];
     m.from = prev ? (prev.t + m.t) / 2 : 0;
     m.to = next ? (m.t + next.t) / 2 : 29;
-    m.eaten = sumEntries(entriesBetween(day, m.from, m.to));
+    m.eaten = sumEntries(entriesBetween(key, day, m.from, m.to));
   });
   const totals = store.computeTotals(key);
   const kcalLeft = Math.max(0, tgt.kcal - totals.kcal);
