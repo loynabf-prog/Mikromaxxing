@@ -9,7 +9,7 @@ import { parseEntry, buildIndex, amountLabel, defaultGrams, amountFromRaw, origi
 import { estimateFoods, hasAI } from '../lookup.js';
 import { icon } from '../icons.js';
 import { $, $$, esc, de, short, openSheet, closeSheet, sheetHead, toast, router, haptic, confetti, foodIcon } from '../ui.js';
-import { openFoodEditor } from './food.js';
+import { openFoodEditor, openFoodPicker } from './food.js';
 import { scanAndAdd } from './scan.js';
 import { openAiSetup } from './aisetup.js';
 import { localIntents, askCoach, applyItems, describe } from '../assistant.js';
@@ -33,7 +33,6 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
       <textarea class="qa-text" id="qa-text" rows="2" placeholder="z. B. mittags Bowl mit Hähnchen, 90 Min Basketball, 7 h geschlafen, Knie 3" autocapitalize="sentences" enterkeyhint="done"></textarea>
       <div class="qa-bar">
         <span class="qa-status" id="qa-status"></span>
-        <button class="qa-mic qa-scan" id="qa-scan" aria-label="Barcode scannen">${icon('barcode')}</button>
         <button class="qa-mic" id="qa-mic" aria-label="Sprechen">${icon('mic')}</button>
       </div>
     </div>
@@ -52,7 +51,6 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); update(); smartRun(); }
   });
   $('#qa-mic', sheet).onclick = () => (rec ? stopVoice() : startVoice());
-  $('#qa-scan', sheet).onclick = () => startScan();
 
   const idleStatus = () => (SR ? 'Mikro antippen zum Sprechen' : 'Tipp: Diktieren über das Tastatur-Mikro');
   $('#qa-status', sheet).textContent = idleStatus();
@@ -324,23 +322,22 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
   }
 
   function quickChips() {
-    const chips = [];
     const yesterday = store.shiftDate(key, -1);
     const yDay = store.getState().log[yesterday];
-    if (yDay && yDay.entries.length) chips.push(`<button class="chipbtn" data-copy="${yesterday}">${icon('repeat')}Wie gestern (${yDay.entries.length})</button>`);
+    const tiles = `<div class="qa-tiles">
+      <button data-qtile="scan">${icon('barcode')}<span>Scannen</span></button>
+      <button data-qtile="search">${icon('search')}<span>Suchen</span></button>
+      ${yDay && yDay.entries.length ? `<button data-copy="${yesterday}">${icon('repeat')}<span>Wie gestern</span></button>` : `<button data-qtile="meals">${icon('bowl')}<span>Mahlzeit</span></button>`}
+    </div>`;
+    const chips = [];
     if (store.getDayTemplate().length) chips.push(`<button class="chipbtn" data-template>${icon('pin')}Standardtag</button>`);
     for (const m of store.getMeals()) chips.push(`<button class="chipbtn" data-append="${esc(m.name)}">${icon('bowl')}${esc(m.name)}</button>`);
     const seen = new Set();
-    const picks = [...store.getFavorites(), ...store.getQuickPicks(8)].filter(q => !seen.has(q.food.id) && seen.add(q.food.id)).slice(0, 8);
-    for (const q of picks) {
-      chips.push(`<button class="chipbtn" data-append="${q.grams} g ${esc(short(q.food.name))}">${store.isFavorite(q.food.id) ? icon('star') : ''}${esc(short(q.food.name))}</button>`);
-    }
-    return `<div class="sec-title">Schnell</div><div class="chips">${chips.join('')}</div>
-      <div class="sec-title">So funktioniert's</div>
-      <p class="hint">Schreib einfach normal: „2 Spiegeleier und eine Scheibe Brot", „Poke Bowl", „500 ml Wasser" oder „D3 und Kreatin genommen". Mengen ohne Angabe schätze ich – tipp auf einen Eintrag, um ihn anzupassen.</p>
-      <p class="hint">${hasAI()
-        ? 'Kenne ich etwas noch nicht, schlägt Claude die Nährwerte nach – du siehst sie vorher. Verpacktes einfach mit dem Barcode-Knopf scannen.'
-        : 'Verpacktes einfach scannen. <button class="more" id="qa-ai-setup" style="display:inline-flex">Unbekanntes automatisch nachschlagen lassen →</button>'}</p>`;
+    const picks = [...store.getFavorites(), ...store.getQuickPicks(8)].filter(q => !seen.has(q.food.id) && seen.add(q.food.id)).slice(0, 6);
+    for (const q of picks) chips.push(`<button class="chipbtn" data-append="${q.grams} g ${esc(short(q.food.name))}">${store.isFavorite(q.food.id) ? icon('star') : ''}${esc(short(q.food.name))}</button>`);
+    return `${tiles}
+      ${chips.length ? `<div class="sec-title">Zuletzt</div><div class="chips">${chips.join('')}</div>` : ''}
+      <p class="hint" style="margin-top:16px">Einfach normal sagen oder schreiben – Essen, Training, Schlaf, Knie. Ich sortiere es ein.${hasAI() ? '' : ' <button class="more" id="qa-ai-setup" style="display:inline-flex">Claude einrichten →</button>'}</p>`;
   }
 
   function renderAI() {
@@ -479,6 +476,12 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
       const n = store.copyEntries(b.dataset.copy, key);
       closeSheet(); router.rerender();
       toast(`${n} Einträge von gestern übernommen`, 'Rückgängig', () => { store.truncateEntries(key, before); router.rerender(); });
+    });
+    $$('[data-qtile]', body).forEach(b => b.onclick = () => {
+      const t = b.dataset.qtile;
+      if (t === 'scan') startScan();
+      else if (t === 'search') { closeSheet(); openFoodPicker({ key }); }
+      else if (t === 'meals') { const m = store.getMeals()[0]; if (m) { ta.value = m.name; update(); } }
     });
     $$('[data-template]', body).forEach(b => b.onclick = () => {
       const before = store.getDay(key).entries.length;

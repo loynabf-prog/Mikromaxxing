@@ -12,8 +12,8 @@ import { $, $$, esc, de, router, openSheet, closeSheet, sheetHead, toast, miniRi
 export function renderProgress(app) {
   const today = store.todayKey();
   app.innerHTML = `<div class="view">
-    <div class="vh"><div><div class="vh-date">Dein Weg</div><div class="vh-title">Fortschritt</div></div>
-      <div class="vh-actions"><button class="icon-btn" data-go="setup" aria-label="Einstellungen">${icon('sliders')}</button></div></div>
+    <div class="vh"><div style="display:flex;align-items:center;gap:12px"><button class="icon-btn" id="pg-back" aria-label="Zurück">${icon('chevL')}</button>
+      <div><div class="vh-date">Dein Weg</div><div class="vh-title">Fortschritt</div></div></div></div>
     ${levelCard(today)}
     ${projectionCard(today)}
     ${calendarCard(today)}
@@ -225,6 +225,7 @@ function bodyCard() {
 
 function wire(app, today) {
   $$('[data-go]', app).forEach(b => b.onclick = () => router.go(b.dataset.go));
+  $('#pg-back', app).onclick = () => router.go(router.prev && router.prev !== 'progress' ? router.prev : 'today');
   $('#w-save', app).onclick = () => {
     const v = $('#w-in', app).value.replace(',', '.');
     store.setWeight(today, v);

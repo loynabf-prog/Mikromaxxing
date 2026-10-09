@@ -14,7 +14,7 @@ import { openQuickAdd } from './views/quickadd.js';
 import { openOnboarding, openWhatsNew } from './views/onboarding.js';
 
 const VIEWS = { today: renderToday, food: renderFood, coach: renderCoach, sport: renderSport, progress: renderProgress, setup: renderSetup };
-const WITH_QBAR = new Set(['today', 'food']);
+const WITH_QBAR = new Set(['today', 'food', 'sport']);
 const app = $('#app');
 
 function render(scrollTop = true) {
@@ -49,9 +49,8 @@ function init() {
     b.querySelector('[data-ic]').innerHTML = icon(b.querySelector('[data-ic]').dataset.ic);
     b.onclick = () => router.go(b.dataset.tab);
   });
-  $('#q-plus').innerHTML = icon('plus');
+  $('#q-ic').innerHTML = icon('plus');
   $('#q-mic').innerHTML = icon('mic');
-  $('#q-plus').onclick = () => openQuickAdd({ key: quickKey() });
   $('#q-text').onclick = () => openQuickAdd({ key: quickKey() });
   $('#q-mic').onclick = () => openQuickAdd({ key: quickKey(), voice: true });
 

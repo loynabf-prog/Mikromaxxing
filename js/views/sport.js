@@ -41,11 +41,7 @@ export function renderSport(app) {
     }).join('')}</div>
 
     ${planCard(key, plan, isToday, active, sessions)}
-    ${skillsCard(today)}
-    ${loadCard(today)}
-    ${muscleCard(today)}
-    ${liftsCard()}
-    ${gamesCard(today)}
+    ${sportRows(today)}
   </div>`;
 
   $$('[data-go]', app).forEach(b => b.onclick = () => router.go(b.dataset.go));
@@ -57,11 +53,38 @@ export function renderSport(app) {
     if (!confirm('Einheit löschen?')) return;
     store.removeSession(key, b.dataset.rmsess); router.rerender();
   });
-  $$('[data-lift]', app).forEach(b => b.onclick = () => openLiftHistory(b.dataset.lift));
-  const ml = $('#lift-manual', app);
-  if (ml) ml.onclick = () => openManualLift();
-  $$('[data-skill]', app).forEach(b => b.onclick = () => openSkill(today, b.dataset.skill));
   $$('[data-gymt]', app).forEach(b => b.onclick = () => { store.setDayMeta(key, 'gymTime', b.dataset.gymt); haptic(4); router.rerender(); });
+  $$('[data-srow]', app).forEach(b => b.onclick = () => openSportSheet(today, b.dataset.srow));
+}
+
+// Alles Weitere liegt hinter einer Zeile
+function sportRows(today) {
+  const skills = Object.entries(SKILLS).map(([id, sk]) => `${sk.name} ${skillState(id).stage + 1}/${sk.stages.length}`).join(' · ');
+  const l = store.trainingLoad(today);
+  const zone = { low: 'eher wenig', optimal: 'im grünen Bereich', elevated: 'erhöht', high: 'sehr hoch', none: l.building ? 'baut sich auf' : 'noch keine Daten' }[l.zone];
+  const ng = store.nextGame(today);
+  const prs = store.liftExercises().length;
+  const row = (id, ic, title, sub) => `<button class="row" data-srow="${id}"><span class="row-ic">${icon(ic)}</span>
+    <span class="row-main"><div class="row-t">${title}</div><div class="row-s">${esc(sub)}</div></span><span class="row-end">${icon('chev')}</span></button>`;
+  return `<div class="rows">
+    ${row('skills', 'zap', 'Skills', skills)}
+    ${row('load', 'gauge', 'Belastung', `7 Tage: ${zone}`)}
+    ${row('lifts', 'medal', 'Rekorde', prs ? `${prs} Übungen` : 'kommen mit dem ersten Workout')}
+    ${row('games', 'trophy', 'Spielplan', ng ? `${ng.days === 0 ? 'heute' : ng.days === 1 ? 'morgen' : `in ${ng.days} Tagen`} · ${ng.game.home ? 'vs' : '@'} ${ng.game.opponent}` : 'keine Spiele')}
+  </div>`;
+}
+function openSportSheet(today, id) {
+  const titles = { skills: 'Deine Skills', load: 'Belastung', lifts: 'Rekorde', games: 'Spielplan TSC' };
+  const sheet = openSheet(`${sheetHead(titles[id])}<div class="sheet-body" id="sp-b"></div>`, { tall: true });
+  const draw = () => {
+    const b = $('#sp-b', sheet);
+    b.innerHTML = id === 'skills' ? skillsCard(today) : id === 'load' ? loadCard(today) + muscleCard(today) : id === 'lifts' ? liftsCard() : gamesCard(today);
+    $$('[data-skill]', b).forEach(x => x.onclick = () => openSkill(today, x.dataset.skill));
+    $$('[data-lift]', b).forEach(x => x.onclick = () => openLiftHistory(x.dataset.lift));
+    const ml = $('#lift-manual', b); if (ml) ml.onclick = () => openManualLift();
+    const ch = b.querySelector('.card .ch'); if (ch && id !== 'lifts') ch.remove();
+  };
+  draw();
 }
 
 // --- Calisthenics-Skills ---------------------------------------------------------
@@ -143,10 +166,8 @@ function planCard(key, plan, isToday, active, sessions) {
       <p class="hint" style="margin:12px 0 0">Ruhetag heißt nicht stillsitzen: ein Spaziergang oder 10.000 Schritte füllen deinen Sport-Ring.</p>`;
   } else if (plan.kind === 'gym') {
     const gt = gymTimeFor(key);
-    const ns = SKILLS[nextSkill()];
     body = `<div class="sess"><span class="ic">${icon('dumbbell')}</span><div><div class="t1">${esc(plan.title)}</div><div class="t2">${esc(plan.focus || '')} · ${plan.exercises.length} Übungen</div></div></div>
       <div class="gymt" style="margin:12px 0 0">${Object.entries(GYM_TIMES).map(([k, l]) => `<button class="chipbtn sm ${gt === k ? 'on' : ''}" data-gymt="${k}">${l}</button>`).join('')}</div>
-      <div class="skill-pre">${icon(ns.icon)}<span>Vorher 10 Min Skill: <b>${esc(ns.name)}</b> – ${esc(ns.stages[skillState(nextSkill()).stage].name)}</span></div>
       <div style="margin-top:10px">${plan.exercises.map((ex, i) => {
         const tg = store.progressionFor(ex);
         const sr = ex.load === 'time' ? `${ex.sets} × ${tg.s} s` : `${ex.sets} × ${ex.reps[0]}–${ex.reps[1]}`;

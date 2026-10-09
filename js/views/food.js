@@ -7,7 +7,7 @@ import { amountLabel, defaultGrams, fold } from '../parser.js';
 import { icon } from '../icons.js';
 import { $, $$, esc, de, short, router, openSheet, closeSheet, sheetHead, toast, haptic, foodIcon, longDate } from '../ui.js';
 import { openQuickAdd } from './quickadd.js';
-import { afterChange } from './today.js';
+import { afterChange, openWaterSheet } from './today.js';
 import { scanAndAdd, openProductSheet } from './scan.js';
 import { openAiSetup } from './aisetup.js';
 import { estimateFoods, hasAI } from '../lookup.js';
@@ -31,62 +31,96 @@ export function renderFood(app) {
   const today = store.todayKey();
   const isToday = key === today;
   const s = store.getState();
-  const t = s.profile.targets;
   const p = store.dayPillars(key);
   const day = store.getDay(key);
   const tot = p.totals;
   const mt = store.macroTargets(key);
+  const left = Math.round(mt.kcal - tot.kcal);
+  const supps = s.supplements;
+  const taken = supps.filter(x => day.supps[x.id]).length;
+  const row = (id, ic, title, sub, end = '') => `<button class="row" data-frow="${id}"><span class="row-ic">${icon(ic)}</span>
+    <span class="row-main"><div class="row-t">${title}</div>${sub ? `<div class="row-s">${sub}</div>` : ''}</span><span class="row-end">${end}${icon('chev')}</span></button>`;
 
-  app.innerHTML = `<div class="view">
+  app.innerHTML = `<div class="view simple">
     <div class="datebar">
       <button class="icon-btn" id="d-prev" aria-label="Vorheriger Tag">${icon('chevL')}</button>
       <div class="dl"><b>${esc(store.formatDateLabel(key))}</b><span>${esc(longDate(store.dateOf(key)))}</span></div>
       <button class="icon-btn" id="d-next" aria-label="Nächster Tag" ${isToday ? 'disabled style="opacity:.35"' : ''}>${icon('chev')}</button>
     </div>
 
-    <div class="card">
-      <div class="ch"><span class="chip nut">${icon('leaf')}Ernährung</span><span class="mid num" style="color:var(--nut)">${p.nutrition}<small>%</small></span></div>
+    <div class="card f-sum">
       <div class="big-row">
-        <div><div class="big num">${de(tot.protein)}<small>/ ${de(t.protein)} g</small></div><div class="lbl" style="margin-top:6px">Protein</div></div>
-        <div style="text-align:right"><div class="mid num">${de(tot.kcal)}</div><div class="lbl" style="margin-top:5px">kcal · ${tot.kcal <= mt.kcal ? `noch ${de(mt.kcal - tot.kcal)}` : `${de(tot.kcal - mt.kcal)} drüber`}</div></div>
+        <div><div class="big num ${left < -100 ? 'bad' : ''}">${de(Math.abs(left))}</div><div class="lbl" style="margin-top:6px">${left >= 0 ? 'kcal übrig' : 'kcal drüber'} · Budget ${de(mt.kcal)}</div></div>
+        <div style="text-align:right"><div class="mid num">${de(tot.protein)}<small>/ ${de(mt.protein)} g</small></div><div class="lbl" style="margin-top:5px">Protein</div></div>
       </div>
-      <div class="parts4">
-        ${p4('Protein', p.parts.protein)}${p4('Mikros', p.parts.micros, 'nutr-open')}${p4('Wasser', p.parts.water, 'water')}${p4('Supps', p.parts.supps, 'supps')}
-      </div>
-      <div class="macros"><span>Carbs <b>${de(tot.carbs)}/${de(mt.carbs)} g</b></span><span>Fett <b>${de(tot.fat)}/${de(mt.fat)} g</b></span><span>Ballaststoffe <b>${de(tot.fiber)} g</b></span></div>
+      <div class="bbar"><i style="width:${Math.min(100, tot.kcal / mt.kcal * 100)}%"></i><b style="left:${Math.min(100, tot.protein / mt.protein * 100)}%"></b></div>
+      <div class="macros"><span>Carbs <b>${de(tot.carbs)}/${de(mt.carbs)} g</b></span><span>Fett <b>${de(tot.fat)}/${de(mt.fat)} g</b></span></div>
     </div>
 
-    <div class="grid3 f-actions" style="margin-bottom:12px">
-      <button class="btn" id="f-add">${icon('plus')}Eintragen</button>
-      <button class="btn white" id="f-scan">${icon('barcode')}Scannen</button>
-      <button class="btn white" id="f-search">${icon('search')}Suchen</button>
-    </div>
-
-    ${isToday ? eatCard(key) : ''}
+    ${isToday ? simpleEatCard(key) : ''}
     ${eatenCard(key, day)}
 
-    <div class="sec-title">Meine Mahlzeiten<button id="meal-new">+ Neu</button></div>
-    <div class="meal-grid" style="margin-bottom:12px">
-      ${store.getMeals().map(m => { const mt = store.mealTotals(m); return `
-        <div class="meal-card" style="position:relative">
-          <button data-logmeal="${m.id}" style="text-align:left;display:flex;flex-direction:column;gap:8px;flex:1">
-            <span class="fico c-meal">${icon('bowl')}</span>
-            <span class="mn">${esc(m.name)}</span>
-            <span class="mm">${de(mt.kcal)} kcal · ${de(mt.protein)} g Protein</span>
-          </button>
-          <button data-editmeal="${m.id}" aria-label="Bearbeiten" style="position:absolute;top:10px;right:10px;color:var(--faint)">${icon('edit')}</button>
-        </div>`; }).join('')}
-      <button class="meal-card new" id="meal-new2">${icon('plus')}Mahlzeit anlegen</button>
+    <div class="rows">
+      ${row('supps', 'pill', 'Supplements', taken === supps.length ? 'alle genommen' : 'antippen zum Abhaken', `${taken}/${supps.length}`)}
+      ${row('water', 'drop', 'Wasser', '', `${de((day.water || 0) / 1000, 1)} / ${de(s.profile.water / 1000, 1)} L`)}
+      ${row('micros', 'leaf', 'Vitamine & Mineralien', 'Lücken schließen, Wochenschnitt', `${p.parts.micros} %`)}
+      ${row('meals', 'bowl', 'Meine Mahlzeiten', 'mit einem Tipp eintragen')}
+      ${row('library', 'book', 'Lebensmittel-Bibliothek', '')}
     </div>
-
-    ${suppCard(key, day)}
-    ${gapsCard(key)}
-    ${nutrientsCard(key)}
-
-    <button class="btn white block" id="f-lib" style="margin-top:4px">${icon('book')}Lebensmittel-Bibliothek</button>
   </div>`;
 
   wire(app, key);
+}
+
+// Ein Blick: 3 Vorschläge für jetzt, alles andere hinter „Mehr Ideen"
+function simpleEatCard(key) {
+  const slot = currentSlot(key);
+  const res = recommend(key, slot, { limit: 3 });
+  if (!res.list.length) return '';
+  return `<div class="card">
+    <div class="ch"><span class="ch-title">Jetzt passt · ${esc(SLOT_LABELS[slot] || '')}</span><span class="sub num">~${de(res.kcalB)} kcal</span></div>
+    ${recRows(key, res, true)}
+    <button class="s-link" style="margin-top:4px" data-moreideas="${slot}">Mehr Ideen & Filter${icon('chev')}</button>
+  </div>`;
+}
+
+// Hintergrund: Vitamine & Mineralien
+function openMicrosSheet(key) {
+  const sheet = openSheet(`${sheetHead('Vitamine & Mineralien', 'Tipp auf einen Nährstoff: wofür, woher, beste Quellen')}<div class="sheet-body" id="mi-body"></div>`, { tall: true });
+  const draw = () => {
+    nutrOpen = true;
+    $('#mi-body', sheet).innerHTML = gapsCard(key) + nutrientsCard(key);
+    const tg = $('#nutr-toggle', sheet); if (tg) tg.remove();
+    $$('[data-nm]', sheet).forEach(b => b.onclick = () => { nutrMode = b.dataset.nm; draw(); });
+    $$('[data-nutr]', sheet).forEach(b => b.onclick = () => openNutrientSheet(key, b.dataset.nutr));
+    $$('[data-quick]', sheet).forEach(b => b.onclick = () => { quickAdd(key, b.dataset.quick, Number(b.dataset.grams)); draw(); });
+  };
+  draw();
+}
+
+// Hintergrund: eigene Mahlzeiten
+function openMealsSheet(key) {
+  const sheet = openSheet(`${sheetHead('Meine Mahlzeiten', 'Ein Tipp trägt alle Zutaten ein')}<div class="sheet-body" id="ml-b"></div>
+    <div class="sheet-foot"><button class="btn block" id="ml-new">${icon('plus')}Mahlzeit anlegen</button></div>`, { tall: true });
+  const draw = () => {
+    $('#ml-b', sheet).innerHTML = `<div class="meal-grid">${store.getMeals().map(m => { const t = store.mealTotals(m); return `
+      <div class="meal-card" style="position:relative">
+        <button data-logmeal="${m.id}" style="text-align:left;display:flex;flex-direction:column;gap:8px;flex:1">
+          <span class="fico c-meal">${icon('bowl')}</span><span class="mn">${esc(m.name)}</span><span class="mm">${de(t.kcal)} kcal · ${de(t.protein)} g Protein</span>
+        </button>
+        <button data-editmeal="${m.id}" aria-label="Bearbeiten" style="position:absolute;top:10px;right:10px;color:var(--faint)">${icon('edit')}</button>
+      </div>`; }).join('') || '<div class="empty">Noch keine Mahlzeiten.</div>'}</div>`;
+    $$('[data-logmeal]', sheet).forEach(b => b.onclick = () => {
+      const before = store.getDay(key).entries.length;
+      const m = store.mealById(b.dataset.logmeal);
+      store.logMeal(key, m.id);
+      closeSheet(); haptic(); afterChange(key);
+      toast(`${m.name} eingetragen`, 'Rückgängig', () => { store.truncateEntries(key, before); router.rerender(); });
+    });
+    $$('[data-editmeal]', sheet).forEach(b => b.onclick = () => openMealEditor(b.dataset.editmeal));
+  };
+  $('#ml-new', sheet).onclick = () => openMealEditor(null);
+  draw();
 }
 
 function p4(label, v, act) {
@@ -101,7 +135,14 @@ function slotsFor(key) {
   if (!list.some(x => x.slot === 'snack')) list.push({ slot: 'snack', label: 'Snack', t: null });
   return list;
 }
-function recRows(key, res) {
+function recRows(key, res, compact = false) {
+  if (compact) return res.list.map(r => `<div class="rec compact">
+    <button class="rec-main" data-rec="${r.recipe.id}">
+      <span class="rec-top"><b>${esc(r.recipe.name)}</b>${r.rating > 0 ? `<i class="rec-fav">${icon('thumbUp')}</i>` : ''}</span>
+      <span class="rec-nums num"><b>${de(r.totals.protein)} g P</b> · ${de(r.totals.kcal)} kcal · ${esc(PLACES[r.recipe.place] || '')}</span>
+    </button>
+    <div class="rec-act"><button class="plus" data-eat="${r.recipe.id}" aria-label="Eintragen">${icon('plus')}</button></div>
+  </div>`).join('');
   return res.list.map(r => `<div class="rec">
     <button class="rec-main" data-rec="${r.recipe.id}">
       <span class="rec-top"><b>${esc(r.recipe.name)}</b>${r.rating > 0 ? `<i class="rec-fav">${icon('thumbUp')}</i>` : ''}</span>
@@ -159,7 +200,7 @@ export function openRecipe(key, id, onChange) {
       <div id="rp-items"></div>
       <div id="rp-bring"></div>
     </div>
-    <div class="sheet-foot"><button class="btn volt block" id="rp-eat">${icon('plus')}Eintragen</button></div>`, { tall: true });
+    <div class="sheet-foot rp-foot"><button class="rec-b ${store.recipeStat(id).r > 0 ? 'on' : ''}" id="rp-up" aria-label="Mag ich">${icon('thumbUp')}</button><button class="rec-b ${store.recipeStat(id).r < 0 ? 'on' : ''}" id="rp-down" aria-label="Nicht mehr vorschlagen">${icon('thumbDown')}</button><button class="btn volt block" id="rp-eat">${icon('plus')}Eintragen</button></div>`, { tall: true });
   const draw = () => {
     $$('[data-por]', sheet).forEach(b => b.classList.toggle('on', Number(b.dataset.por) === portions));
     const tot = { kcal: 0, protein: 0, carbs: 0, fat: 0 };
@@ -174,6 +215,9 @@ export function openRecipe(key, id, onChange) {
   };
   $$('[data-por]', sheet).forEach(b => b.onclick = () => { portions = Number(b.dataset.por); draw(); });
   $('#rp-eat', sheet).onclick = () => { closeSheet(); eatRecipe(key, id, portions, onChange); };
+  const rate = v => { const nv = store.rateRecipe(id, v); toast(nv > 0 ? 'Gemerkt – kommt öfter' : nv < 0 ? 'Schlage ich nicht mehr vor' : 'Bewertung entfernt'); closeSheet(); if (onChange) onChange(); };
+  $('#rp-up', sheet).onclick = () => rate(1);
+  $('#rp-down', sheet).onclick = () => rate(-1);
   draw();
 }
 // Vorschläge für einen Slot (aus „Dein Tag")
@@ -192,8 +236,8 @@ export function openRecommendSheet(key, slot) {
   draw();
 }
 
+let eatenOpen = new Set();
 function eatenCard(key, day) {
-  const s = store.getState();
   const groups = store.DAY_PARTS.map(pt => ({ pt, items: [] }));
   day.entries.forEach((e, i) => {
     const h = e.ts ? store.hourOn(key, e.ts) : 12;
@@ -201,20 +245,24 @@ function eatenCard(key, day) {
   });
   const body = groups.filter(g => g.items.length).map(g => {
     let prot = 0, kcal = 0;
-    for (const { e } of g.items) { const f = store.foodById(e.foodId); if (f) { prot += nut(f, e.grams, 'protein'); kcal += nut(f, e.grams, 'kcal'); } }
-    return `<div class="part-head"><b>${g.pt.label === 'Nachm.' ? 'Nachmittag' : g.pt.label}</b><span>${de(prot)} g Protein · ${de(kcal)} kcal</span></div>
-      ${g.items.map(({ e, i }) => {
+    const names = [];
+    for (const { e } of g.items) { const f = store.foodById(e.foodId); if (f) { prot += nut(f, e.grams, 'protein'); kcal += nut(f, e.grams, 'kcal'); if (!names.includes(short(f.name))) names.push(short(f.name)); } }
+    const open = eatenOpen.has(key + g.pt.id);
+    return `<button class="eat-grp ${open ? 'open' : ''}" data-egrp="${g.pt.id}">
+        <span class="eg-main"><b>${g.pt.label === 'Nachm.' ? 'Nachmittag' : g.pt.label}</b><span class="eg-names">${esc(names.slice(0, 4).join(', '))}${names.length > 4 ? ` +${names.length - 4}` : ''}</span></span>
+        <span class="qa-kv"><b class="num">${de(prot)} g</b><span>${de(kcal)} kcal</span></span>${icon('chev')}</button>
+      ${open ? g.items.map(({ e, i }) => {
         const f = store.foodById(e.foodId);
         if (!f) return '';
         return `<button class="entry" data-entry="${i}">${foodIcon(f)}
           <span class="qa-main"><div class="qa-nm">${esc(short(f.name))}</div><div class="qa-am">${esc(amountLabel(f, e.grams))}</div></span>
           <span class="qa-kv"><b class="num">${de(nut(f, e.grams, 'protein'))} g</b><span>${de(nut(f, e.grams, 'kcal'))} kcal</span></span></button>`;
-      }).join('')}`;
+      }).join('') : ''}`;
   }).join('');
   return `<div class="card">
-    <div class="ch"><span class="ch-title">Gegessen</span><span class="sub">${day.entries.length} Einträge</span></div>
-    ${body || '<div class="empty">Noch nichts eingetragen.<br>Unten einfach erzählen, was du gegessen hast – oder „Was soll ich essen?" fragen.</div>'}
-    ${day.entries.length ? `<div class="chips" style="margin-top:12px"><button class="chipbtn" id="tpl-save">${icon('pin')}Als Standardtag merken</button></div>` : ''}
+    <div class="ch"><span class="ch-title">Gegessen</span><span class="sub">${day.entries.length ? 'antippen zum Ändern' : ''}</span></div>
+    ${body || '<div class="empty">Noch nichts eingetragen.<br>Unten einfach erzählen, was du gegessen hast.</div>'}
+    ${day.entries.length && eatenOpen.size ? `<div class="chips" style="margin-top:12px"><button class="chipbtn" id="tpl-save">${icon('pin')}Als Standardtag merken</button></div>` : ''}
   </div>`;
 }
 
@@ -285,49 +333,20 @@ function nutrientsCard(key) {
 function wire(app, key) {
   $('#d-prev', app).onclick = () => { foodDate = store.shiftDate(key, -1); router.rerender(); };
   $('#d-next', app).onclick = () => { const n = store.shiftDate(key, 1); foodDate = n >= store.todayKey() ? null : n; router.rerender(); };
-  $('#f-add', app).onclick = () => openQuickAdd({ key });
-  $('#f-search', app).onclick = () => openFoodPicker({ key });
-  $('#f-scan', app).onclick = () => scanAndAdd({ title: 'Eintragen', onAdd: ({ foodId, grams }) => quickAdd(key, foodId, grams) });
-  $('#f-lib', app).onclick = () => openLibrary();
-  $$('[data-rslot]', app).forEach(b => b.onclick = () => { slotSel = b.dataset.rslot; router.rerender(); });
-  $$('[data-place]', app).forEach(b => b.onclick = () => { placeSel = b.dataset.place || null; router.rerender(); });
   wireRecs(app, key, () => router.rerender());
-  $$('[data-quick]', app).forEach(b => b.onclick = () => quickAdd(key, b.dataset.quick, Number(b.dataset.grams)));
-  $$('[data-info]', app).forEach(b => b.onclick = () => openAmountSheet({ key, foodId: b.dataset.info, grams: Number(b.dataset.grams) }));
-  $$('[data-snack]', app).forEach(b => b.onclick = () => {
-    const before = store.getDay(key).entries.length;
-    const sn = store.getSnacks().find(x => x.id === b.dataset.snack);
-    const n = store.addEntries(key, sn.items);
-    afterChange(key);
-    toast(`${sn.name} eingetragen (${n})`, 'Rückgängig', () => { store.truncateEntries(key, before); router.rerender(); });
-  });
+  $$('[data-moreideas]', app).forEach(b => b.onclick = () => openRecommendSheet(key, b.dataset.moreideas));
   $$('[data-entry]', app).forEach(b => b.onclick = () => openAmountSheet({ key, index: Number(b.dataset.entry) }));
-  $$('[data-logmeal]', app).forEach(b => b.onclick = () => {
-    const before = store.getDay(key).entries.length;
-    const m = store.mealById(b.dataset.logmeal);
-    store.logMeal(key, m.id);
-    haptic(); afterChange(key);
-    toast(`${m.name} eingetragen`, 'Rückgängig', () => { store.truncateEntries(key, before); router.rerender(); });
-  });
-  $$('[data-editmeal]', app).forEach(b => b.onclick = (e) => { e.stopPropagation(); openMealEditor(b.dataset.editmeal); });
-  ['#meal-new', '#meal-new2'].forEach(id => { const el = $(id, app); if (el) el.onclick = () => openMealEditor(null); });
-  $$('[data-supp]', app).forEach(b => b.onclick = () => { store.toggleSupp(key, b.dataset.supp); haptic(5); afterChange(key); });
-  $$('[data-suppinfo]', app).forEach(b => b.onclick = () => openSuppInfo(key, b.dataset.suppinfo));
-  $$('[data-suppall]', app).forEach(b => b.onclick = () => {
-    for (const x of store.getState().supplements) if ((x.time || 'egal') === b.dataset.suppall) store.setSupp(key, x.id, true);
-    haptic(); afterChange(key);
-  });
-  $$('[data-p4]', app).forEach(b => b.onclick = () => {
-    const a = b.dataset.p4;
-    if (a === 'supps') openSuppsSheet(key);
-    else if (a === 'water') { store.addWater(key, 250); haptic(); afterChange(key); toast('+250 ml Wasser'); }
-    else { nutrOpen = true; router.rerender(); setTimeout(() => { const el = $('#nutr-toggle'); el && el.scrollIntoView({ behavior: 'smooth' }); }, 50); }
-  });
-  $('#nutr-toggle', app).onclick = () => { nutrOpen = !nutrOpen; router.rerender(); };
-  $$('[data-nm]', app).forEach(b => b.onclick = () => { nutrMode = b.dataset.nm; router.rerender(); });
-  $$('[data-nutr]', app).forEach(b => b.onclick = () => openNutrientSheet(key, b.dataset.nutr));
+  $$('[data-egrp]', app).forEach(b => b.onclick = () => { const id = key + b.dataset.egrp; eatenOpen.has(id) ? eatenOpen.delete(id) : eatenOpen.add(id); router.rerender(); });
   const tpl = $('#tpl-save', app);
   if (tpl) tpl.onclick = () => { const n = store.saveDayTemplate(key); toast(`Standardtag gemerkt (${n} Einträge)`); };
+  $$('[data-frow]', app).forEach(b => b.onclick = () => {
+    const r = b.dataset.frow;
+    if (r === 'supps') openSuppsSheet(key);
+    else if (r === 'water') openWaterSheet(key);
+    else if (r === 'micros') openMicrosSheet(key);
+    else if (r === 'meals') openMealsSheet(key);
+    else if (r === 'library') openLibrary();
+  });
 }
 
 function quickAdd(key, foodId, grams) {

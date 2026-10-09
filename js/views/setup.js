@@ -24,6 +24,8 @@ export function renderSetup(app) {
       <button class="icon-btn" id="back" aria-label="Zurück">${icon('chevL')}</button>
       <div class="vh-title">Einstellungen</div></div></div>
 
+    <div class="rows">${row('progress', 'chart', 'Fortschritt', 'Gewicht, Kalender, Level, Meilensteine, Körper')}</div>
+
     <div class="sec-title">Dein Plan</div>
     <div class="rows">
       ${row('tempo', 'flame', 'Abnehm-Tempo', (store.TEMPO[p.tempo] || store.TEMPO.fast).desc, esc((store.TEMPO[p.tempo] || store.TEMPO.fast).label))}
@@ -105,6 +107,7 @@ function onRow(id) {
     case 'library': return openLibrary();
     case 'meals': return openMealsList();
     case 'games': return openGamesSheet();
+    case 'progress': return router.go('progress');
     case 'ai': return openAiSetup(() => router.rerender());
     case 'coachModel': return openChoice('Coach-Modell', Object.entries(COACH_MODELS).map(([k, l]) => ({ k, l })), coachModel(), (k) => setCoachModel(k));
     case 'tempo': return openChoice('Abnehm-Tempo', Object.entries(store.TEMPO).map(([k, v]) => ({ k, l: v.label, d: v.desc })), p.tempo || 'fast', (k) => store.updateProfile({ tempo: k }));

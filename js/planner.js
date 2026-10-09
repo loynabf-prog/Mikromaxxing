@@ -206,3 +206,45 @@ export function currentSlot(key = store.todayKey(), now = new Date()) {
   const m = plan.slots.find(x => x.type === 'meal' && (x.status === 'now' || x.status === 'later'));
   return m ? m.slot : 'late';
 }
+
+// --- Der eine nächste Schritt (für die Startseite) --------------------------------
+// Liefert genau eine Sache, die jetzt dran ist – mit einer Haupt-Aktion.
+export function nextStep(key = store.todayKey(), now = new Date()) {
+  const s = store.getState();
+  const d = s.log[key] || {};
+  const h = store.hourOn(key, now.getTime());
+  const plan = dayPlan(key, now);
+  const tr = plan.train;
+  const ks = store.kneeStatus(key);
+  const left = Math.round(plan.targets.kcal - plan.totals.kcal);
+  const waterBehind = (d.water || 0) < (s.profile.water || 3500) * Math.min(1, Math.max(0, (h - 7) / 14)) - 700;
+  const extra = waterBehind ? { label: '+500 ml Wasser', act: 'water' } : null;
+  const step = (o) => ({ extra, ...o });
+
+  if (ks && ks.level === 'high') return step({ kind: 'reha', tone: 'warn', icon: 'knee', title: 'Knie heute schonen', text: ks.text, primary: { label: 'Reha-Timer', act: 'reha' } });
+  if (s.activeWorkout) return step({ kind: 'workout', icon: 'dumbbell', title: 'Dein Workout läuft', text: `${s.activeWorkout.title} – weiter, wo du warst.`, primary: { label: 'Fortsetzen', act: 'workout' } });
+  if (d.sleep == null && h >= 4 && h < 13) return step({ kind: 'sleep', icon: 'moon', title: 'Wie lange hast du geschlafen?', chips: [6, 6.5, 7, 7.5, 8, 8.5] });
+  if (d.knee == null && h >= 4 && h < 14) return step({ kind: 'knee', icon: 'knee', title: 'Wie fühlt sich dein Knie an?', text: '0 = top · 10 = sehr schmerzhaft' });
+
+  const sessions = store.sessionsFor(key);
+  if (tr && !sessions.length && h >= tr.start - 0.5 && h <= tr.end + 3) {
+    if (tr.kind === 'gym') return step({ kind: 'train', icon: 'dumbbell', title: tr.title, text: `${fmtH(tr.start)} · Gewichte und Ziele sind vorbereitet`, primary: { label: 'Workout starten', act: 'workout' } });
+    return step({ kind: 'train', icon: tr.icon || 'ball', title: tr.title, text: `${fmtH(tr.start)}–${fmtH(tr.end)} · ein Tipp, und es ist eingetragen`, primary: { label: h >= tr.end - 0.25 ? 'Erledigt' : 'Eintragen', act: 'quicksession' }, secondary: { label: 'Anpassen', act: 'session' } });
+  }
+
+  const meal = plan.slots.find(x => x.type === 'meal' && (x.status === 'now' || x.status === 'later') && x.target && x.t - h < 2.5 && x.id !== 'late');
+  if (meal) {
+    const rec = recommend(key, meal.slot, { limit: 1 }).list[0];
+    return step({ kind: 'meal', icon: 'apple', title: meal.t <= h ? `Jetzt · ${meal.title}` : `${fmtH(meal.t)} · ${meal.title}`, text: `Plan: ~${meal.target.kcal.toLocaleString('de-DE')} kcal · ${meal.target.protein} g Protein`, recipe: rec || null,
+      primary: rec ? { label: 'Eintragen', act: 'recipe', id: rec.recipe.id } : { label: 'Eintragen', act: 'add' }, secondary: { label: 'Andere Ideen', act: 'eat', slot: meal.slot } });
+  }
+  if (!d.reha && h >= 12 && h < 22) return step({ kind: 'reha', icon: 'knee', title: 'Knie-Reha', text: 'Wall Sit oder Spanish Squat · 5 × 45 s – 5 Minuten', primary: { label: 'Timer starten', act: 'reha' }, secondary: { label: 'Schon erledigt', act: 'rehadone' } });
+  if (h >= 21) {
+    if (left < -100) return step({ kind: 'evening', tone: 'warn', icon: 'flame', title: `${(-left).toLocaleString('de-DE')} kcal über dem Plan`, text: 'Heute nichts mehr nachlegen. Morgen ganz normal weiter – kein Ausgleichs-Hungern.' });
+    return step({ kind: 'evening', tone: 'good', icon: 'moon', title: plan.totals.kcal > 0 ? 'Budget hält' : 'Noch nichts eingetragen', text: plan.totals.kcal > 0 ? `Noch ${Math.max(0, left).toLocaleString('de-DE')} kcal frei. Wenn Hunger kommt: Magerquark statt Kühlschrank.` : 'Erzähl kurz, was du heute gegessen hast – dann stimmt dein Tag.',
+      primary: plan.totals.kcal > 0 ? { label: '250 g Magerquark', act: 'add', text: '250 g Magerquark' } : { label: 'Erzählen', act: 'add' } });
+  }
+  const later = plan.slots.find(x => x.type === 'meal' && x.status === 'later' && x.target);
+  if (later) return step({ kind: 'meal', icon: 'clock', title: `Als Nächstes: ${fmtH(later.t)} ${later.title}`, text: `~${later.target.kcal.toLocaleString('de-DE')} kcal · ${later.target.protein} g Protein`, secondary: { label: 'Ideen', act: 'eat', slot: later.slot } });
+  return step({ kind: 'done', tone: 'good', icon: 'check', title: 'Alles erledigt', text: 'Mehr gibt es heute nicht zu tun.' });
+}

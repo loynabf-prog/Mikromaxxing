@@ -8,9 +8,9 @@ import {
   $, $$, esc, de, short, router, ringsSVG, toast, haptic, confetti, openSheet, closeSheet, sheetHead,
   greeting, longDate, downscalePhoto, pickFile, fmtHours, fmtClock, beep, unlockAudio,
 } from '../ui.js';
-import { openSuppsSheet, openRecommendSheet } from './food.js';
+import { openSuppsSheet, openRecommendSheet, openRecipe } from './food.js';
 import { PERSONA } from '../persona.js';
-import { dayPlan, fmtH, GYM_TIMES } from '../planner.js';
+import { dayPlan, fmtH, GYM_TIMES, nextStep, recipeById, trainingWindow } from '../planner.js';
 import { levelInfo, totalXP, dayXP, missionsFor, weeklyChallenge, MISSIONS } from '../game.js';
 import { openSessionSheet, openStepsSheet } from './sport.js';
 import { openWorkout } from './workout.js';
@@ -21,47 +21,147 @@ export function renderToday(app) {
   const now = new Date();
   const s = store.getState();
   const p = store.dayPillars(key);
-  const day = store.getDay(key);
-  const streak = store.currentStreak(key);
-  const hint = store.coachHints(key, now)[0];
+  store.getDay(key);
   const lv = levelInfo(totalXP());
-  const dx = dayXP(key).xp;
+  const ms = missionsFor(key, now);
+  const ns = nextStep(key, now);
+  const t = store.macroTargets(key);
+  const left = Math.round(t.kcal - p.totals.kcal);
+  const protLeft = Math.max(0, Math.round(t.protein - p.totals.protein));
   lastOverall = p.overall;
 
-  app.innerHTML = `<div class="view">
-    <div class="vh">
-      <div><div class="vh-date">${esc(longDate(store.dateOf(key)))}</div><div class="vh-title">${greeting(now)},<br>${esc(s.profile.name || PERSONA.name)}</div></div>
-      <div class="vh-actions">
-        <span class="streak ${streak ? '' : 'zero'}" title="Tage in Folge">${icon('flame')}${streak}</span>
-        <button class="icon-btn" data-go="setup" aria-label="Einstellungen">${icon('sliders')}</button>
-      </div>
+  app.innerHTML = `<div class="view simple">
+    <div class="s-head">
+      <div><div class="vh-date">${esc(longDate(store.dateOf(key)))}</div><div class="s-hi">${greeting(now)}, ${esc(s.profile.name || PERSONA.name)}</div></div>
+      <button class="icon-btn" data-go="setup" aria-label="Einstellungen">${icon('sliders')}</button>
     </div>
 
-    <button class="lvl" data-go="progress">
-      <span class="lvl-badge num">${lv.level}</span>
-      <span class="lvl-main"><span class="lvl-top"><b>${esc(lv.rank)}</b><span>${de(lv.into)} / ${de(lv.need)} XP</span></span>
-        <span class="lvl-bar"><i style="width:${lv.pct}%"></i></span></span>
-      <span class="lvl-xp num">+${dx}<small>heute</small></span>
+    <button class="lvl-thin" id="lvl" aria-label="Level und Missionen">
+      <b class="num">${lv.level}</b><span>${esc(lv.rank)}</span>
+      <i class="lvl-bar"><i style="width:${lv.pct}%"></i></i>
+      <em>${ms.filter(m => m.done).length}/${ms.length} Missionen</em>${icon('chev')}
     </button>
 
-    <div class="hero">
-      <button class="rings" id="ring-photo" aria-label="Profilfoto">${ringsSVG(p, { photo: s.profile.photo })}</button>
-      <div class="hstats">
-        <button class="hs nut" data-go="food"><div class="t"><i></i>Ernährung</div><div class="v num">${p.nutrition}<small>%</small></div></button>
-        <button class="hs spo" data-go="sport"><div class="t"><i></i>Sport</div><div class="v num">${p.sport}<small>%</small></div></button>
-        <button class="hs reg" data-scroll="regen"><div class="t"><i></i>Regeneration</div><div class="v num">${p.regen}<small>%</small></div></button>
-      </div>
+    <div class="s-hero">
+      <button class="rings" id="rings" aria-label="Details zu den Ringen">${ringsSVG(p, { photo: s.profile.photo })}</button>
+      <button class="s-nums" data-go="food">
+        <div class="s-kcal num ${left < -100 ? 'over' : ''}">${de(Math.abs(left))}</div>
+        <div class="s-lbl">${left >= 0 ? 'kcal übrig' : 'kcal drüber'}</div>
+        <div class="s-prot num">${de(protLeft)}<small> g</small></div>
+        <div class="s-lbl">${protLeft ? 'Protein offen' : 'Protein geschafft'}</div>
+      </button>
     </div>
+    <button class="s-legend" id="legend">
+      <span><i class="d-nut"></i>${p.nutrition}%</span><span><i class="d-spo"></i>${p.sport}%</span><span><i class="d-reg"></i>${p.regen}%</span>${icon('chev')}
+    </button>
 
-    ${budgetCard(key, p, day, now)}
-    ${hint ? coachCard(hint) : ''}
-    ${planCard(key, now)}
-    ${missionsCard(key, now)}
-    ${sportCard(key, p)}
-    ${regenCard(key, p)}
+    ${nextCard(ns)}
+    <button class="s-link" id="dayplan">${icon('clock')}Ganzer Tag ansehen${icon('chev')}</button>
   </div>`;
 
-  wire(app, key, hint);
+  wireToday(app, key, ns);
+}
+
+// Die eine Karte: was jetzt dran ist
+function nextCard(ns) {
+  const r = ns.recipe;
+  return `<div class="next ${ns.tone || ''}">
+    <div class="next-k">${icon(ns.icon)}Jetzt</div>
+    <div class="next-t">${esc(ns.title)}</div>
+    ${ns.text ? `<div class="next-x">${esc(ns.text)}</div>` : ''}
+    ${r ? `<button class="next-rec" data-rec="${r.recipe.id}"><b>${esc(r.recipe.name)}</b><span class="num">${de(r.totals.protein)} g Protein · ${de(r.totals.kcal)} kcal</span></button>` : ''}
+    ${ns.kind === 'sleep' ? `<div class="next-chips">${ns.chips.map(v => `<button class="chipbtn" data-sleep="${v}">${String(v).replace('.', ',')} h</button>`).join('')}</div>` : ''}
+    ${ns.kind === 'knee' ? `<div class="knee-scale big">${Array.from({ length: 11 }, (_, i) => `<button data-kn="${i}">${i}</button>`).join('')}</div>` : ''}
+    ${ns.primary || ns.secondary ? `<div class="next-act">
+      ${ns.primary ? `<button class="btn volt" data-step="${ns.primary.act}">${esc(ns.primary.label)}</button>` : ''}
+      ${ns.secondary ? `<button class="btn ghost" data-step2="${ns.secondary.act}">${esc(ns.secondary.label)}</button>` : ''}
+    </div>` : ''}
+    ${ns.extra ? `<button class="next-extra" data-step3="${ns.extra.act}">${icon('drop')}${esc(ns.extra.label)}</button>` : ''}
+  </div>`;
+}
+
+function doStep(key, a) {
+  if (!a) return;
+  switch (a.act) {
+    case 'recipe': {
+      const r = recipeById(a.id);
+      if (!r) return;
+      const before = store.getDay(key).entries.length;
+      store.logRecipe(key, r);
+      haptic(10); afterChange(key);
+      toast(`${r.name} eingetragen`, 'Rückgängig', () => { store.truncateEntries(key, before); router.rerender(); });
+      return;
+    }
+    case 'quicksession': {
+      const tr = trainingWindow(key);
+      const plan = store.getTrainingFor(key);
+      const type = tr && tr.kind === 'game' ? 'game' : plan && plan.kind === 'sport' ? plan.sport : 'other';
+      const min = tr ? Math.round((tr.end - tr.start) * 60) : 60;
+      const sess = store.addSession(key, { type, min: tr && tr.kind === 'game' ? 90 : min, rpe: type === 'game' ? 8 : 7, title: tr ? tr.title : undefined });
+      haptic(12); afterChange(key);
+      toast(`${sess.title} eingetragen`, 'Rückgängig', () => { store.removeSession(key, sess.id); router.rerender(); });
+      return;
+    }
+    case 'rehadone': if (!store.getDay(key).reha) store.toggleReha(key); afterChange(key); toast('Knie-Reha erledigt'); return;
+    case 'water': addWaterQuick(key, 500); return;
+    case 'eat': openRecommendSheet(key, a.slot || 'first'); return;
+    default: runAction(key, { type: a.act, text: a.text, sport: a.sport }); return;
+  }
+}
+
+function wireToday(app, key, ns) {
+  $$('[data-go]', app).forEach(b => b.onclick = () => router.go(b.dataset.go));
+  $('#lvl', app).onclick = () => openLevelSheet(key);
+  $('#rings', app).onclick = () => openPillarsSheet(key);
+  $('#legend', app).onclick = () => openPillarsSheet(key);
+  $('#dayplan', app).onclick = () => liveSheet('Dein Tag', 'Fahrplan aus deinem Rhythmus und Training', () => planCard(key, new Date()), (root) => wireCards(root, key));
+  const pa = $('[data-step]', app); if (pa) pa.onclick = () => doStep(key, ns.primary);
+  const sa = $('[data-step2]', app); if (sa) sa.onclick = () => doStep(key, ns.secondary);
+  const xa = $('[data-step3]', app); if (xa) xa.onclick = () => doStep(key, ns.extra);
+  $$('[data-rec]', app).forEach(b => b.onclick = () => openRecipe(key, b.dataset.rec, () => router.rerender()));
+  $$('[data-sleep]', app).forEach(b => b.onclick = () => { store.setSleep(key, Number(b.dataset.sleep)); haptic(8); afterChange(key); });
+  $$('[data-kn]', app).forEach(b => b.onclick = () => { store.setDayMeta(key, 'knee', Number(b.dataset.kn)); haptic(8); afterChange(key); });
+}
+
+// --- Hintergrund-Fenster ---------------------------------------------------------
+let liveDraw = null;
+function liveSheet(title, sub, render, wireFn) {
+  let draw;
+  const sheet = openSheet(`${sheetHead(esc(title), esc(sub || ''))}<div class="sheet-body" id="ls"></div>`, { tall: true, onClose: () => { if (liveDraw === draw) liveDraw = null; } });
+  draw = () => { const b = $('#ls', sheet); if (!b) return; b.innerHTML = render(); wireFn(b, draw); };
+  liveDraw = draw;
+  draw();
+  return sheet;
+}
+function openPillarsSheet(key) {
+  liveSheet('Deine Ringe', 'Ernährung · Sport · Regeneration', () => {
+    const p = store.dayPillars(key);
+    return `${budgetCard(key, p, store.getDay(key), new Date())}${sportCard(key, p)}${regenCard(key, p)}`;
+  }, (root) => wireCards(root, key));
+}
+function openLevelSheet(key) {
+  liveSheet('Level & Missionen', '', () => {
+    const lv = levelInfo(totalXP());
+    return `<div class="lvl-sheet"><span class="lvl-badge num">${lv.level}</span><div><b>${esc(lv.rank)}</b><span class="lvl-bar"><i style="width:${lv.pct}%"></i></span>
+      <span class="sub">+${dayXP(key).xp} XP heute · ${de(lv.need - lv.into)} bis Level ${lv.level + 1}</span></div></div>
+      ${missionsCard(key, new Date())}
+      <button class="btn ghost block" data-go="progress">${icon('chart')}Fortschritt ansehen</button>`;
+  }, (root) => wireCards(root, key));
+}
+function wireCards(root, key) {
+  $$('[data-go]', root).forEach(b => b.onclick = () => router.go(b.dataset.go));
+  const wa = $('#water-add', root); if (wa) wa.onclick = (e) => { e.stopPropagation(); addWaterQuick(key, 250); };
+  const wt = $('#water-tile', root); if (wt) wt.onclick = () => openWaterSheet(key);
+  $$('[data-knee]', root).forEach(b => b.onclick = () => { store.setKnee(key, Number(b.dataset.knee)); haptic(); afterChange(key); });
+  $$('[data-act]', root).forEach(b => b.onclick = () => runAction(key, { type: b.dataset.act, sport: b.dataset.sport }));
+  $$('[data-slot]', root).forEach(b => b.onclick = () => {
+    if (b.dataset.slot) return openRecommendSheet(key, b.dataset.slot);
+    const ty = b.dataset.ty;
+    if (ty === 'train') { const pl = store.getTrainingFor(key); if (pl && pl.kind === 'gym') openWorkout(); else openSessionSheet(key, {}); }
+    else if (ty === 'drink') addWaterQuick(key, 500);
+  });
+  $$('[data-gymt]', root).forEach(b => b.onclick = () => { store.setDayMeta(key, 'gymTime', b.dataset.gymt); haptic(4); afterChange(key); });
+  $$('[data-mis]', root).forEach(b => b.onclick = () => openMission(key, b.dataset.mis));
 }
 
 function coachCard(h) {
@@ -220,34 +320,6 @@ function regenCard(key, p) {
   </div>`;
 }
 
-function wire(app, key, hint) {
-  $$('[data-go]', app).forEach(b => b.onclick = () => router.go(b.dataset.go));
-  $$('[data-scroll]', app).forEach(b => b.onclick = () => $('#' + b.dataset.scroll, app).scrollIntoView({ behavior: 'smooth', block: 'center' }));
-  $('#ring-photo', app).onclick = async () => {
-    const f = await pickFile();
-    if (!f) return;
-    store.updateProfile({ photo: await downscalePhoto(f, { size: 360 }) });
-    router.rerender(); toast('Foto gesetzt');
-  };
-  const coach = $('#coach', app);
-  if (coach && hint && hint.action) coach.onclick = () => runAction(key, hint.action);
-
-  $('#water-add', app).onclick = (e) => { e.stopPropagation(); addWaterQuick(key, 250); };
-  $('#water-tile', app).onclick = () => openWaterSheet(key);
-  $$('[data-knee]', app).forEach(b => b.onclick = () => {
-    store.setKnee(key, Number(b.dataset.knee)); haptic(); afterChange(key);
-  });
-  $$('[data-act]', app).forEach(b => b.onclick = () => runAction(key, { type: b.dataset.act, sport: b.dataset.sport }));
-  $$('[data-slot]', app).forEach(b => b.onclick = () => {
-    if (b.dataset.slot) return openRecommendSheet(key, b.dataset.slot);
-    const ty = b.dataset.ty;
-    if (ty === 'train') { const pl = store.getTrainingFor(key); if (pl && pl.kind === 'gym') openWorkout(); else openSessionSheet(key, {}); }
-    else if (ty === 'drink') addWaterQuick(key, 500);
-  });
-  $$('[data-gymt]', app).forEach(b => b.onclick = () => { store.setDayMeta(key, 'gymTime', b.dataset.gymt); haptic(4); router.rerender(); });
-  $$('[data-mis]', app).forEach(b => b.onclick = () => openMission(key, b.dataset.mis));
-}
-
 // Mission antippen: worum geht's + direkt loslegen
 function openMission(key, id) {
   const m = missionsFor(key).find(x => x.id === id);
@@ -269,6 +341,7 @@ let lastOverall = null;
 export function afterChange(key) {
   const before = lastOverall ?? 0;
   router.rerender();
+  if (liveDraw) liveDraw();
   const now = store.dayPillars(key).overall;
   if (before < 100 && now >= 100) confetti();
   lastOverall = now;
@@ -327,7 +400,7 @@ export function openSleepSheet(key) {
 }
 
 // --- Wasser -----------------------------------------------------------------
-function openWaterSheet(key) {
+export function openWaterSheet(key) {
   const target = store.getState().profile.water;
   const sheet = openSheet(`${sheetHead('Wasser', `Ziel ${de(target / 1000, 1)} L`)}
     <div style="text-align:center;margin:6px 0 16px"><div class="big num" id="wv"></div></div>
@@ -336,8 +409,8 @@ function openWaterSheet(key) {
     </div>
     <div class="grid2"><button class="btn ghost" data-ml="-250">−250 ml</button><button class="btn ghost" id="wreset">Zurücksetzen</button></div>`);
   const show = () => { const w = store.getDay(key).water || 0; $('#wv', sheet).innerHTML = `${de(w / 1000, 2)}<small>L</small>`; };
-  $$('[data-ml]', sheet).forEach(b => b.onclick = () => { store.addWater(key, Number(b.dataset.ml)); haptic(); show(); router.rerender(); });
-  $('#wreset', sheet).onclick = () => { store.setWater(key, 0); show(); router.rerender(); };
+  $$('[data-ml]', sheet).forEach(b => b.onclick = () => { store.addWater(key, Number(b.dataset.ml)); haptic(); show(); afterChange(key); });
+  $('#wreset', sheet).onclick = () => { store.setWater(key, 0); show(); afterChange(key); };
   show();
 }
 
