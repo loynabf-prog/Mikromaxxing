@@ -269,7 +269,7 @@ function suppCard(key, day) {
   const supps = store.getState().supplements;
   const taken = supps.filter(x => day.supps[x.id]).length;
   return `<div class="card">
-    <div class="ch"><span class="chip" style="background:rgba(255,111,181,.14);color:var(--pill)">${icon('pill')}Supplements</span><span class="sub">${taken} / ${supps.length}</span></div>
+    <div class="ch"><span class="chip">${icon('pill')}Supplements</span><span class="sub">${taken} / ${supps.length}</span></div>
     ${suppRows(supps, day)}
   </div>`;
 }
@@ -277,7 +277,7 @@ function suppRows(supps, day) {
   return SUPP_TIME_ORDER.map(tk => {
     const g = supps.filter(x => (x.time || 'egal') === tk);
     if (!g.length) return '';
-    return `<div class="part-head"><b>${SUPP_TIME_LABELS[tk]}</b>${g.some(x => !day.supps[x.id]) ? `<button class="sub" data-suppall="${tk}" style="color:var(--spo);font-weight:800">alle abhaken</button>` : ''}</div>
+    return `<div class="part-head"><b>${SUPP_TIME_LABELS[tk]}</b>${g.some(x => !day.supps[x.id]) ? `<button class="sub" data-suppall="${tk}" style="color:var(--ink);font-weight:500">alle abhaken</button>` : ''}</div>
       ${g.map(x => { const inf = suppInfo(x); return `<div class="supp-line"><button class="supp-row ${day.supps[x.id] ? 'on' : ''}" data-supp="${x.id}">
         <span class="box">${day.supps[x.id] ? icon('check') : ''}</span>
         <span style="flex:1"><b>${esc(x.name)}${x.dose ? `<em>${esc(x.dose)}</em>` : ''}</b><span>${esc(HOW_LABELS[inf.how] || '')}</span></span>
@@ -393,7 +393,7 @@ export function openAmountSheet({ key, index = null, foodId = null, grams = null
   const servings = [...(f.servings || [])];
   const sheet = openSheet(`
     <div class="sheet-head"><div style="display:flex;gap:12px;align-items:center">${foodIcon(f)}<div><div class="sheet-title" style="font-size:20px">${esc(short(f.name))}</div><div class="sheet-sub">${esc(f.cat || '')}</div></div></div>
-      <div style="display:flex;gap:8px"><button class="sheet-x" id="fav" aria-label="Favorit" style="color:${store.isFavorite(f.id) ? '#FFC93C' : 'var(--dim)'}">${icon('star')}</button><button class="sheet-x" data-close>${icon('x')}</button></div></div>
+      <div style="display:flex;gap:8px"><button class="sheet-x" id="fav" aria-label="Favorit" style="color:${store.isFavorite(f.id) ? 'var(--gold)' : 'var(--dim)'}">${icon('star')}</button><button class="sheet-x" data-close>${icon('x')}</button></div></div>
     <div class="sheet-body">
     <div class="stepper"><button class="st-btn" data-d="-1">${icon('minus')}</button><div class="st-val num" id="av"></div><button class="st-btn" data-d="1">${icon('plus')}</button></div>
     <div class="chips" style="margin-top:10px">
@@ -418,7 +418,7 @@ export function openAmountSheet({ key, index = null, foodId = null, grams = null
   sheet.classList.add('tall');
   $$('[data-d]', sheet).forEach(b => b.onclick = () => { g = Math.max(step, g + Number(b.dataset.d) * step); haptic(4); show(); });
   $$('[data-g]', sheet).forEach(b => b.onclick = () => { g = Number(b.dataset.g); show(); });
-  $('#fav', sheet).onclick = () => { const on = store.toggleFavorite(f.id); $('#fav', sheet).style.color = on ? '#FFC93C' : 'var(--dim)'; toast(on ? 'Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt'); };
+  $('#fav', sheet).onclick = () => { const on = store.toggleFavorite(f.id); $('#fav', sheet).style.color = on ? 'var(--gold)' : 'var(--dim)'; toast(on ? 'Zu Favoriten hinzugefügt' : 'Aus Favoriten entfernt'); };
   $('#ok', sheet).onclick = () => {
     if (entry) store.updateEntry(key, index, g); else store.addEntry(key, f.id, g);
     closeSheet(); haptic(); afterChange(key);

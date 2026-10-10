@@ -77,7 +77,7 @@ export function confetti() {
   const dpr = window.devicePixelRatio || 1;
   c.width = innerWidth * dpr; c.height = innerHeight * dpr;
   ctx.scale(dpr, dpr);
-  const colors = ['#B8F23E', '#4D8DFF', '#B08CFF', '#FFC93C', '#FF6FB5'];
+  const colors = ['#30C46F', '#1E9E57', '#FFD60A', '#F2B705', '#8E8E93', '#D1D1D6'];
   const parts = Array.from({ length: 110 }, () => ({
     x: innerWidth / 2 + (Math.random() - .5) * 80, y: innerHeight * .35,
     vx: (Math.random() - .5) * 11, vy: -Math.random() * 12 - 4,
@@ -96,40 +96,32 @@ export function confetti() {
   })(t0);
 }
 
-// --- Zwei Ringe: Essen außen, Sport innen ------------------------------------
+// --- Zwei Ringe: Essen außen (Akzent), Sport innen (Tinte) – fein, ohne Glow ---
 let ringSeq = 0;
-const SW = 17;
 export function ringsSVG({ nutrition = 0, sport = 0 }, { photo = null } = {}) {
   const id = 'r' + (++ringSeq);
-  const R = [
-    { r: 88, v: nutrition, a: '#E4FF8A', b: '#A3E635', t: 'rgba(184,242,62,.13)', g: '#B8F23E' },
-    { r: 67, v: sport, a: '#9CC2FF', b: '#3D72F0', t: 'rgba(77,141,255,.15)', g: '#4D8DFF' },
-  ];
-  const arcs = R.map((x, i) => {
+  const SW = 16;
+  const R = [{ r: 86, v: nutrition, c: 'var(--nut)' }, { r: 62, v: sport, c: 'var(--spo)' }];
+  const arcs = R.map((x) => {
     const c = 2 * Math.PI * x.r;
     const off = c * (1 - Math.min(100, Math.max(0, x.v)) / 100);
-    return `<defs><linearGradient id="${id}g${i}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${x.a}"/><stop offset="1" stop-color="${x.b}"/></linearGradient></defs>
-      <circle cx="100" cy="100" r="${x.r}" fill="none" stroke="${x.t}" stroke-width="${SW}"/>
-      ${x.v > 0 ? `<circle class="ring-arc" cx="100" cy="100" r="${x.r}" fill="none" stroke="url(#${id}g${i})" stroke-width="${SW}" stroke-linecap="round"
-        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 100 100)" style="filter:drop-shadow(0 0 5px ${x.g}88)"/>` : ''}`;
+    return `<circle cx="100" cy="100" r="${x.r}" fill="none" stroke="var(--track)" stroke-width="${SW}"/>
+      ${x.v > 0 ? `<circle class="ring-arc" cx="100" cy="100" r="${x.r}" fill="none" stroke="${x.c}" stroke-width="${SW}" stroke-linecap="round"
+        stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 100 100)"/>` : ''}`;
   }).join('');
   const center = photo
-    ? `<image href="${photo}" x="50" y="50" width="100" height="100" clip-path="url(#${id}c)" preserveAspectRatio="xMidYMid slice"/>`
-    : `<rect x="50" y="50" width="100" height="100" fill="url(#${id}p)" clip-path="url(#${id}c)"/>
-       <g clip-path="url(#${id}c)"><circle cx="100" cy="88" r="17" fill="#5E6674"/><path d="M66 146c3-23 17-34 34-34s31 11 34 34z" fill="#5E6674"/></g>`;
-  return `<svg viewBox="0 0 200 200" aria-hidden="true">
-    <defs><clipPath id="${id}c"><circle cx="100" cy="100" r="50"/></clipPath>
-    <linearGradient id="${id}p" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#232838"/><stop offset="1" stop-color="#151821"/></linearGradient></defs>
-    ${arcs}${center}</svg>`;
+    ? `<defs><clipPath id="${id}c"><circle cx="100" cy="100" r="44"/></clipPath></defs><image href="${photo}" x="56" y="56" width="88" height="88" clip-path="url(#${id}c)" preserveAspectRatio="xMidYMid slice"/>`
+    : '';
+  return `<svg viewBox="0 0 200 200" aria-hidden="true">${arcs}${center}</svg>`;
 }
 
 // Mini-Ringe für den Kalender
 export function miniRings({ nutrition = 0, sport = 0 }) {
-  const R = [[16.5, nutrition, '#B8F23E', 'rgba(184,242,62,.12)'], [10.5, sport, '#4D8DFF', 'rgba(77,141,255,.14)']];
-  return `<svg viewBox="0 0 40 40">${R.map(([r, v, col, tr]) => {
+  const R = [[16, nutrition, 'var(--nut)'], [10, sport, 'var(--spo)']];
+  return `<svg viewBox="0 0 40 40">${R.map(([r, v, col]) => {
     const c = 2 * Math.PI * r;
-    return `<circle cx="20" cy="20" r="${r}" fill="none" stroke="${tr}" stroke-width="4.4"/>` +
-      (v > 0 ? `<circle cx="20" cy="20" r="${r}" fill="none" stroke="${col}" stroke-width="4.4" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - Math.min(100, v) / 100)).toFixed(2)}" transform="rotate(-90 20 20)"/>` : '');
+    return `<circle cx="20" cy="20" r="${r}" fill="none" stroke="var(--track)" stroke-width="4"/>` +
+      (v > 0 ? `<circle cx="20" cy="20" r="${r}" fill="none" stroke="${col}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${c.toFixed(2)}" stroke-dashoffset="${(c * (1 - Math.min(100, v) / 100)).toFixed(2)}" transform="rotate(-90 20 20)"/>` : '');
   }).join('')}</svg>`;
 }
 

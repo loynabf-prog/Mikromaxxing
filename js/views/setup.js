@@ -24,7 +24,7 @@ export function renderSetup(app) {
       <button class="icon-btn" id="back" aria-label="Zurück">${icon('chevL')}</button>
       <div class="vh-title">Einstellungen</div></div></div>
 
-    <div class="rows">${row('progress', 'chart', 'Fortschritt', 'Gewicht, Kalender, Level, Meilensteine, Körper')}</div>
+    <div class="rows">${row('progress', 'chart', 'Dashboard', 'Gewicht, Körper, Serie, Level, Meilensteine')}</div>
 
     <div class="sec-title">Dein Plan</div>
     <div class="rows">
@@ -162,7 +162,7 @@ function openDayTypes() {
     <div class="sheet-body">
       ${week.map(k => { const m = store.macroTargets(k); return `<div class="entry"><span class="qa-main"><div class="qa-nm">${esc(store.formatDateLabel(k))} · ${esc(store.DAY_TYPES[m.type].label)}</div>
         <div class="qa-am">${de(m.protein)} g Protein · ${de(m.carbs)} g Carbs · ${de(m.fat)} g Fett</div></span><b class="num">${de(m.kcal)}</b></div>`; }).join('')}
-      <p class="hint" style="margin-top:12px">Berechnet aus Grundumsatz (aktuelles Gewicht), deinem aktiven Alltag, dem Training und dem Tempo „${esc((store.TEMPO[p.tempo] || store.TEMPO.fast).label)}". Passt dein echter Gewichtstrend nicht zum Tempo, schlage ich unter Fortschritt eine Korrektur vor.</p>
+      <p class="hint" style="margin-top:12px">Berechnet aus Grundumsatz (aktuelles Gewicht), deinem aktiven Alltag, dem Training und dem Tempo „${esc((store.TEMPO[p.tempo] || store.TEMPO.fast).label)}". Passt dein echter Gewichtstrend nicht zum Tempo, schlage ich im Dashboard eine Korrektur vor.</p>
       <div class="part-head"><b>Korrektur</b><span class="sub">${p.kcalOffset ? (p.kcalOffset > 0 ? '+' : '') + p.kcalOffset + ' kcal/Tag' : 'keine'}</span></div>
       <div class="grid3"><button class="btn ghost sm" data-off="-100">−100</button><button class="btn ghost sm" data-off="0">Zurücksetzen</button><button class="btn ghost sm" data-off="100">+100</button></div>
     </div>`, { tall: true });
@@ -191,7 +191,7 @@ function openSuppList() {
     <div class="sheet-foot"><button class="btn block" id="sl-new">${icon('plus')}Supplement hinzufügen</button></div>`, { tall: true });
   const draw = () => {
     $('#sl-body', sheet).innerHTML = store.getState().supplements.map(x => `<button class="row" data-sp="${x.id}" style="padding-left:0;padding-right:0">
-      <span class="row-ic" style="background:rgba(255,111,181,.14);color:var(--pill)">${icon('pill')}</span><span class="row-main"><div class="row-t">${esc(x.name)}</div>
+      <span class="row-ic">${icon('pill')}</span><span class="row-main"><div class="row-t">${esc(x.name)}</div>
       <div class="row-s">${esc(x.dose || '')} · ${SUPP_TIME_LABELS[x.time || 'egal']}</div></span>${icon('chev')}</button>`).join('');
     $$('[data-sp]', sheet).forEach(b => b.onclick = () => openSuppEditor(b.dataset.sp, draw));
   };

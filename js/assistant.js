@@ -3,7 +3,7 @@
 // richtigen Stelle ein und ist sein persönlicher Coach (Chat + Wochenrückblick).
 // ============================================================================
 import * as store from './store.js';
-import { SPORT_TYPES, FOOD_CATS } from './data.js';
+import { SPORT_TYPES, FOOD_CATS, BODYCOMP_METRICS } from './data.js';
 import { PERSONA, personaBrief, RECIPES } from './persona.js';
 import { claudeJSON, coachModel, PER100_SCHEMA, toFood, hasAI } from './lookup.js';
 import { parseEntry, buildIndex, fold } from './parser.js';
@@ -19,14 +19,18 @@ function logSchema() {
   const dayOff = { type: 'integer' };
   const obj = (props) => ({ type: 'object', additionalProperties: false, required: Object.keys(props), properties: props });
   const arr = (props) => ({ type: 'array', items: obj(props) });
+  const foodItem = {
+    query: { type: 'string' }, name: { type: 'string' }, grams: { type: 'number' }, time: { type: 'string' }, day_offset: dayOff,
+    cat: { type: 'string', enum: FOOD_CATS }, whole: { type: 'boolean' }, unit: { type: 'string', enum: ['piece', 'gram'] },
+    pieceName: { type: 'string' }, pieceGrams: { type: 'number' }, aliases: { type: 'array', items: { type: 'string' } },
+    benefit: { type: 'string' }, per100: PER100_SCHEMA,
+  };
+  const bodyVals = Object.fromEntries(BODYCOMP_METRICS.map(m => [m.key, { type: 'number' }]));
   return obj({
     reply: { type: 'string' },
-    foods: arr({
-      query: { type: 'string' }, name: { type: 'string' }, grams: { type: 'number' }, time: { type: 'string' }, day_offset: dayOff,
-      cat: { type: 'string', enum: FOOD_CATS }, whole: { type: 'boolean' }, unit: { type: 'string', enum: ['piece', 'gram'] },
-      pieceName: { type: 'string' }, pieceGrams: { type: 'number' }, aliases: { type: 'array', items: { type: 'string' } },
-      benefit: { type: 'string' }, per100: PER100_SCHEMA,
-    }),
+    foods: arr(foodItem),
+    suggest: arr({ title: { type: 'string' }, why: { type: 'string' }, foods: arr(foodItem) }),
+    body: arr({ ...bodyVals, day_offset: dayOff }),
     water: arr({ ml: { type: 'number' }, day_offset: dayOff }),
     supplements: arr({ id: { type: 'string', enum: suppIds.length ? suppIds : ['none'] }, day_offset: dayOff }),
     sessions: arr({ type: { type: 'string', enum: SPORT_IDS }, minutes: { type: 'number' }, rpe: { type: 'integer' }, title: { type: 'string' }, day_offset: dayOff,
@@ -83,6 +87,8 @@ export function buildContext(now = new Date()) {
     week.push(`${k}: ${r(t.kcal)}/${store.kcalTarget(k)} kcal, ${r(t.protein)} g P, ${(dd.sessions || []).map(x => x.title).join('+') || 'kein Training'}, Schlaf ${dd.sleep ?? '–'}, Knie ${dd.knee ?? '–'}`);
   }
   lines.push(`Letzte 7 Tage:\n${week.join('\n') || 'keine Daten'}`);
+  const lm = store.latestMeasurement();
+  if (lm) lines.push(`Letzte Körperanalyse ${lm.date}: ${BODYCOMP_METRICS.filter(m => lm.values[m.key] != null).map(m => `${m.label} ${lm.values[m.key]} ${m.unit}`).join(', ')}.`);
   const weighs = Object.keys(s.log).filter(k => k <= key && s.log[k].weight != null).sort().slice(-6);
   if (weighs.length) lines.push(`Letzte Wiegungen: ${weighs.map(k => `${k} ${s.log[k].weight} kg`).join('; ')}.`);
   const gp = store.goalProjection(key);
@@ -122,7 +128,9 @@ Was du tust:
     : 'deine Antwort als Coach, wie im Chat: kurz und konkret, mit Zahlen aus seinen Daten, meist 40–120 Wörter, außer er will mehr. Hat er etwas erzählt, das du einträgst, bestätige es in einem Satz und sag, was das für den Rest des Tages heißt. Empfiehl Essen, das zu ihm passt (Bowls, Dönerfleisch-Teller, Lidl/Rewe, seine Gerichte). Kein Markdown außer kurzen Aufzählungen mit „–".'}
 5. Training so detailliert wie erzählt: sessions.exercises = jede Übung mit name (deutsch, z. B. „Bankdrücken", „Klimmzüge"), sets, reps, kg (0 = Körpergewicht), seconds (nur bei Halteübungen, sonst 0). sessions.notes = kurze Details (z. B. „Knie zwickte beim Springen", „Spiel gewonnen 78:70"), sonst "". Hat er an Handstand, Back Lever oder Muscle-Up gearbeitet → zusätzlich skills.
 6. remember: Dinge, die du dir dauerhaft merken sollst – Vorlieben, Abneigungen, Unverträglichkeiten, Beschwerden, Ziele, Lebensumstände (z. B. „Mag keinen Lachs", „Knie zwickt bei Sprüngen"). Kurz, in 3. Person, nichts, was oben schon unter „gemerkt" steht. Sonst leer.
-7. quick: 0–3 kurze Folgefragen oder Antworten, die er antippen könnte (aus seiner Sicht formuliert).
+7. Fotos: Schickt er eine Körperanalyse (InBody-Ausdruck, Waagen-App, Screenshot), lies alle erkennbaren Werte in body ein (Gewicht kg, Körperfett %, Fettmasse kg, Skelettmuskelmasse kg in muscle, Körperwasser %, Viszeralfett-Level, Grundumsatz kcal usw.; nicht vorhandene Werte = 0) und ordne die Veränderung zur letzten Messung kurz ein. Schickt er ein Foto von Essen, schätze Lebensmittel und Mengen und trag sie als foods ein, außer er fragt nur nach deiner Meinung. Speisekarte oder Produkt → Empfehlung.
+8. suggest: Wenn du konkretes Essen empfiehlst, gib 1–2 Vorschläge mit foods (realistische Menge, Nährwerte), damit er sie mit einem Tipp eintragen kann. title = kurz (z. B. „Skyr + Banane"), why = ein kurzer Grund mit kcal/Protein. Was du in foods einträgst, kommt nicht zusätzlich in suggest.
+9. quick: 0–3 kurze Folgefragen oder Antworten, die er antippen könnte (aus seiner Sicht formuliert).
 Keine medizinischen Diagnosen; bei Knieschmerz über 5/10 oder stechendem Schmerz zum Physio raten.
 
 # Aktueller Stand
@@ -130,7 +138,7 @@ ${buildContext(now)}`;
 }
 
 // --- Fragen & Eintragen ----------------------------------------------------------
-export async function askCoach(text, { mode = 'chat', history = [], now = new Date() } = {}) {
+export async function askCoach(text, { mode = 'chat', history = [], now = new Date(), image = null } = {}) {
   const messages = [];
   for (const m of history.slice(-16)) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text || '').slice(0, 2000) });
   messages.push({ role: 'user', content: text });
@@ -138,11 +146,17 @@ export async function askCoach(text, { mode = 'chat', history = [], now = new Da
   const clean = [];
   for (const m of messages) { if (clean.length && clean[clean.length - 1].role === m.role) clean[clean.length - 1].content += '\n' + m.content; else clean.push({ ...m }); }
   if (clean[0].role !== 'user') clean.shift();
+  // Foto an die letzte Nachricht hängen (Vision)
+  if (image) {
+    const m = /^data:(image\/[a-z]+);base64,(.+)$/.exec(image);
+    if (m) { const last = clean[clean.length - 1]; last.content = [{ type: 'image', source: { type: 'base64', media_type: m[1], data: m[2] } }, { type: 'text', text: last.content || 'Hier ein Foto.' }]; }
+  }
   const json = await claudeJSON({
     system: systemPrompt(mode, now), messages: clean, schema: logSchema(),
     maxTokens: mode === 'log' ? 12000 : 8000, model: mode === 'log' ? 'claude-haiku-5-5' : coachModel(),
   });
-  return { reply: String(json.reply || '').trim(), items: normalize(json, now), quick: (json.quick || []).slice(0, 3) };
+  const suggest = (json.suggest || []).slice(0, 3).map(sg => ({ title: String(sg.title || '').slice(0, 60), why: String(sg.why || '').slice(0, 140), items: normalize({ foods: sg.foods || [] }, now) })).filter(sg => sg.title && sg.items.length);
+  return { reply: String(json.reply || '').trim(), items: normalize(json, now), quick: (json.quick || []).slice(0, 3), suggest };
 }
 
 // KI-Ergebnis → Vorschau-Posten (bekannte Lebensmittel aus der Bibliothek bevorzugt)
@@ -180,6 +194,11 @@ export function normalize(json, now = new Date()) {
     if (minutes > 0) items.push({ id: id(), kind: 'session', day: dayKey(x.day_offset), type: SPORT_IDS.includes(x.type) ? x.type : 'other', min: Math.round(minutes), rpe: Math.max(1, Math.min(10, Math.round(x.rpe) || 6)), title: x.title || '', notes: String(x.notes || '').trim().slice(0, 200), ex });
   }
   for (const x of json.skills || []) if (SKILLS[x.id]) items.push({ id: id(), kind: 'skill', day: dayKey(x.day_offset), skill: x.id });
+  for (const b of json.body || []) {
+    const values = {};
+    for (const m of BODYCOMP_METRICS) { const v = Number(b[m.key]); if (v > 0 && v < 10000) values[m.key] = Math.round(v * 10) / 10; }
+    if (Object.keys(values).length) items.push({ id: id(), kind: 'body', day: dayKey(b.day_offset), values });
+  }
   for (const t of json.remember || []) if (String(t || '').trim()) items.push({ id: id(), kind: 'note', day: today, text: String(t).trim().slice(0, 200) });
   for (const x of json.steps || []) if (x.count > 0) items.push({ id: id(), kind: 'steps', day: dayKey(x.day_offset), count: Math.round(x.count) });
   for (const x of json.sleep || []) if (x.hours > 0 && x.hours <= 14) items.push({ id: id(), kind: 'sleep', day: dayKey(x.day_offset), hours: Math.round(x.hours * 4) / 4 });
@@ -238,6 +257,7 @@ export function describe(it) {
     case 'supp': { const sp = st.supplements.find(x => x.id === it.suppId); return { area: 'Essen', icon: 'pill', title: sp ? sp.name : it.suppId, sub: 'genommen' }; }
     case 'session': return { area: 'Sport', icon: store.sportType(it.type).icon, title: it.title || store.sportType(it.type).label, sub: `${it.min} Min · Intensität ${it.rpe}/10${it.ex && it.ex.length ? ' · ' + exText(it.ex) : ''}${it.notes ? ' · ' + it.notes : ''}` };
     case 'skill': return { area: 'Sport', icon: SKILLS[it.skill].icon, title: SKILLS[it.skill].name, sub: 'geübt' };
+    case 'body': { const v = it.values; return { area: 'Körper', icon: 'scale', title: 'Körperanalyse', sub: [v.weight && `${String(v.weight).replace('.', ',')} kg`, v.bodyfat && `${String(v.bodyfat).replace('.', ',')} % Fett`, v.muscle && `${String(v.muscle).replace('.', ',')} kg Muskel`].filter(Boolean).join(' · ') || `${Object.keys(v).length} Werte` }; }
     case 'note': return { area: 'Gemerkt', icon: 'bulb', title: it.text, sub: 'merkt sich der Coach' };
     case 'steps': return { area: 'Sport', icon: 'steps', title: 'Schritte', sub: it.count.toLocaleString('de-DE') };
     case 'sleep': return { area: 'Sport', icon: 'moon', title: 'Schlaf', sub: `${String(it.hours).replace('.', ',')} h` };
@@ -257,6 +277,7 @@ export function applyItems(items, now = new Date()) {
   const days = [...new Set(items.map(i => i.day))];
   const snap = Object.fromEntries(days.map(k => [k, s.log[k] ? structuredClone(s.log[k]) : null]));
   const skillSnap = structuredClone(s.skills || {});
+  const measSnap = structuredClone(s.measurements || []);
   const liftCount = s.lifts.length;
   const notes = [];
   const created = [];
@@ -293,6 +314,12 @@ export function applyItems(items, now = new Date()) {
       }
       case 'skill': practiceSkill(k, it.skill); break;
       case 'note': { const n = store.addNote(it.text); if (n) notes.push(n.id); break; }
+      case 'body': {
+        const prev = store.getMeasurements().find(m => m.date === k);
+        store.addMeasurement({ date: k, note: (prev && prev.note) || 'Vom Coach eingelesen', values: { ...(prev ? prev.values : {}), ...it.values } });
+        if (it.values.weight) store.setWeight(k, it.values.weight);
+        break;
+      }
       case 'steps': store.setSteps(k, Math.max(it.count, store.getSteps(k))); break;
       case 'sleep': store.setSleep(k, it.hours); break;
       case 'knee': store.setDayMeta(k, 'knee', it.score); break;
@@ -306,6 +333,7 @@ export function applyItems(items, now = new Date()) {
     for (const [k, v] of Object.entries(snap)) { if (v) st.log[k] = v; else delete st.log[k]; }
     for (const fid of created) store.deleteFood(fid);
     st.skills = skillSnap;
+    st.measurements = measSnap;
     st.lifts.splice(liftCount);
     for (const nid of notes) store.removeNote(nid);
     store.save();

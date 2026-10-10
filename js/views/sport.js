@@ -251,7 +251,7 @@ function loadCard(today) {
       ${l.weeks.map((w, i) => {
         const h = Math.round(w / max * 64);
         const x = 12 + i * 72;
-        return `<rect x="${x}" y="${70 - h}" width="56" height="${Math.max(2, h)}" rx="8" fill="${i === 3 ? '#4D8DFF' : '#26324A'}"/>
+        return `<rect x="${x}" y="${70 - h}" width="56" height="${Math.max(2, h)}" rx="8" fill="${i === 3 ? 'var(--spo)' : 'var(--fill)'}"/>
           <text x="${x + 28}" y="86" text-anchor="middle">${i === 3 ? 'diese Woche' : `vor ${3 - i} Wo`}</text>
           ${w ? `<text x="${x + 28}" y="${64 - h}" text-anchor="middle" style="fill:var(--ink-2)">${de(w)}</text>` : ''}`;
       }).join('')}

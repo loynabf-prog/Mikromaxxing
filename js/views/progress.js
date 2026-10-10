@@ -1,5 +1,5 @@
 // ============================================================================
-// Fortschritt – Ziel, Streak, Woche, Gewicht, Knie & Schlaf, Fotos, Körper
+// Dashboard – Überblick, Ziel, Gewicht, Körper, Serie, Woche, Knie & Schlaf, Level, Fotos
 // ============================================================================
 import * as store from '../store.js';
 import { BODYCOMP_METRICS } from '../data.js';
@@ -8,24 +8,45 @@ import { getReview } from '../assistant.js';
 import { weekStart } from '../game.js';
 import { icon } from '../icons.js';
 import { $, $$, esc, de, router, openSheet, closeSheet, sheetHead, toast, miniRings, downscalePhoto, pickFile } from '../ui.js';
+import { openPlusMenu } from './coach.js';
 
 export function renderProgress(app) {
   const today = store.todayKey();
   app.innerHTML = `<div class="view">
-    <div class="vh"><div style="display:flex;align-items:center;gap:12px"><button class="icon-btn" id="pg-back" aria-label="Zurück">${icon('chevL')}</button>
-      <div><div class="vh-date">Dein Weg</div><div class="vh-title">Fortschritt</div></div></div></div>
-    ${levelCard(today)}
+    <div class="sub-h"><button class="icon-btn" id="pg-back" aria-label="Zurück">${icon('chevL')}</button><div class="vh-title">Dashboard</div></div>
+    ${overview(today)}
     ${projectionCard(today)}
-    ${calendarCard(today)}
-    ${motivationCard(today)}
+    <div id="sec-weight">${weightCard(today)}</div>
+    <div id="sec-body">${bodyCard()}</div>
+    <div id="sec-streak">${calendarCard(today)}</div>
     ${weekCard(today)}
-    ${weightCard(today)}
     ${kneeSleepCard(today)}
-    ${photosCard()}
+    ${levelCard(today)}
+    ${motivationCard(today)}
     ${badgesCard()}
-    ${bodyCard()}
+    ${photosCard()}
   </div>`;
   wire(app, today);
+}
+
+// Auf einen Blick: Gewicht, Körperfett, Serie, Level
+function overview(today) {
+  const w = store.currentWeight();
+  const t0 = store.weightTrend(today, 7), t1 = store.weightTrend(store.shiftDate(today, -7), 7);
+  const dw = t0 != null && t1 != null ? t0 - t1 : null;
+  const ms = store.getMeasurements();
+  const lm = ms[ms.length - 1], fm = ms[0];
+  const bf = lm && lm.values.bodyfat != null ? lm.values.bodyfat : null;
+  const dbf = bf != null && ms.length > 1 && fm.values.bodyfat != null ? bf - fm.values.bodyfat : null;
+  const streak = store.currentStreak(today), best = store.bestStreak();
+  const lv = levelInfo(totalXP());
+  const delta = (d, unit, goodDown = true) => d == null || Math.abs(d) < 0.05 ? '' : `<span class="dt ${(goodDown ? d < 0 : d > 0) ? 'good' : 'bad'}">${d > 0 ? '+' : '−'}${de(Math.abs(d), 1)} ${unit}</span>`;
+  return `<div class="ov">
+    <button class="ov-t" data-sec="sec-weight"><span class="ov-l">Gewicht</span><span class="ov-v num">${w != null ? de(w, 1) : '–'}<small> kg</small></span>${delta(dw, 'kg / Woche') || '<span class="dt">Trend folgt</span>'}</button>
+    <button class="ov-t" data-sec="sec-body"><span class="ov-l">Körperfett</span><span class="ov-v num">${bf != null ? de(bf, 1) : '–'}<small> %</small></span>${delta(dbf, '% seit Start') || `<span class="dt">${lm ? store.dateOf(lm.date).toLocaleDateString('de-DE', { day: 'numeric', month: 'short' }) : 'Foto an den Coach'}</span>`}</button>
+    <button class="ov-t" data-sec="sec-streak"><span class="ov-l">${icon('flame')}Serie</span><span class="ov-v num">${streak}<small> ${streak === 1 ? 'Tag' : 'Tage'}</small></span><span class="dt">Rekord ${best}</span></button>
+    <button class="ov-t" id="ov-lv"><span class="ov-l">${icon('star')}Level ${lv.level}</span><span class="ov-v">${esc(lv.rank)}</span><span class="lvl-bar"><i style="width:${lv.pct}%"></i></span></button>
+  </div>`;
 }
 
 function levelCard(today) {
@@ -137,10 +158,10 @@ function weightCard(today) {
     const path = pts.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
     const area = `${path} L${pts[pts.length - 1][0].toFixed(1)},${H} L${pts[0][0].toFixed(1)},${H} Z`;
     chart = `<svg class="chart" viewBox="0 0 ${W} ${H + 16}">
-      <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4D8DFF" stop-opacity=".35"/><stop offset="1" stop-color="#4D8DFF" stop-opacity="0"/></linearGradient></defs>
+      <defs><linearGradient id="wg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--nut)" stop-opacity=".18"/><stop offset="1" stop-color="var(--nut)" stop-opacity="0"/></linearGradient></defs>
       <path d="${area}" fill="url(#wg)"/>
-      <path d="${path}" fill="none" stroke="#4D8DFF" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round"/>
-      ${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="3" fill="#07080B" stroke="#4D8DFF" stroke-width="2"/>`).join('')}
+      <path d="${path}" fill="none" stroke="var(--nut)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>
+      ${pts.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6" fill="var(--card)" stroke="var(--nut)" stroke-width="1.8"/>`).join('')}
       <text x="${P}" y="${H + 14}">vor 30 Tagen</text><text x="${W - P}" y="${H + 14}" text-anchor="end">heute</text>
       <text x="${W - P}" y="${y(hi - .6) - 4}" text-anchor="end">${de(hi - .6, 1)}</text>
     </svg>`;
@@ -150,7 +171,7 @@ function weightCard(today) {
     <div class="ch"><span class="ch-title">Gewicht</span><span class="sub">${avg != null ? `Ø 7 Tage ${de(avg, 1)} kg` : ''}${target ? ` · Ziel ${de(target, 1)} kg` : ''}</span></div>
     ${chart}
     <div style="display:flex;gap:8px;margin-top:12px">
-      <input id="w-in" type="text" inputmode="decimal" step="0.1" placeholder="Heute (kg)" value="${todayW ?? ''}" style="flex:1;min-width:0;background:var(--fill);border:none;border-radius:14px;padding:12px 14px;font-weight:750">
+      <input id="w-in" type="text" inputmode="decimal" step="0.1" placeholder="Heute (kg)" value="${todayW ?? ''}" style="flex:1;min-width:0;background:var(--fill-2);border:none;border-radius:12px;padding:12px 14px">
       <button class="btn sm" id="w-save" style="height:48px">${icon('check')}Speichern</button>
     </div>
   </div>`;
@@ -165,7 +186,7 @@ function kneeSleepCard(today) {
   const bars = hist.map((h, i) => {
     if (h.sleep == null) return '';
     const bh = Math.min(1, h.sleep / 10) * (H - 20);
-    return `<rect x="${(P + i * bw + 1.5).toFixed(1)}" y="${(H - bh).toFixed(1)}" width="${(bw - 3).toFixed(1)}" height="${bh.toFixed(1)}" rx="2.5" fill="${h.sleep >= target ? '#8B6CE0' : '#3A2F5C'}"/>`;
+    return `<rect x="${(P + i * bw + 1.5).toFixed(1)}" y="${(H - bh).toFixed(1)}" width="${(bw - 3).toFixed(1)}" height="${bh.toFixed(1)}" rx="2.5" fill="${h.sleep >= target ? 'var(--spo)' : 'var(--faint)'}"/>`;
   }).join('');
   const kp = hist.map((h, i) => h.knee != null ? [P + i * bw + bw / 2, H - 6 - h.knee / 10 * (H - 26)] : null).filter(Boolean);
   const kpath = kp.map((p, i) => `${i ? 'L' : 'M'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
@@ -175,10 +196,10 @@ function kneeSleepCard(today) {
     <div class="ch"><span class="ch-title">Knie & Schlaf</span><span class="sub">28 Tage</span></div>
     <svg class="chart" viewBox="0 0 ${W} ${H + 4}">
       ${bars}
-      ${kp.length > 1 ? `<path d="${kpath}" fill="none" stroke="#FF6B6B" stroke-width="2.2" stroke-linejoin="round"/>` : ''}
-      ${kp.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.6" fill="#FF6B6B"/>`).join('')}
+      ${kp.length > 1 ? `<path d="${kpath}" fill="none" stroke="var(--nut)" stroke-width="2" stroke-linejoin="round"/>` : ''}
+      ${kp.map(p => `<circle cx="${p[0].toFixed(1)}" cy="${p[1].toFixed(1)}" r="2.4" fill="var(--nut)"/>`).join('')}
     </svg>
-    <div class="macros"><span><b style="color:#B08CFF">▮</b> Schlaf${avgSleep != null ? ` · Ø ${de(avgSleep, 1)} h` : ''}</span><span><b style="color:#FF6B6B">●</b> Knie${lastK ? ` · zuletzt ${lastK.knee}/10` : ''}</span></div>
+    <div class="macros"><span><b style="color:var(--spo)">▮</b> Schlaf${avgSleep != null ? ` · Ø ${de(avgSleep, 1)} h` : ''}</span><span><b style="color:var(--nut)">●</b> Knie${lastK ? ` · zuletzt ${lastK.knee}/10` : ''}</span></div>
   </div>`;
 }
 
@@ -205,7 +226,7 @@ function bodyCard() {
   const latest = list[list.length - 1], first = list[0];
   const keys = ['weight', 'bodyfat', 'muscle', 'fatmass', 'musclePct', 'water'];
   return `<div class="card">
-    <div class="ch"><span class="ch-title">Körperanalyse</span><button class="more" id="m-add">${icon('plus')}Messung</button></div>
+    <div class="ch"><span class="ch-title">Körperanalyse</span><span style="display:flex;gap:14px"><button class="more" id="m-photo">${icon('camera')}Foto</button><button class="more" id="m-add">${icon('plus')}Manuell</button></span></div>
     ${latest ? `<div class="sub" style="margin-bottom:10px">Letzte Messung ${store.dateOf(latest.date).toLocaleDateString('de-DE')}${list.length > 1 ? ` · Vergleich zu ${store.dateOf(first.date).toLocaleDateString('de-DE')}` : ''}</div>
       <div class="bc">${BODYCOMP_METRICS.filter(m => keys.includes(m.key) && latest.values[m.key] != null).map(m => {
         const v = latest.values[m.key];
@@ -219,13 +240,13 @@ function bodyCard() {
         return `<div class="bc-t"><div class="l">${esc(m.label)}</div><div class="v num">${de(v, 1)}<small> ${m.unit}</small>${d}</div></div>`;
       }).join('')}</div>
       <button class="btn ghost block" id="m-edit" style="margin-top:12px">${icon('edit')}Alle Werte ansehen & bearbeiten</button>`
-    : '<div class="empty">Trag deine InBody- oder Waagen-Analyse ein, dann siehst du hier Fett und Muskeln im Verlauf.</div>'}
+    : '<div class="empty">Schick dem Coach ein Foto deiner InBody- oder Waagen-Analyse – er liest alle Werte aus. Dann siehst du hier Fett und Muskeln im Verlauf.</div>'}
   </div>`;
 }
 
 function wire(app, today) {
   $$('[data-go]', app).forEach(b => b.onclick = () => router.go(b.dataset.go));
-  $('#pg-back', app).onclick = () => router.go(router.prev && router.prev !== 'progress' ? router.prev : 'today');
+  $('#pg-back', app).onclick = () => router.go(router.prev && router.prev !== 'progress' ? router.prev : 'more');
   $('#w-save', app).onclick = () => {
     const v = $('#w-in', app).value.replace(',', '.');
     store.setWeight(today, v);
@@ -247,6 +268,9 @@ function wire(app, today) {
       <figure><img src="${z.url}" alt=""><figcaption>${store.dateOf(z.date).toLocaleDateString('de-DE')}</figcaption></figure></div>`);
   };
   $('#m-add', app).onclick = () => openMeasurement(null);
+  $('#m-photo', app).onclick = () => openPlusMenu();
+  $$('[data-sec]', app).forEach(b => b.onclick = () => { const el = $('#' + b.dataset.sec, app); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  $('#ov-lv', app).onclick = () => openLevel(today);
   const kc = $('#kc-apply', app);
   if (kc) kc.onclick = () => { store.applyKcalOffset(Number(kc.dataset.delta)); router.rerender(); toast('Kalorienziel angepasst'); };
   const lv = $('#lv-open', app);

@@ -124,11 +124,11 @@ function restHtml(w) {
   const c = 2 * Math.PI * 23;
   const off = c * (1 - left / total);
   if (left <= 0) {
-    return `<div class="wo-rest done"><svg class="rr" viewBox="0 0 54 54"><circle cx="27" cy="27" r="23" fill="none" stroke="#34D399" stroke-width="5"/></svg>
+    return `<div class="wo-rest done"><svg class="rr" viewBox="0 0 54 54"><circle cx="27" cy="27" r="23" fill="none" stroke="#30C46F" stroke-width="5"/></svg>
       <div class="t"><b>Los!</b><span>Pause vorbei</span></div></div>`;
   }
-  return `<div class="wo-rest"><svg class="rr" viewBox="0 0 54 54"><circle cx="27" cy="27" r="23" fill="none" stroke="#22252D" stroke-width="5"/>
-    <circle cx="27" cy="27" r="23" fill="none" stroke="#60A5FA" stroke-width="5" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 27 27)"/></svg>
+  return `<div class="wo-rest"><svg class="rr" viewBox="0 0 54 54"><circle cx="27" cy="27" r="23" fill="none" stroke="#2C2C2E" stroke-width="5"/>
+    <circle cx="27" cy="27" r="23" fill="none" stroke="#FFFFFF" stroke-width="5" stroke-linecap="round" stroke-dasharray="${c.toFixed(1)}" stroke-dashoffset="${off.toFixed(1)}" transform="rotate(-90 27 27)"/></svg>
     <div class="t"><b>${fmtClock(left)}</b><span>Pause · Ziel ${fmtClock(total)}</span></div>
     <button class="skip" id="wo-skip">Überspringen</button></div>`;
 }
@@ -221,7 +221,7 @@ function renderFinish(w) {
     <div class="wo-name" style="margin-top:18px">${all.length ? 'Stark gemacht.' : 'Noch keine Sätze.'}</div>
     <div class="wo-plan">${minutes} Min · ${all.length} Sätze${volume ? ` · ${de(volume)} kg bewegt` : ''}</div>
     ${prs.length ? `<div class="wo-coach">${icon('trophy')}<div><b>${prs.length} neue${prs.length === 1 ? 'r' : ''} Rekord${prs.length === 1 ? '' : 'e'}</b><br>${prs.map(esc).join('<br>')}</div></div>` : ''}
-    <div class="lbl" style="margin:18px 0 8px;color:#8B93A1">Wie hart war das Workout insgesamt?</div>
+    <div class="lbl" style="margin:18px 0 8px;color:rgba(235,235,245,.6)">Wie hart war das Workout insgesamt?</div>
     <div class="rpe">${Array.from({ length: 10 }, (_, i) => `<button data-rpe="${i + 1}" class="${finishRpe === i + 1 ? 'on' : ''}">${i + 1}</button>`).join('')}</div>
     <div class="rpe-label" id="wo-rpel">${finishRpe}/10 · ${RPE_LABELS[finishRpe]}</div>
     <button class="wo-go" id="wo-save" style="margin-top:18px;${all.length ? '' : 'opacity:.4'}" ${all.length ? '' : 'disabled'}>${icon('check')}Workout speichern</button>

@@ -9,7 +9,7 @@ import { renderFood, getFoodDate } from './views/food.js';
 import { renderSport } from './views/sport.js';
 import { renderProgress } from './views/progress.js';
 import { renderSetup } from './views/setup.js';
-import { renderCoach, openCoach } from './views/coach.js';
+import { renderCoach, openCoach, openPlusMenu } from './views/coach.js';
 import { renderMore } from './views/more.js';
 import { hasAI } from './lookup.js';
 import { openQuickAdd } from './views/quickadd.js';
@@ -57,7 +57,7 @@ function init() {
   $('#q-mic').innerHTML = icon('mic');
   // Reden = Coach. Ohne Claude-Key (oder für vergangene Tage) das lokale Eintragen.
   const talk = (voice) => (hasAI() && quickKey() === store.todayKey()) ? openCoach({ voice }) : openQuickAdd({ key: quickKey(), voice });
-  $('#q-plus').onclick = () => openQuickAdd({ key: quickKey() });
+  $('#q-plus').onclick = () => (quickKey() === store.todayKey() ? openPlusMenu() : openQuickAdd({ key: quickKey() }));
   $('#q-text').onclick = () => talk(false);
   $('#q-mic').onclick = () => talk(true);
   // Zurück-Knopf der Unterseiten

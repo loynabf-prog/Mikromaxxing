@@ -9,7 +9,8 @@ import { createDictation, hasVoice } from '../voice.js';
 import { weekStart } from '../game.js';
 import { PERSONA } from '../persona.js';
 import { icon } from '../icons.js';
-import { $, $$, esc, router, toast, haptic, confetti } from '../ui.js';
+import { $, $$, esc, router, toast, haptic, confetti, openSheet, closeSheet, sheetHead, downscalePhoto, pickFile } from '../ui.js';
+import { openFoodPicker } from './food.js';
 import { openAiSetup } from './aisetup.js';
 import { afterChange } from './today.js';
 
@@ -24,6 +25,7 @@ let draft = '';
 let pending = null;            // { voice } – von der Eingabeleiste
 const undos = new Map();       // Nachrichten-ts → Rückgängig (nur in dieser Sitzung)
 let openLog = null;            // aufgeklappte Eintrags-Liste (ts)
+let att = null;                // angehängtes Foto { full, thumb }
 
 // Von überall: in den Coach springen (optional direkt mit Sprechen)
 export function openCoach({ voice = false } = {}) {
@@ -44,10 +46,17 @@ function itemsHtml(m, idx) {
   </div>`;
 }
 
+function sugHtml(m, i) {
+  if (!m.suggest || !m.suggest.length) return '';
+  return `<div class="sug">${m.suggest.map((sg, j) => `<button class="sug-b ${sg.done ? 'done' : ''}" data-sug="${i}:${j}" ${sg.done ? 'disabled' : ''}>
+    <span class="sm"><b>${esc(sg.title)}</b>${sg.why ? `<span>${esc(sg.why)}</span>` : ''}</span><span class="plus">${icon(sg.done ? 'check' : 'plus')}</span></button>`).join('')}</div>`;
+}
+
 function msgHtml(m, i) {
-  if (m.role === 'user') return `<div class="msg me"><div class="bub">${esc(m.text)}</div></div>`;
+  if (m.role === 'user') return `<div class="msg me"><div class="bub">${m.img ? `<img class="att" src="${m.img}" alt="Foto">` : ''}${esc(m.text)}</div></div>`;
   return `<div class="msg ai"><div class="bub">${esc(m.text).replace(/\n/g, '<br>')}</div>
     ${m.items && m.items.length ? itemsHtml(m, i) : ''}
+    ${sugHtml(m, i)}
     ${m.error ? `<button class="chipbtn" data-retry="${i}">${icon('refresh')}Nochmal</button>` : ''}
   </div>`;
 }
@@ -92,9 +101,11 @@ export function renderCoach(app) {
     <button class="c-mic" id="c-mic" aria-label="Sprechen">${icon('mic')}</button>
     <button class="c-send" id="c-send" aria-label="Senden">${icon('send')}</button>
     <div class="c-rec" id="c-rec"><i></i><span>Ich höre zu – Pausen sind okay. Tippe auf <b>Fertig</b>, wenn du durch bist.</span></div>
+    <div class="c-att" id="c-att"></div>
   </div>`;
   wire(app);
   recUI();
+  attUI();
   const chat = $('#chat', app);
   if (chat && hist.length) requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
   if (pending) {
@@ -134,7 +145,8 @@ function wire(app) {
     afterChange(store.todayKey());
     toast('Rückgängig gemacht');
   });
-  $('#c-plus', app).onclick = () => dict.on ? dict.cancel() : openQuickAdd({ key: store.todayKey(), onDone: () => router.rerender() });
+  $('#c-plus', app).onclick = () => (dict.on ? dict.cancel() : openPlusMenu());
+  $$('[data-sug]', app).forEach(b => b.onclick = () => { const [i, j] = b.dataset.sug.split(':').map(Number); applySuggestion(i, j); });
   $$('[data-retry]', app).forEach(b => b.onclick = () => {
     const h = chatHistory();
     const lastUser = [...h].reverse().find(m => m.role === 'user');
@@ -146,17 +158,23 @@ function wire(app) {
 
 async function send(text) {
   text = String(text || '').trim();
-  if (!text || busy) return;
-  if (!hasAI()) { draft = ''; const inp = $('#c-in'); if (inp) inp.value = ''; return openQuickAdd({ key: store.todayKey(), text }); }
+  const photo = att;
+  if ((!text && !photo) || busy) return;
+  if (!hasAI()) {
+    if (photo) return openAiSetup(() => router.rerender());
+    draft = ''; const inp = $('#c-in'); if (inp) inp.value = ''; return openQuickAdd({ key: store.todayKey(), text });
+  }
+  if (!text) text = 'Hier ein Foto.';
   // Was schon eingetragen wurde, sieht der Coach im Verlauf – so trägt er nichts doppelt ein
   const history = chatHistory().map(m => ({ role: m.role, text: m.text + (m.role !== 'user' && m.applied && m.items && m.items.length ? `\n[Eingetragen: ${m.items.map(it => describe(it).title).join(', ')}]` : '') }));
-  pushChat({ role: 'user', text });
+  pushChat(photo ? { role: 'user', text, img: photo.thumb } : { role: 'user', text });
+  att = null;
   draft = '';
   busy = true;
   router.rerender();
   try {
-    const r = await askCoach(text, { mode: 'chat', history });
-    pushChat({ role: 'ai', text: r.reply || (r.items.length ? 'Hab ich eingetragen.' : '…'), items: r.items, quick: r.quick });
+    const r = await askCoach(text, { mode: 'chat', history, image: photo ? photo.full : null });
+    pushChat({ role: 'ai', text: r.reply || (r.items.length ? 'Hab ich eingetragen.' : '…'), items: r.items, quick: r.quick, suggest: r.suggest });
     if (r.items.length) apply(chatHistory().length - 1, true);
   } catch (e) {
     pushChat({ role: 'ai', text: e.message || 'Da ist was schiefgelaufen.', error: true });
@@ -200,4 +218,54 @@ function recUI() {
 function voice(inp) {
   if (!hasVoice() || !dict.start(inp.value)) { inp.focus(); toast('Tippe auf das Mikrofon deiner Tastatur und sprich los'); return; }
   haptic();
+}
+
+// --- Vorschlag mit einem Tipp eintragen -----------------------------------------------
+function applySuggestion(i, j) {
+  const m = chatHistory()[i];
+  const sg = m && m.suggest && m.suggest[j];
+  if (!sg || sg.done) return;
+  const key = store.todayKey();
+  const undo = applyItems(sg.items);
+  sg.done = true; store.save();
+  haptic(10); afterChange(key);
+  toast(`${sg.title} eingetragen`, 'Rückgängig', () => { undo(); sg.done = false; store.save(); afterChange(key); });
+}
+
+// --- Plus: Foto, Scannen, Suchen, Schnell eintragen -------------------------------------
+export function openPlusMenu() {
+  const row = (id, ic, t, sub) => `<button class="row" data-pm="${id}"><span class="row-ic">${icon(ic)}</span><span class="row-main"><div class="row-t">${t}</div><div class="row-s">${sub}</div></span><span class="row-end">${icon('chev')}</span></button>`;
+  const sheet = openSheet(`${sheetHead('Hinzufügen')}<div class="sheet-body"><div class="rows">
+    ${row('photo', 'camera', 'Foto', 'Essen, Körperanalyse, Speisekarte – der Coach liest es aus')}
+    ${row('scan', 'barcode', 'Barcode scannen', 'Produkt aus dem Supermarkt')}
+    ${row('search', 'search', 'Lebensmittel suchen', 'In deiner Bibliothek oder neu anlegen')}
+    ${row('quick', 'plus', 'Schnell eintragen', 'Mit Vorschau, auch für andere Tage')}
+  </div></div>`);
+  $$('[data-pm]', sheet).forEach(b => b.onclick = async () => {
+    const a = b.dataset.pm;
+    closeSheet();
+    const key = store.todayKey();
+    if (a === 'scan') return openQuickAdd({ key, scan: true });
+    if (a === 'search') return openFoodPicker({ key });
+    if (a === 'quick') return openQuickAdd({ key });
+    if (!hasAI()) return openAiSetup(() => router.rerender());
+    const file = await pickFile('image/*');
+    if (!file) return;
+    try {
+      const [full, thumb] = await Promise.all([
+        downscalePhoto(file, { square: false, maxW: 1568, maxH: 1568, quality: 0.85 }),
+        downscalePhoto(file, { square: false, maxW: 360, maxH: 360, quality: 0.7 }),
+      ]);
+      att = { full, thumb };
+      if (router.tab !== 'coach') router.go('coach'); else attUI();
+      const inp = $('#c-in'); if (inp) { inp.placeholder = 'Dazu schreiben (optional)'; inp.focus(); }
+    } catch (e) { toast('Foto konnte nicht geladen werden'); }
+  });
+}
+function attUI() {
+  const box = $('#c-att');
+  if (!box) return;
+  box.classList.toggle('on', !!att);
+  box.innerHTML = att ? `<img src="${att.thumb}" alt=""><span>Foto angehängt – schreib dazu oder tippe auf Senden</span><button id="c-att-x" aria-label="Foto entfernen">${icon('x')}</button>` : '';
+  const x = $('#c-att-x'); if (x) x.onclick = () => { att = null; attUI(); };
 }

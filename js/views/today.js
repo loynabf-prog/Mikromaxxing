@@ -30,35 +30,68 @@ export function renderToday(app) {
   const protLeft = Math.max(0, Math.round(t.protein - p.totals.protein));
   lastOverall = p.overall;
 
+  const streak = store.currentStreak(key);
+  const photo = s.profile.photo;
+
   app.innerHTML = `<div class="view simple">
     <div class="s-head">
-      <div><div class="vh-date">${esc(longDate(store.dateOf(key)))}</div><div class="s-hi">${greeting(now)}, ${esc(s.profile.name || PERSONA.name)}</div></div>
+      <div><div class="vh-date">${esc(longDate(store.dateOf(key)))}</div><div class="s-hi">${greeting(now)},<br>${esc(s.profile.name || PERSONA.name)}</div></div>
+      <button class="me-btn" data-go="progress" aria-label="Dein Dashboard">${photo ? `<img src="${photo}" alt="">` : PERSON_SVG}<span class="lv num">${lv.level}</span></button>
     </div>
 
-    <button class="lvl-thin" id="lvl" aria-label="Level und Missionen">
-      <b class="num">${lv.level}</b><span>${esc(lv.rank)}</span>
-      <i class="lvl-bar"><i style="width:${lv.pct}%"></i></i>
-${icon('chev')}
-    </button>
-
-    <div class="s-hero">
-      <button class="rings" id="rings" aria-label="Details zu den Ringen">${ringsSVG(p, { photo: s.profile.photo })}</button>
-      <button class="s-nums" data-go="food">
-        <div class="s-kcal num ${left < -100 ? 'over' : ''}">${de(Math.abs(left))}</div>
-        <div class="s-lbl">${left >= 0 ? 'kcal übrig' : 'kcal drüber'}</div>
-        <div class="s-prot num">${de(protLeft)}<small> g</small></div>
-        <div class="s-lbl">${protLeft ? 'Protein offen' : 'Protein geschafft'}</div>
-      </button>
+    <div class="status-row">
+      <button class="stat-pill flame ${streak ? '' : 'zero'}" id="streak">${icon('flame')}${streak}<span>${streak === 1 ? 'Tag' : 'Tage'}</span></button>
+      <button class="stat-pill xp" id="lvl">${icon('star')}Level ${lv.level}<i class="bar"><i style="width:${lv.pct}%"></i></i><span>${ms.filter(m => m.done).length}/${ms.length}</span></button>
     </div>
-    <button class="s-legend" id="legend">
-      <span><i class="d-nut"></i>Essen</span><span><i class="d-spo"></i>Sport</span>
-    </button>
 
+    <div class="s-card">
+      <div class="s-hero">
+        <button class="rings" id="rings" aria-label="Details zu Essen und Sport">${ringsSVG(p, { photo: null })}</button>
+        <button class="s-nums" data-go="food">
+          <div class="s-kcal num ${left < -100 ? 'over' : ''}">${de(Math.abs(left))}</div>
+          <div class="s-lbl">${left >= 0 ? 'kcal übrig' : 'kcal drüber'}</div>
+          <div class="s-prot num">${de(protLeft)}<small> g</small></div>
+          <div class="s-lbl">${protLeft ? 'Protein offen' : 'Protein geschafft'}</div>
+        </button>
+      </div>
+      <div class="s-split" id="legend">
+        <button data-pill><i class="d-nut"></i>Essen<b>${p.nutrition} %</b></button>
+        <button data-pill><i class="d-spo"></i>Sport<b>${p.sport} %</b></button>
+      </div>
+    </div>
+
+    ${planRow(key, now)}
     ${nextCard(ns)}
-    <button class="s-link" id="dayplan">${icon('clock')}Ganzer Tag ansehen${icon('chev')}</button>
+    <button class="s-link" id="dayplan">${icon('clock')}Ganzer Tag${icon('chev')}</button>
   </div>`;
 
   wireToday(app, key, ns);
+}
+
+const PERSON_SVG = '<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="8" r="4.2"/><path d="M4 20.5c.9-4.2 4.1-6.3 8-6.3s7.1 2.1 8 6.3z"/></svg>';
+
+// Heute geplantes Training – jederzeit mit einem Tipp abhaken (auch vorher)
+function planRow(key, now) {
+  const tr = trainingWindow(key);
+  const sessions = store.sessionsFor(key);
+  const burn = store.DAY_TYPES[store.dayType(key)].burn;
+  if (sessions.length) {
+    const x = sessions[sessions.length - 1];
+    return `<button class="plan-row done" data-go="sport"><span class="pi">${icon(store.sportType(x.type).icon)}</span>
+      <span class="pm"><b>${esc(x.title)}</b><span>${x.min} Min${burn ? ` · ~${de(burn)} kcal im Budget` : ''}</span></span>
+      <span class="pc">${icon('check')}Erledigt</span></button>`;
+  }
+  if (!tr) {
+    return `<button class="plan-row" data-plan="free"><span class="pi">${icon('walk')}</span>
+      <span class="pm"><b>Heute frei</b><span>Spaziergang, Schritte oder spontan trainieren</span></span>
+      <span class="pc">${icon('plus')}Eintragen</span></button>`;
+  }
+  const isGym = tr.kind === 'gym';
+  const h = now.getHours() + now.getMinutes() / 60 + (store.todayKey(now) !== store.dateKey(now) ? 24 : 0);
+  const when = h < tr.start ? `heute ${fmtH(tr.start)}` : h <= tr.end ? 'läuft gerade' : `war ${fmtH(tr.start)}`;
+  return `<div class="plan-row"><span class="pi">${icon(tr.icon || 'dumbbell')}</span>
+    <span class="pm"><b>${esc(tr.title)}</b><span>${when}${burn ? ` · ~${de(burn)} kcal schon im Budget` : ''}</span></span>
+    <button class="pc" data-plan="${isGym ? 'gym' : 'sport'}">${icon(isGym ? 'play' : 'check')}${isGym ? 'Starten' : 'Abhaken'}</button></div>`;
 }
 
 // Die eine Karte: was jetzt dran ist
@@ -108,8 +141,16 @@ function doStep(key, a) {
 function wireToday(app, key, ns) {
   $$('[data-go]', app).forEach(b => b.onclick = () => router.go(b.dataset.go));
   $('#lvl', app).onclick = () => openLevelSheet(key);
+  $('#streak', app).onclick = () => openLevelSheet(key);
   $('#rings', app).onclick = () => openPillarsSheet(key);
-  $('#legend', app).onclick = () => openPillarsSheet(key);
+  $$('[data-pill]', app).forEach(b => b.onclick = () => openPillarsSheet(key));
+  $$('[data-plan]', app).forEach(b => b.onclick = (e) => {
+    e.stopPropagation();
+    const a = b.dataset.plan;
+    if (a === 'gym') openWorkout(key);
+    else if (a === 'sport') doStep(key, { act: 'quicksession' });
+    else openSessionSheet(key, {});
+  });
   $('#dayplan', app).onclick = () => liveSheet('Dein Tag', 'Fahrplan aus deinem Rhythmus und Training', () => planCard(key, new Date()), (root) => wireCards(root, key));
   const pa = $('[data-step]', app); if (pa) pa.onclick = () => doStep(key, ns.primary);
   const sa = $('[data-step2]', app); if (sa) sa.onclick = () => doStep(key, ns.secondary);
@@ -145,7 +186,7 @@ function openLevelSheet(key) {
     return `<div class="lvl-sheet"><span class="lvl-badge num">${lv.level}</span><div><b>${esc(lv.rank)}</b><span class="lvl-bar"><i style="width:${lv.pct}%"></i></span>
       <span class="sub">+${dayXP(key).xp} XP heute · ${de(lv.need - lv.into)} bis Level ${lv.level + 1}</span></div></div>
       ${missionsCard(key, new Date())}
-      <button class="btn ghost block" data-go="progress">${icon('chart')}Fortschritt ansehen</button>`;
+      <button class="btn ghost block" data-go="progress">${icon('chart')}Dashboard ansehen</button>`;
   }, (root) => wireCards(root, key));
 }
 function wireCards(root, key) {
@@ -419,8 +460,8 @@ export function openRehaSheet(key) {
   let set = 1, phase = 'idle', left = HOLD, timer = null;
   const sheet = openSheet(`${sheetHead(KNEE_REHA.title, KNEE_REHA.detail)}
     <p class="hint">${esc(KNEE_REHA.why)} Schmerz bis ca. 3/10 ist okay, danach Winkel flacher machen.</p>
-    <div class="card" style="text-align:center;background:var(--reg-t);box-shadow:none">
-      <div class="lbl" id="rh-phase" style="color:var(--reg)">Bereit</div>
+    <div class="card" style="text-align:center;background:var(--fill-2)">
+      <div class="lbl" id="rh-phase" style="color:var(--ink)">Bereit</div>
       <div class="big num" id="rh-time" style="margin:8px 0 6px">${fmtClock(HOLD)}</div>
       <div class="sub" id="rh-set">Satz 1 von ${SETS}</div>
     </div>

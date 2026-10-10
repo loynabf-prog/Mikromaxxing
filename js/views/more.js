@@ -1,5 +1,5 @@
 // ============================================================================
-// Mehr – alles, was nicht jeden Tag gebraucht wird: Essen, Sport, Fortschritt,
+// Mehr – alles, was nicht jeden Tag gebraucht wird: Dashboard, Essen, Sport,
 // was sich der Coach gemerkt hat, Einstellungen.
 // ============================================================================
 import * as store from '../store.js';
@@ -23,9 +23,11 @@ export function renderMore(app) {
   app.innerHTML = `<div class="view">
     <div class="vh"><div><div class="vh-title">Mehr</div></div></div>
     <div class="rows">
+      ${row('progress', 'chart', 'Dashboard', `Level ${lv.level} · ${lv.rank}${w ? ` · ${de(w, 1)} kg` : ''}`)}
+    </div>
+    <div class="rows">
       ${row('food', 'apple', 'Essen', `${de(Math.abs(left))} kcal ${left >= 0 ? 'übrig' : 'drüber'} · ${de(Math.max(0, mt.protein - tot.protein))} g Protein offen`)}
       ${row('sport', 'dumbbell', 'Sport', done.length ? `Heute: ${done.map(x => x.title).join(', ')} ✓` : tr ? `Heute: ${tr.title} · ${fmtH(tr.start)}` : 'Heute frei')}
-      ${row('progress', 'chart', 'Fortschritt', `Level ${lv.level} · ${lv.rank}${w ? ` · ${de(w, 1)} kg` : ''}`)}
     </div>
     <div class="rows">
       ${row('notes', 'bulb', 'Das weiß dein Coach', notes.length ? `${notes.length} ${notes.length === 1 ? 'Sache' : 'Sachen'} gemerkt` : 'noch nichts gemerkt')}
