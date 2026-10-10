@@ -5,6 +5,7 @@
 import * as store from '../store.js';
 import { askCoach, applyItems, describe, chatHistory, pushChat, clearChat, weeklyReview, getReview, hasAI } from '../assistant.js';
 import { openQuickAdd } from './quickadd.js';
+import { createDictation, hasVoice } from '../voice.js';
 import { weekStart } from '../game.js';
 import { PERSONA } from '../persona.js';
 import { icon } from '../icons.js';
@@ -12,7 +13,6 @@ import { $, $$, esc, router, toast, haptic, confetti } from '../ui.js';
 import { openAiSetup } from './aisetup.js';
 import { afterChange } from './today.js';
 
-const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
 const STARTERS = [
   'Was soll ich heute Abend essen?',
   'Wie läuft meine Woche bisher?',
@@ -92,8 +92,10 @@ export function renderCoach(app) {
     <textarea id="c-in" rows="1" placeholder="Erzähl oder frag …">${esc(draft)}</textarea>
     <button class="c-mic" id="c-mic" aria-label="Sprechen">${icon('mic')}</button>
     <button class="c-send" id="c-send" aria-label="Senden">${icon('send')}</button>
+    <div class="c-rec" id="c-rec"><i></i><span>Ich höre zu – Pausen sind okay. Tippe auf <b>Fertig</b>, wenn du durch bist.</span></div>
   </div>`;
   wire(app);
+  recUI();
   const chat = $('#chat', app);
   if (chat && hist.length) requestAnimationFrame(() => window.scrollTo(0, document.body.scrollHeight));
   if (pending) {
@@ -118,9 +120,9 @@ function wire(app) {
   const inp = $('#c-in', app);
   const grow = () => { inp.style.height = 'auto'; inp.style.height = Math.min(120, inp.scrollHeight) + 'px'; };
   inp.oninput = () => { draft = inp.value; grow(); };
-  inp.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(inp.value); } };
+  inp.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (dict.on) dict.finish(); else send(inp.value); } };
   grow();
-  $('#c-send', app).onclick = () => send(inp.value);
+  $('#c-send', app).onclick = () => (dict.on ? dict.finish() : send(inp.value));
   $$('[data-q]', app).forEach(b => b.onclick = () => send(b.dataset.q));
   $$('[data-apply]', app).forEach(b => b.onclick = () => apply(Number(b.dataset.apply)));
   $$('[data-logt]', app).forEach(b => b.onclick = () => { const t = Number(b.dataset.logt); openLog = openLog === t ? null : t; router.rerender(); });
@@ -133,14 +135,14 @@ function wire(app) {
     afterChange(store.todayKey());
     toast('Rückgängig gemacht');
   });
-  $('#c-plus', app).onclick = () => openQuickAdd({ key: store.todayKey(), onDone: () => router.rerender() });
+  $('#c-plus', app).onclick = () => dict.on ? dict.cancel() : openQuickAdd({ key: store.todayKey(), onDone: () => router.rerender() });
   $$('[data-retry]', app).forEach(b => b.onclick = () => {
     const h = chatHistory();
     const lastUser = [...h].reverse().find(m => m.role === 'user');
     h.splice(Number(b.dataset.retry), 1); store.save();
     if (lastUser) { h.splice(h.lastIndexOf(lastUser), 1); store.save(); send(lastUser.text); }
   });
-  $('#c-mic', app).onclick = () => voice(inp);
+  $('#c-mic', app).onclick = () => (dict.on ? dict.finish() : voice(inp));
 }
 
 async function send(text) {
@@ -178,20 +180,24 @@ function apply(idx, quiet = false) {
   if (!quiet) toast(`${m.items.length} ${m.items.length === 1 ? 'Eintrag' : 'Einträge'} gespeichert`);
 }
 
-let rec = null;
+// --- Sprechen: hört zu, bis „Fertig" gedrückt wird ------------------------------------
+const dict = createDictation({
+  onText: (t) => { draft = t; const inp = $('#c-in'); if (inp) { inp.value = t; inp.style.height = 'auto'; inp.style.height = Math.min(120, inp.scrollHeight) + 'px'; } },
+  onState: () => recUI(),
+  onDone: (t) => { if (t) send(t); },
+  onError: (msg) => toast(msg),
+});
+function recUI() {
+  const bar = $('#cbar');
+  if (!bar) return;
+  const on = dict.on;
+  bar.classList.toggle('listening', on);
+  const rh = $('#c-rec'); if (rh) rh.classList.toggle('on', on);
+  const plus = $('#c-plus'); if (plus) { plus.innerHTML = icon(on ? 'x' : 'plus'); plus.setAttribute('aria-label', on ? 'Abbrechen' : 'Scannen, suchen, schnell eintragen'); }
+  const sendB = $('#c-send'); if (sendB) sendB.innerHTML = on ? `${icon('check')}<span>Fertig</span>` : icon('send');
+  const inp = $('#c-in'); if (inp) inp.placeholder = on ? 'Ich höre zu …' : 'Erzähl oder frag …';
+}
 function voice(inp) {
-  if (!SR) { inp.focus(); toast('Tippe auf das Mikrofon deiner Tastatur und sprich los'); return; }
-  if (rec) { try { rec.stop(); } catch (e) { /* ok */ } return; }
-  try {
-    rec = new SR();
-    rec.lang = 'de-DE'; rec.interimResults = true; rec.continuous = false;
-    const base = inp.value.trim() ? inp.value.trim() + ' ' : '';
-    let heard = '';
-    rec.onresult = (e) => { heard = ''; for (const r of e.results) heard += r[0].transcript; inp.value = base + heard; draft = inp.value; };
-    rec.onerror = () => { rec = null; $('#c-mic') && $('#c-mic').classList.remove('on'); };
-    rec.onend = () => { rec = null; const b = $('#c-mic'); if (b) b.classList.remove('on'); if (heard.trim()) send(inp.value); };
-    rec.start();
-    $('#c-mic').classList.add('on');
-    haptic();
-  } catch (e) { rec = null; inp.focus(); toast('Spracheingabe nicht verfügbar – nutze das Tastatur-Mikro'); }
+  if (!hasVoice() || !dict.start(inp.value)) { inp.focus(); toast('Tippe auf das Mikrofon deiner Tastatur und sprich los'); return; }
+  haptic();
 }

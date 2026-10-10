@@ -14,7 +14,8 @@ import { scanAndAdd } from './scan.js';
 import { openAiSetup } from './aisetup.js';
 import { localIntents, askCoach, applyItems, describe } from '../assistant.js';
 
-const SR = typeof window !== 'undefined' ? (window.SpeechRecognition || window.webkitSpeechRecognition) : null;
+import { createDictation, hasVoice } from '../voice.js';
+const SR = hasVoice();
 const MICRO_KEYS = NUTRIENTS.filter(n => n.group === 'vitamin' || n.group === 'mineral' || n.key === 'omega3').map(n => n.key);
 
 export function openQuickAdd({ key = store.todayKey(), text = '', voice = false, scan = false } = {}) {
@@ -25,7 +26,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
   const extras = [];      // gescannte Produkte
   let editing = null;     // aufgeklappter Posten (Index)
   let ai = null;          // Claude-Ergebnis: { status, items, reply, error }
-  let rec = null, recBase = '';
+  let dict = null;
 
   const sheet = openSheet(`
     ${sheetHead('Schnell eintragen', key === store.todayKey() ? 'Scannen, suchen oder kurz tippen' : store.formatDateLabel(key))}
@@ -50,54 +51,33 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
   ta.addEventListener('keydown', e => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); ta.blur(); update(); smartRun(); }
   });
-  $('#qa-mic', sheet).onclick = () => (rec ? stopVoice() : startVoice());
+  $('#qa-mic', sheet).onclick = () => (dict && dict.on ? dict.finish() : startVoice());
 
   const idleStatus = () => (SR ? 'Mikro antippen zum Sprechen' : 'Tipp: Diktieren über das Tastatur-Mikro');
   $('#qa-status', sheet).textContent = idleStatus();
 
   // ---------- Sprache ----------
   function setRec(on) {
-    $('#qa-input', sheet).classList.toggle('rec', on);
-    $('#qa-mic', sheet).classList.toggle('on', on);
+    if (!sheet.isConnected) return;
+    $('#qa-input', sheet).classList.toggle('listening', on);
+    const mic = $('#qa-mic', sheet);
+    mic.classList.toggle('on', on);
+    mic.innerHTML = on ? `${icon('check')}<span>Fertig</span>` : icon('mic');
     const st = $('#qa-status', sheet);
-    st.classList.toggle('rec', on);
+    st.classList.toggle('listening', on);
     st.innerHTML = on ? '<i></i>Ich höre zu …' : idleStatus();
   }
   function startVoice() {
-    if (!SR) { ta.focus(); toast('Tippe auf das Mikrofon deiner Tastatur und sprich los'); return; }
-    try {
-      rec = new SR();
-      rec.lang = 'de-DE'; rec.interimResults = true; rec.continuous = false; rec.maxAlternatives = 1;
-      recBase = ta.value.trim() ? ta.value.trim() + ', ' : '';
-      let heard = false;
-      rec.onresult = e => {
-        let out = '';
-        for (const r of e.results) out += r[0].transcript;
-        ta.value = recBase + out;
-        heard = true;
-        update();
-      };
-      rec.onerror = e => {
-        stopVoice();
-        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
-          ta.focus();
-          toast('Mikrofon hier nicht erlaubt – nutze das Mikro auf der Tastatur');
-        }
-      };
-      rec.onend = () => { rec = null; setRec(false); if (heard) smartRun(); };
-      rec.start();
-      setRec(true);
-      haptic();
-    } catch (e) {
-      rec = null; ta.focus();
-      toast('Spracheingabe nicht verfügbar – nutze das Tastatur-Mikro');
-    }
+    if (!dict) dict = createDictation({
+      onText: (t) => { ta.value = t; update(); },
+      onState: (on) => setRec(on),
+      onDone: (t) => { if (t && sheet.isConnected) smartRun(); },
+      onError: (msg) => { ta.focus(); toast(msg); },
+    });
+    if (!SR || !dict.start(ta.value)) { ta.focus(); toast('Tippe auf das Mikrofon deiner Tastatur und sprich los'); return; }
+    haptic();
   }
-  function stopVoice() {
-    if (rec) { try { rec.stop(); } catch (e) { /* schon beendet */ } }
-    rec = null;
-    if (sheet.isConnected) setRec(false);
-  }
+  function stopVoice() { if (dict) dict.cancel(); }
 
   // ---------- Scannen ----------
   function startScan() {
