@@ -123,7 +123,7 @@ export const DEFAULT_PROFILE = {
   targetBodyfat: 15,  // Ziel-Körperfett % (Stretch: 12 %)
   photo: null,        // Profilfoto (Data-URL) für den Tages-Ring
   dayGoal: 80,        // ab wie viel % Ring gilt der Tag als "geschafft" (Streak)
-  sleepTarget: 8,     // Schlafziel in Stunden (Regeneration-Ring)
+  sleepTarget: 8,     // Schlafziel in Stunden (Teil des Sport-Rings)
   wakeTime: '07:00',  // übliche Aufstehzeit (für den Schlafenszeit-Hinweis)
   stepGoal: 10000,    // Schritte-Minimum an Tagen ohne Einheit (Sport-Ring)
 };

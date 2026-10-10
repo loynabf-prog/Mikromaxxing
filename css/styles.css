@@ -259,12 +259,12 @@ svg.i { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-widt
 .tile .mid { margin-top: 6px; }
 .knee-scale { display: grid; grid-template-columns: repeat(11, 1fr); gap: 3px; margin-top: 8px; }
 .knee-scale button { height: 26px; border-radius: 7px; background: var(--raise); font-size: 11px; font-weight: 850; color: var(--faint); }
-.knee-scale button.lo { background: var(--reg-t); color: var(--reg); }
-.knee-scale button.on { background: var(--reg); color: var(--on-ink); }
+.knee-scale button.lo { background: var(--spo-t); color: var(--spo); }
+.knee-scale button.on { background: var(--spo); color: var(--on-ink); }
 .knee-scale button.on.hot { background: var(--bad); }
 .reha-btn { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left; margin-top: 10px; background: var(--fill); border-radius: 16px; padding: 10px 12px; }
 .reha-btn .box { width: 26px; height: 26px; border-radius: 9px; border: 2px solid #3A404C; display: flex; align-items: center; justify-content: center; color: var(--on-ink); flex: 0 0 auto; }
-.reha-btn.on .box { background: var(--reg); border-color: var(--reg); }
+.reha-btn.on .box { background: var(--spo); border-color: var(--spo); }
 .reha-btn .box svg.i { width: 15px; height: 15px; stroke-width: 3; }
 .reha-btn b { display: block; font-size: 14px; font-weight: 800; }
 .reha-btn span { font-size: 12px; color: var(--dim); font-weight: 600; }
@@ -983,3 +983,15 @@ body { background: var(--bg); }
 .c-rec b { color: var(--nut); }
 .c-rec i { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); flex: none; animation: pulse 1.2s infinite; }
 .qa-mic.on { width: auto; padding: 0 14px 0 10px; gap: 5px; border-radius: 22px; background: var(--nut); color: var(--on-ink); font-size: 14px; font-weight: 850; box-shadow: none; }
+
+/* Erholung als Teil von Sport: untereinander, große Knie-Skala */
+#regen .regen { grid-template-columns: 1fr; }
+#regen .regen .tile { background: var(--fill); }
+#regen .regen button.tile { display: flex; align-items: center; justify-content: space-between; text-align: left; }
+#regen .regen button.tile .sub { margin-top: 0 !important; }
+#regen .knee-scale { gap: 4px; margin-top: 10px; }
+#regen .knee-scale button { height: 36px; border-radius: 9px; font-size: 13.5px; color: var(--ink-2); }
+#regen .knee-scale button.lo { background: var(--spo-t); color: var(--spo); }
+#regen .knee-scale button.on { background: var(--spo); color: var(--on-ink); }
+#regen .knee-scale button.on.hot { background: var(--bad); }
+#regen .regen button.tile .mid { margin-top: 0; }

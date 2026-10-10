@@ -14,10 +14,9 @@ import { openAiSetup } from './aisetup.js';
 import { afterChange } from './today.js';
 
 const STARTERS = [
-  'Was soll ich heute Abend essen?',
+  'Was soll ich jetzt noch essen?',
+  'Grillteller oder Döner – was ist besser für mich?',
   'Wie läuft meine Woche bisher?',
-  'Ich hab mittags eine Bowl mit Hähnchen gegessen und 1 L Wasser getrunken',
-  'Wie schaffe ich es, abends nicht mehr zu snacken?',
   'Was kann ich heute fürs Knie tun?',
 ];
 let busy = false;
@@ -149,7 +148,8 @@ async function send(text) {
   text = String(text || '').trim();
   if (!text || busy) return;
   if (!hasAI()) { draft = ''; const inp = $('#c-in'); if (inp) inp.value = ''; return openQuickAdd({ key: store.todayKey(), text }); }
-  const history = chatHistory().map(m => ({ role: m.role, text: m.text }));
+  // Was schon eingetragen wurde, sieht der Coach im Verlauf – so trägt er nichts doppelt ein
+  const history = chatHistory().map(m => ({ role: m.role, text: m.text + (m.role !== 'user' && m.applied && m.items && m.items.length ? `\n[Eingetragen: ${m.items.map(it => describe(it).title).join(', ')}]` : '') }));
   pushChat({ role: 'user', text });
   draft = '';
   busy = true;

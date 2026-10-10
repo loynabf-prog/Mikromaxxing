@@ -1,6 +1,6 @@
 // ============================================================================
 // Mikromaxxing – State-Verwaltung (localStorage)
-// Drei Säulen: Ernährung · Sport · Regeneration. Alles bleibt lokal im Browser.
+// Zwei Bereiche: Essen (inkl. Diät) · Sport (inkl. Erholung). Alles bleibt lokal im Browser.
 // ============================================================================
 import {
   NUTRIENTS, DEFAULT_PROFILE, DEFAULT_SUPPLEMENTS, SEED_FOODS, DEFAULT_TRAINING,
@@ -108,6 +108,7 @@ function freshStateRaw() {
     _onboarded: false,
     _ringV3Since: todayKey(),
     _v4Since: todayKey(),
+    _v5Since: todayKey(),
     skills: {}, missions: {}, weekly: {}, ratings: {}, chat: [], notes: [], reviews: {},
     _trainV2: true, _mealsSeed1: true, _gamesV1: true, _bodyseed1: true, _athleteV1: true, _suppV2: true,
   };
@@ -188,6 +189,8 @@ function migrate(parsed) {
   if (!Array.isArray(m.chat)) m.chat = [];
   if (!Array.isArray(m.notes)) m.notes = [];
   if (!('_v4Since' in parsed)) m._v4Since = todayKey();
+  // Ab hier zwei Ringe (Essen · Sport); ältere Tage behalten ihre Werte, damit XP stabil bleiben
+  if (!('_v5Since' in parsed)) m._v5Since = todayKey();
   if (m._persona !== PERSONA.id + '@' + PERSONA.version) personalize(m);
 
   // Aufräumen: Bereiche, die es nicht mehr gibt (Tagesplan, Gewohnheiten, Autopilot)
@@ -1012,7 +1015,8 @@ export function prLiftIds() {
 export function isLiftPR(id) { return prLiftIds().has(id); }
 
 // ============================================================================
-// Die 3 Säulen: Ernährung · Sport · Regeneration
+// Zwei Bereiche: Essen (Ernährung + Diät) · Sport (Training + Erholung)
+// Tage vor dem Umbau behalten die alte Drei-Säulen-Wertung (stabile XP & Serien).
 // ============================================================================
 export function dayPillars(key = todayKey()) {
   const s = load();
@@ -1020,38 +1024,44 @@ export function dayPillars(key = todayKey()) {
   const p = s.profile;
   const totals = computeTotals(key);
 
-  // Ernährung = Ø(Protein, Mikros, Wasser, Supplements)
   const protein = Math.min(100, (totals.protein || 0) / (p.targets.protein || 1) * 100);
   const micros = microSummary(key, totals).coverage;
   const water = Math.min(100, ((day && day.water) || 0) / (p.water || 1) * 100);
   const supps = s.supplements.length
     ? s.supplements.filter(x => day && day.supps && day.supps[x.id]).length / s.supplements.length * 100
     : 100;
-  const nutrition = Math.round((protein + micros + water + supps) / 4);
 
-  // Sport = 100 % nach einer Einheit, sonst Schritte bis zum Minimum
   const sessions = (day && day.sessions) || [];
   const sessionDone = sessions.length > 0 || !!(day && day.activityManual);
   const steps = (day && day.steps) || 0;
-  const sport = sessionDone ? 100 : Math.min(100, Math.round(steps / (p.stepGoal || 10000) * 100));
+  const activity = sessionDone ? 100 : Math.min(100, Math.round(steps / (p.stepGoal || 10000) * 100));
 
-  // Regeneration = Ø(Schlaf, Knie-Check, Reha)
   const sleepH = day && day.sleep != null ? day.sleep : null;
   const sleep = sleepH == null ? 0 : Math.min(100, sleepH / (p.sleepTarget || 8) * 100);
   const knee = day && day.knee != null ? 100 : 0;
   const reha = day && day.reha ? 100 : 0;
-  const regen = Math.round((sleep + knee + reha) / 3);
+  const recovery = Math.round((sleep + knee + reha) / 3);
 
-  const legacy = key < (s._ringV3Since || '0000');
-  const overall = legacy ? Math.round((nutrition + sport) / 2) : Math.round((nutrition + sport + regen) / 3);
-  return {
-    nutrition, sport, regen, overall, legacy,
-    parts: {
-      protein: Math.round(protein), micros, water: Math.round(water), supps: Math.round(supps),
-      sessionDone, steps, sleep: Math.round(sleep), sleepH, knee: day ? day.knee : null, reha: !!(day && day.reha),
-    },
-    totals,
+  // Kalorien-Budget: zählt, sobald gegessen wurde; drüber kostet schnell Punkte
+  const target = kcalTarget(key);
+  const kcal = totals.kcal || 0;
+  const budget = kcal <= 0 ? 0 : kcal <= target + 100 ? 100 : Math.max(0, Math.round(100 - (kcal - target - 100) / target * 400));
+
+  const parts = {
+    protein: Math.round(protein), micros, water: Math.round(water), supps: Math.round(supps), budget,
+    sessionDone, steps, activity, recovery, sleep: Math.round(sleep), sleepH, knee: day ? day.knee : null, reha: !!(day && day.reha),
   };
+
+  if (key < (s._v5Since || '0000')) {
+    // Alte Wertung (bis zum Umbau)
+    const nutrition = Math.round((protein + micros + water + supps) / 4);
+    const legacy = key < (s._ringV3Since || '0000');
+    const overall = legacy ? Math.round((nutrition + activity) / 2) : Math.round((nutrition + activity + recovery) / 3);
+    return { nutrition, sport: activity, regen: recovery, overall, legacy, old: true, parts, totals };
+  }
+  const nutrition = Math.round(protein * 0.35 + budget * 0.25 + micros * 0.2 + water * 0.1 + supps * 0.1);
+  const sport = Math.round(activity * 0.6 + recovery * 0.4);
+  return { nutrition, sport, regen: recovery, overall: Math.round((nutrition + sport) / 2), legacy: false, old: false, parts, totals };
 }
 export function ringSummary(key) { const p = dayPillars(key); return { pct: p.overall, ...p }; }
 // Tag geschafft = Ringe ab Tagesziel UND Kalorien im Budget (seit dem Persona-Update)

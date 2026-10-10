@@ -31,9 +31,10 @@ export function dayXP(key) {
   const add = (label, xp) => { if (xp > 0) parts.push({ label, xp }); };
   add('Einträge', Math.min(20, (d.entries || []).length * 2));
   const p = store.dayPillars(key);
-  if (p.nutrition >= 100) add('Ernährungs-Ring voll', 20);
+  if (p.nutrition >= 100) add('Essen-Ring voll', 20);
   if (p.sport >= 100) add('Sport-Ring voll', 20);
-  if (!p.legacy && p.regen >= 100) add('Regenerations-Ring voll', 20);
+  if (p.old) { if (!p.legacy && p.regen >= 100) add('Regenerations-Ring voll', 20); }
+  else if (p.nutrition >= 100 && p.sport >= 100) add('Beide Ringe voll', 20);
   if (store.dayComplete(key)) add('Tagesziel geschafft', 30);
   if (key >= (s._v4Since || '0000') && store.inBudget(key) && (d.entries || []).length >= 3) add('Im Kalorien-Budget', 25);
   add('Einheiten', Math.min(50, (d.sessions || []).length * 25));
@@ -249,6 +250,7 @@ function chooseMissions(key, now) {
   const avail = Object.entries(MISSIONS).filter(([, m]) => !m.when || m.when(c)).map(([id, m]) => ({ id, ...m }));
   const w = (m) => (styleW[m.style] || 1) * (['budget', 'no_late', 'budget_streak'].includes(m.id) ? 2 : 1) * (m.id === 'protein_record' || m.id === 'steps_record' ? 0.7 : 1);
   const picks = [];
+  // Eine Mission Essen, eine Sport (Training), eine Sport (Erholung/Knie) – alles zählt zum Sport-Bereich
   for (const cat of ['nut', 'spo', 'reg']) {
     const list = avail.filter(m => m.cat === cat && !picks.includes(m.id));
     if (list.length) picks.push(pickWeighted(list, w, r).id);

@@ -207,7 +207,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
     if (it.type === 'unknown') return unknownHtml(it, i);
     if (it.type === 'intent') {
       const d = describe(it.it);
-      return `<div><div class="qa-item"><span class="fico c-${d.area === 'Sport' ? 'water' : d.area === 'Regeneration' ? 'snack' : 'zero'}">${icon(d.icon)}</span>
+      return `<div><div class="qa-item"><span class="fico c-${d.area === 'Sport' ? 'water' : 'zero'}">${icon(d.icon)}</span>
         <div class="qa-main"><div class="qa-nm">${esc(d.title)}</div><div class="qa-am">${esc(d.area)} · ${esc(d.sub)}${it.it.day !== key ? ' · ' + esc(store.formatDateLabel(it.it.day)) : ''}</div></div>
         <button class="qa-rm" data-rm="${i}" aria-label="Entfernen">${icon('x')}</button></div></div>`;
     }
@@ -338,7 +338,7 @@ export function openQuickAdd({ key = store.todayKey(), text = '', voice = false,
     ai.items.forEach((it, i) => { const d = describe(it); (groups[d.area] = groups[d.area] || []).push({ it, d, i }); });
     body.innerHTML = `${ai.reply ? `<div class="ai-reply">${icon('spark')}<span>${esc(ai.reply)}</span></div>` : ''}
       ${ai.items.length ? Object.entries(groups).map(([area, list]) => `<div class="sec-title">${esc(area)}<span>${list.length}</span></div>
-        <div class="qa-list">${list.map(({ it, d, i }) => `<div class="qa-item"><span class="fico ${area === 'Essen' ? 'c-gemuse' : area === 'Sport' ? 'c-water' : area === 'Regeneration' ? 'c-snack' : 'c-zero'}">${icon(d.icon)}</span>
+        <div class="qa-list">${list.map(({ it, d, i }) => `<div class="qa-item"><span class="fico ${area === 'Essen' ? 'c-gemuse' : area === 'Sport' ? 'c-water' : 'c-zero'}">${icon(d.icon)}</span>
           <div class="qa-main"><div class="qa-nm">${esc(d.title)}${d.isNew ? `<em class="qa-new">${icon('spark')}neu</em>` : ''}</div><div class="qa-am">${esc(d.sub)}${it.day !== key ? ' · ' + esc(store.formatDateLabel(it.day)) : ''}</div></div>
           <button class="qa-rm" data-airm="${i}" aria-label="Entfernen">${icon('x')}</button></div>`).join('')}</div>`).join('')
         : '<div class="empty">Ich habe nichts zum Eintragen gefunden.</div>'}

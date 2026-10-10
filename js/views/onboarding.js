@@ -14,10 +14,10 @@ export function openOnboarding() {
   const steps = () => {
     const p = store.getState().profile;
     return [
-      `<div class="ob-art">${ringsSVG({ nutrition: 85, sport: 100, regen: 62 }, { photo: p.photo })}</div>
+      `<div class="ob-art">${ringsSVG({ nutrition: 85, sport: 100 }, { photo: p.photo })}</div>
        <div class="ob-title">Hey ${esc(p.name || 'du')}.<br>Diese App gibt's nur einmal.</div>
-       <p class="ob-text">Gebaut für deinen Alltag, dein Training und dein Essen. Drei Ringe – Ernährung, Sport, Regeneration. Mach alle drei voll.</p>`,
-      `<div class="ob-art">${ringsSVG({ nutrition: 0, sport: 0, regen: 0 }, { photo: p.photo })}</div>
+       <p class="ob-text">Gebaut für deinen Alltag, dein Training und dein Essen. Zwei Ringe – Essen und Sport. Und ein Coach, mit dem du einfach redest.</p>`,
+      `<div class="ob-art">${ringsSVG({ nutrition: 0, sport: 0 }, { photo: p.photo })}</div>
        <div class="ob-title">Dein Gesicht<br>in der Mitte</div>
        <p class="ob-text">Ein Foto von dir im Ring macht's persönlich. Kannst du jederzeit ändern.</p>
        <button class="btn ghost" id="ob-photo">${icon('camera')}${p.photo ? 'Foto ändern' : 'Foto wählen'}</button>`,

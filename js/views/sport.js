@@ -6,7 +6,7 @@ import { SPORT_TYPES, RPE_LABELS, WEEKDAYS, WEEKDAYS_LONG, MUSCLES } from '../da
 import { icon } from '../icons.js';
 import { $, $$, esc, de, router, openSheet, closeSheet, sheetHead, toast, haptic } from '../ui.js';
 import { openWorkout } from './workout.js';
-import { afterChange } from './today.js';
+import { afterChange, openRecoverySheet } from './today.js';
 import { SKILLS, skillState, practiceSkill, advanceSkill, setSkillStage, skillSessionsThisWeek } from '../skills.js';
 import { GYM_TIMES, gymTimeFor } from '../planner.js';
 import { PERSONA } from '../persona.js';
@@ -37,6 +37,7 @@ export function renderSport(app) {
 
     ${planCard(key, plan, isToday, active, sessions)}
     <div class="rows">
+      ${isToday ? recoveryRow(today) : ''}
       <button class="row" data-srow="hub"><span class="row-ic">${icon('layers')}</span>
         <span class="row-main"><div class="row-t">Mehr</div><div class="row-s">Woche, Skills, Belastung, Rekorde, Spielplan</div></span><span class="row-end">${icon('chev')}</span></button>
     </div>
@@ -52,7 +53,15 @@ export function renderSport(app) {
     store.removeSession(key, b.dataset.rmsess); router.rerender();
   });
   $$('[data-gymt]', app).forEach(b => b.onclick = () => { store.setDayMeta(key, 'gymTime', b.dataset.gymt); haptic(4); router.rerender(); });
-  $$('[data-srow]', app).forEach(b => b.onclick = () => openSportHub(today));
+  $$('[data-srow]', app).forEach(b => b.onclick = () => (b.dataset.srow === 'recovery' ? openRecoverySheet(today) : openSportHub(today)));
+}
+
+// Erholung = Teil des Sports
+function recoveryRow(key) {
+  const d = store.getDay(key);
+  const bits = [d.sleep != null ? `Schlaf ${String(d.sleep).replace('.', ',')} h` : 'Schlaf offen', d.knee != null ? `Knie ${d.knee}/10` : 'Knie offen', d.reha ? 'Reha ✓' : 'Reha offen'];
+  return `<button class="row" data-srow="recovery"><span class="row-ic">${icon('moon')}</span>
+    <span class="row-main"><div class="row-t">Erholung</div><div class="row-s">${esc(bits.join(' · '))}</div></span><span class="row-end">${icon('chev')}</span></button>`;
 }
 
 // Alles Weitere liegt hinter einer Zeile
@@ -178,7 +187,7 @@ function planCard(key, plan, isToday, active, sessions) {
   let body = '';
   if (!plan || plan.kind === 'rest') {
     body = `<div class="sess"><span class="ic">${icon('walk')}</span><div><div class="t1">${esc(plan ? plan.title : 'Frei')}</div><div class="t2">${esc(plan ? plan.focus : '')}</div></div></div>
-      <p class="hint" style="margin:12px 0 0">Ruhetag heißt nicht stillsitzen: ein Spaziergang oder 10.000 Schritte füllen deinen Sport-Ring.</p>`;
+      <p class="hint" style="margin:12px 0 0">Ruhetag heißt nicht stillsitzen: ein Spaziergang oder 10.000 Schritte zählen für deinen Sport-Ring – genau wie Schlaf und Reha.</p>`;
   } else if (plan.kind === 'gym') {
     const gt = gymTimeFor(key);
     body = `<div class="sess"><span class="ic">${icon('dumbbell')}</span><div><div class="t1">${esc(plan.title)}</div><div class="t2">${esc(plan.focus || '')} · ${plan.exercises.length} Übungen</div></div></div>

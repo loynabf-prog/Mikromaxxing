@@ -1,5 +1,5 @@
 // ============================================================================
-// Heute – drei Ringe, Coach-Hinweis, Ernährung · Sport · Regeneration
+// Heute – zwei Ringe (Essen · Sport), kcal übrig, der nächste Schritt
 // ============================================================================
 import * as store from '../store.js';
 import { KNEE_REHA } from '../data.js';
@@ -51,7 +51,7 @@ ${icon('chev')}
       </button>
     </div>
     <button class="s-legend" id="legend">
-      <span><i class="d-nut"></i>Essen</span><span><i class="d-spo"></i>Sport</span><span><i class="d-reg"></i>Erholung</span>
+      <span><i class="d-nut"></i>Essen</span><span><i class="d-spo"></i>Sport</span>
     </button>
 
     ${nextCard(ns)}
@@ -130,10 +130,14 @@ function liveSheet(title, sub, render, wireFn) {
   return sheet;
 }
 function openPillarsSheet(key) {
-  liveSheet('Deine Ringe', 'Ernährung · Sport · Regeneration', () => {
+  liveSheet('Deine Ringe', 'Essen · Sport', () => {
     const p = store.dayPillars(key);
-    return `${budgetCard(key, p, store.getDay(key), new Date())}${sportCard(key, p)}${regenCard(key, p)}`;
+    return `${budgetCard(key, p, store.getDay(key), new Date())}${sportCard(key, p)}`;
   }, (root) => wireCards(root, key));
+}
+// Erholung allein (aus dem Sport-Bereich)
+export function openRecoverySheet(key) {
+  liveSheet('Erholung', 'Gehört zum Sport: Schlaf · Knie · Reha', () => recoveryBlock(key, store.dayPillars(key), false), (root) => wireCards(root, key));
 }
 function openLevelSheet(key) {
   liveSheet('Level & Missionen', '', () => {
@@ -240,7 +244,7 @@ function missionsCard(key, now) {
   const done = ms.filter(m => m.done).length;
   return `<div class="card">
     <div class="ch"><span class="ch-title">Missionen</span><span class="sub">${done} / ${ms.length} · +${ms.reduce((a, m) => a + m.xp, 0)} XP möglich</span></div>
-    ${ms.map(m => `<button class="mis ${m.done ? 'done' : ''} ${m.failed ? 'failed' : ''} c-${m.cat}" data-mis="${m.id}">
+    ${ms.map(m => `<button class="mis ${m.done ? 'done' : ''} ${m.failed ? 'failed' : ''} c-${m.cat === 'reg' ? 'spo' : m.cat}" data-mis="${m.id}">
       <span class="mis-ring" style="--p:${Math.round(m.p * 100)}">${m.done ? icon('check') : ''}</span>
       <span class="mis-main"><b>${esc(m.title)}</b><span>${esc(m.label)}</span></span>
       <span class="mis-xp num">+${m.xp}</span>
@@ -258,17 +262,13 @@ function sportCard(key, p) {
   const active = store.getActiveWorkout();
   const steps = store.getSteps(key);
   const stepGoal = store.getState().profile.stepGoal || 10000;
-  const load = store.trainingLoad(key);
-  const ng = store.nextGame(key);
-  const zoneLabel = { low: 'eher wenig', optimal: 'im grünen Bereich', elevated: 'erhöht', high: 'sehr hoch', none: load.building ? 'baut sich auf' : 'noch keine Daten' }[load.zone];
-  const gaugePos = load.ratio != null && !load.building ? Math.min(100, Math.max(0, load.ratio / 2 * 100)) : null;
 
   let main;
   if (sessions.length) {
     main = sessions.map(x => {
       const st = store.sportType(x.type);
       return `<div class="sess" style="margin-bottom:8px"><span class="ic">${icon(st.icon)}</span>
-        <div><div class="t1">${esc(x.title)}</div><div class="t2">${x.min} Min · Intensität ${x.rpe}/10 · Last ${de(store.sessionLoad(x))}</div></div></div>`;
+        <div><div class="t1">${esc(x.title)}</div><div class="t2">${x.min} Min · Intensität ${x.rpe}/10${x.detail ? ` · ${esc(x.detail)}` : ''}</div></div></div>`;
     }).join('');
   } else {
     const ic = !plan ? 'walk' : plan.kind === 'gym' ? 'dumbbell' : plan.kind === 'rest' ? 'walk' : store.sportType(plan.sport).icon;
@@ -288,17 +288,16 @@ function sportCard(key, p) {
     ${main}
     <div class="sess-actions">${actions}</div>
     <button class="steps-line" data-act="steps">${icon('steps')}<span class="st-bar"><i style="width:${Math.min(100, steps / stepGoal * 100)}%"></i></span><b class="num">${de(steps)}</b><span class="sub">/ ${de(stepGoal)}</span></button>
-    <div class="load"><div class="row-l"><span>Belastung 7 Tage</span><b class="${load.zone}">${zoneLabel}</b></div>
-      <div class="gauge ${gaugePos == null ? 'off' : ''}">${gaugePos != null ? `<i style="left:${gaugePos}%"></i>` : ''}</div></div>
-    ${ng && ng.days <= 14 ? `<div class="next-game">${icon('trophy')}<span>${ng.days === 0 ? 'Heute' : ng.days === 1 ? 'Morgen' : `In ${ng.days} Tagen`} · ${ng.game.home ? 'vs' : '@'} <b>${esc(ng.game.opponent)}</b> · ${esc(ng.game.time)}</span></div>` : ''}
+    ${recoveryBlock(key, p)}
   </div>`;
 }
 
-function regenCard(key, p) {
+// Erholung gehört zum Sport: Schlaf · Knie · Reha
+function recoveryBlock(key, p, head = true) {
   const knee = p.parts.knee;
   const ks = store.kneeStatus(key);
-  return `<div class="card" id="regen">
-    <div class="ch"><span class="chip reg">${icon('moon')}Regeneration</span><span class="more">${p.regen}%</span></div>
+  return `<div id="regen">
+    ${head ? '<div class="part-head" style="margin-top:18px"><b>Erholung</b><span>Schlaf · Knie · Reha</span></div>' : ''}
     <div class="regen">
       <button class="tile" data-act="sleep"><div class="lbl">Schlaf</div>
         <div class="mid num">${p.parts.sleepH != null ? `${fmtHours(p.parts.sleepH)}<small>h</small>` : '<span style="color:var(--faint)">–</span>'}</div>
@@ -360,7 +359,11 @@ export function runAction(key, a) {
     case 'sleep': openSleepSheet(key); break;
     case 'reha': openRehaSheet(key); break;
     case 'water': addWaterQuick(key, a.ml || 500); break;
-    case 'knee': $('#regen').scrollIntoView({ behavior: 'smooth', block: 'center' }); break;
+    case 'knee': {
+      if (!$('#regen')) openPillarsSheet(key);
+      const el = $('#regen'); if (el) setTimeout(() => el.scrollIntoView({ behavior: 'smooth', block: 'center' }), 80);
+      break;
+    }
     case 'add': openQuickAdd({ key, text: a.text || '' }); break;
     case 'eat': openRecommendSheet(key, a.slot || 'first'); break;
     case 'food': {

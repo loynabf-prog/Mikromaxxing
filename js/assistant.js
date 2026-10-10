@@ -68,7 +68,7 @@ export function buildContext(now = new Date()) {
   lines.push(`Supplements genommen: ${taken.join(', ') || 'keine'}. Offen: ${open.join(', ') || 'keine'}.`);
   lines.push(`Training heute: ${plan.train ? `${plan.train.title} ab ${fmtH(plan.train.start)}` : 'frei'}. Eingetragen: ${(d.sessions || []).map(x => `${x.title} ${x.min} Min RPE ${x.rpe}${x.detail ? ` (${x.detail})` : ''}`).join(', ') || 'nichts'}.`);
   lines.push(`Fahrplan: ${plan.slots.filter(x => x.type === 'meal' && x.target).map(x => `${fmtH(x.t)} ${x.title} ~${x.target.kcal} kcal/${x.target.protein} g P`).join('; ') || 'Essfenster für heute durch'}.`);
-  lines.push(`Regeneration: Schlaf ${d.sleep != null ? d.sleep + ' h' : 'nicht eingetragen'}, Knie ${d.knee != null ? d.knee + '/10' : 'nicht eingetragen'}, Reha ${d.reha ? 'erledigt' : 'offen'}.`);
+  lines.push(`Erholung (gehört zum Sport): Schlaf ${d.sleep != null ? d.sleep + ' h' : 'nicht eingetragen'}, Knie ${d.knee != null ? d.knee + '/10' : 'nicht eingetragen'}, Reha ${d.reha ? 'erledigt' : 'offen'}.`);
   const ms = missionsFor(key, now);
   if (ms.length) lines.push(`Missionen heute: ${ms.map(m => `${m.title} (${m.done ? 'geschafft' : m.label})`).join('; ')}.`);
   const wc = weeklyChallenge(key);
@@ -83,6 +83,8 @@ export function buildContext(now = new Date()) {
     week.push(`${k}: ${r(t.kcal)}/${store.kcalTarget(k)} kcal, ${r(t.protein)} g P, ${(dd.sessions || []).map(x => x.title).join('+') || 'kein Training'}, Schlaf ${dd.sleep ?? '–'}, Knie ${dd.knee ?? '–'}`);
   }
   lines.push(`Letzte 7 Tage:\n${week.join('\n') || 'keine Daten'}`);
+  const weighs = Object.keys(s.log).filter(k => k <= key && s.log[k].weight != null).sort().slice(-6);
+  if (weighs.length) lines.push(`Letzte Wiegungen: ${weighs.map(k => `${k} ${s.log[k].weight} kg`).join('; ')}.`);
   const gp = store.goalProjection(key);
   lines.push(`Gewicht: aktuell ${gp.current ?? '?'} kg, Ziel ${gp.target} kg, Tempo ${gp.tempo}${gp.rate != null ? `, Trend ${gp.rate} kg/Woche` : ''}${gp.planDate ? `, Plan-Ziel ca. ${gp.planDate}` : ''}.`);
   const ng = store.nextGame(key);
@@ -97,10 +99,19 @@ export function buildContext(now = new Date()) {
 }
 
 function systemPrompt(mode, now) {
-  return `Du bist der persönliche Coach in „Mikromaxxing", einer App, die nur für ${PERSONA.name} gebaut wurde. Du kennst ihn:
+  return `Du bist ${PERSONA.name}s persönlicher Coach in „Mikromaxxing" – sein eigener Agent, der sich komplett um Essen und Sport kümmert. Du kennst ihn:
 ${personaBrief()}
 
 ${PERSONA.tone}
+
+Es gibt genau zwei Bereiche: ESSEN (Ernährung, Diät, Kalorien-Budget, Gewicht) und SPORT (Training, Spiele, Schritte und Erholung: Schlaf, Knie, Reha). Du hast beides immer im Blick und redest mit ihm wie ein guter Freund mit Ahnung – direkt, locker, ohne Floskeln.
+
+Empfehlungen und Entscheidungen:
+– Fragt er zwischen Optionen („Grillteller oder Döner?"), entscheide dich klar: zuerst deine Wahl, dann kurz warum – mit geschätzten kcal und Protein für jede Option und was danach heute noch übrig ist. Sag, wie er es am besten bestellt bzw. isst (z. B. Pommes weglassen oder halbe Portion, Brot weglassen, mehr Fleisch und Salat, Tzatziki statt Cocktailsoße).
+– Fragt er „Was soll ich jetzt essen?", gib eine klare Empfehlung mit Menge, höchstens eine Alternative.
+– Berücksichtige immer: übrige kcal und Protein heute, ob Training war oder noch kommt, Uhrzeit, seine Notizen und Vorlieben, den Gewichtstrend.
+– Wenn gerade etwas Wichtiges fehlt (viel Protein offen, Wasser, Reha, länger nicht gewogen), erwähne höchstens EINE Sache kurz am Ende – nicht in jeder Antwort.
+– Fragen, Pläne und Überlegungen („soll ich…", „ich nehm gleich…", „was ist besser…") trägst du NICHT ein. Erst wenn er sagt, dass er es gegessen oder gemacht hat. Was unten unter „Heute gegessen"/„Eingetragen" steht oder im Verlauf als [Eingetragen: …] markiert ist, nie doppelt eintragen.
 
 Was du tust:
 1. Wenn ${PERSONA.name} erzählt, was er gegessen, getrunken, trainiert, geschlafen oder eingenommen hat, trägst du es strukturiert ein (Arrays foods, water, supplements, sessions, steps, sleep, knee, reha, weight). Nur Dinge, die passiert sind – keine Pläne oder Fragen. Bei Fragen bleiben die Arrays leer.
@@ -108,7 +119,7 @@ Was du tust:
 3. day_offset: 0 = heute, -1 = gestern usw. Sein Tag geht von 4:00 bis 4:00 Uhr: Was er zwischen Mitternacht und 4 Uhr erzählt („heute Mittag", „heute Abend", der Snack eben um 1 Uhr) gehört zum laufenden Tag, also day_offset 0 – auch wenn das Kalenderdatum schon weiter ist; „gestern" ist dann der Tag davor. Ab 4:00 Uhr beginnt ein neuer Tag (Frühstück um 6 → day_offset 0 = neues Datum). Erzählt er kurz nach 4 Uhr offensichtlich noch vom Abend davor, ohne geschlafen zu haben, nimm day_offset -1. time immer als Uhrzeit, also z. B. "00:45" oder "01:30" für die Nacht. Schlaf gehört zu dem Tag, an dem er aufgewacht ist („heute Nacht 7 h" → 0). sessions.type aus der Liste, rpe 1–10 (Basketball-Training meist 7, Spiel 8), minutes = Dauer.
 4. reply: ${mode === 'log'
     ? 'eine kurze Bestätigung in einem Satz, was du einträgst, plus höchstens ein konkreter Hinweis (z. B. was ihm heute noch fehlt).'
-    : 'deine Antwort als Coach. Konkret, mit Zahlen aus seinen Daten, max. ca. 120 Wörter, außer er will mehr. Empfiehl Essen, das zu ihm passt (Bowls, Dönerfleisch-Teller, Lidl/Rewe, seine Gerichte). Kein Markdown außer kurzen Aufzählungen mit „–".'}
+    : 'deine Antwort als Coach, wie im Chat: kurz und konkret, mit Zahlen aus seinen Daten, meist 40–120 Wörter, außer er will mehr. Hat er etwas erzählt, das du einträgst, bestätige es in einem Satz und sag, was das für den Rest des Tages heißt. Empfiehl Essen, das zu ihm passt (Bowls, Dönerfleisch-Teller, Lidl/Rewe, seine Gerichte). Kein Markdown außer kurzen Aufzählungen mit „–".'}
 5. Training so detailliert wie erzählt: sessions.exercises = jede Übung mit name (deutsch, z. B. „Bankdrücken", „Klimmzüge"), sets, reps, kg (0 = Körpergewicht), seconds (nur bei Halteübungen, sonst 0). sessions.notes = kurze Details (z. B. „Knie zwickte beim Springen", „Spiel gewonnen 78:70"), sonst "". Hat er an Handstand, Back Lever oder Muscle-Up gearbeitet → zusätzlich skills.
 6. remember: Dinge, die du dir dauerhaft merken sollst – Vorlieben, Abneigungen, Unverträglichkeiten, Beschwerden, Ziele, Lebensumstände (z. B. „Mag keinen Lachs", „Knie zwickt bei Sprüngen"). Kurz, in 3. Person, nichts, was oben schon unter „gemerkt" steht. Sonst leer.
 7. quick: 0–3 kurze Folgefragen oder Antworten, die er antippen könnte (aus seiner Sicht formuliert).
@@ -121,7 +132,7 @@ ${buildContext(now)}`;
 // --- Fragen & Eintragen ----------------------------------------------------------
 export async function askCoach(text, { mode = 'chat', history = [], now = new Date() } = {}) {
   const messages = [];
-  for (const m of history.slice(-10)) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text || '').slice(0, 2000) });
+  for (const m of history.slice(-16)) messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: String(m.text || '').slice(0, 2000) });
   messages.push({ role: 'user', content: text });
   // Abwechselnde Rollen sicherstellen
   const clean = [];
@@ -148,7 +159,13 @@ export function normalize(json, now = new Date()) {
     const parsed = parseEntry(f.query || f.name, null, index);
     const hit = parsed.length === 1 && parsed[0].type === 'food' && parsed[0].confidence === 'high' ? store.foodById(parsed[0].foodId) : null;
     const byName = !hit && store.getState().foods.find(x => fold(x.name) === fold(f.name));
-    const known = hit || byName;
+    let known = hit || byName;
+    // Treffer passt nicht zur Beschreibung (z. B. „Dönerteller" mit Salat ≠ reines Dönerfleisch) → KI-Werte nehmen
+    const aiK = Number(f.per100 && f.per100.kcal) || 0;
+    if (known && !byName && aiK > 0) {
+      const kk = known.per100.kcal || 0;
+      if (kk > 0 && Math.abs(kk - aiK) / Math.max(kk, aiK) > 0.35) known = null;
+    }
     items.push({ id: id(), kind: 'food', day: dayKey(f.day_offset), time: /^\d{1,2}:\d{2}$/.test(f.time || '') ? f.time : '', grams,
       foodId: known ? known.id : null, food: known ? null : toFood({ ...f, found: true, portionGrams: f.unit === 'piece' ? f.pieceGrams : grams }) });
   }
@@ -223,10 +240,10 @@ export function describe(it) {
     case 'skill': return { area: 'Sport', icon: SKILLS[it.skill].icon, title: SKILLS[it.skill].name, sub: 'geübt' };
     case 'note': return { area: 'Gemerkt', icon: 'bulb', title: it.text, sub: 'merkt sich der Coach' };
     case 'steps': return { area: 'Sport', icon: 'steps', title: 'Schritte', sub: it.count.toLocaleString('de-DE') };
-    case 'sleep': return { area: 'Regeneration', icon: 'moon', title: 'Schlaf', sub: `${String(it.hours).replace('.', ',')} h` };
-    case 'knee': return { area: 'Regeneration', icon: 'knee', title: 'Knie-Check', sub: `${it.score}/10` };
-    case 'reha': return { area: 'Regeneration', icon: 'timer', title: 'Knie-Reha', sub: 'erledigt' };
-    case 'weight': return { area: 'Körper', icon: 'scale', title: 'Gewicht', sub: `${String(it.kg).replace('.', ',')} kg` };
+    case 'sleep': return { area: 'Sport', icon: 'moon', title: 'Schlaf', sub: `${String(it.hours).replace('.', ',')} h` };
+    case 'knee': return { area: 'Sport', icon: 'knee', title: 'Knie-Check', sub: `${it.score}/10` };
+    case 'reha': return { area: 'Sport', icon: 'timer', title: 'Knie-Reha', sub: 'erledigt' };
+    case 'weight': return { area: 'Essen', icon: 'scale', title: 'Gewicht', sub: `${String(it.kg).replace('.', ',')} kg` };
     default: return { area: 'Sonstiges', icon: 'info', title: it.kind, sub: '' };
   }
 }
