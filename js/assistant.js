@@ -47,14 +47,19 @@ function logSchema() {
 export function buildContext(now = new Date()) {
   const s = store.getState();
   const key = store.todayKey(now);
-  const wd = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'][now.getDay()];
+  const WD = ['Sonntag', 'Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag', 'Samstag'];
+  const wd = WD[store.dateOf(key).getDay()];   // Wochentag des App-Tags (bis 4 Uhr noch der Vortag)
+  const night = now.getHours() < store.DAY_START;
   const tg = store.macroTargets(key);
   const tot = store.computeTotals(key);
   const d = s.log[key] || { entries: [], supps: {}, sessions: [] };
   const plan = dayPlan(key, now);
   const r = (x) => Math.round(x);
   const lines = [];
-  lines.push(`Jetzt: ${wd}, ${key}, ${now.toTimeString().slice(0, 5)} Uhr. Heute ist ein ${store.DAY_TYPES[tg.type].label}.`);
+  const clock = now.toTimeString().slice(0, 5);
+  lines.push(night
+    ? `Jetzt: ${clock} Uhr in der Nacht (Kalender: ${WD[now.getDay()]}, ${store.dateKey(now)}). Sein Tag geht bis 4:00 Uhr – „heute" ist also noch ${wd}, ${key} (day_offset 0). Heute ist ein ${store.DAY_TYPES[tg.type].label}.`
+    : `Jetzt: ${wd}, ${key}, ${clock} Uhr. Heute ist ein ${store.DAY_TYPES[tg.type].label}.`);
   lines.push(`Ziele heute: ${tg.kcal} kcal, ${tg.protein} g Protein, ${tg.carbs} g Carbs, ${tg.fat} g Fett. Gegessen: ${r(tot.kcal)} kcal, ${r(tot.protein)} g Protein, ${r(tot.carbs)} g Carbs, ${r(tot.fat)} g Fett, ${r(tot.fiber)} g Ballaststoffe. Wasser ${d.water || 0} ml von ${s.profile.water} ml.`);
   const eaten = (d.entries || []).map(e => { const f = store.foodById(e.foodId); return f ? `${e.ts ? new Date(e.ts).toTimeString().slice(0, 5) : '?'} ${f.name} ${e.grams} g` : null; }).filter(Boolean);
   lines.push(`Heute gegessen: ${eaten.length ? eaten.join('; ') : 'noch nichts'}.`);
@@ -100,7 +105,7 @@ ${PERSONA.tone}
 Was du tust:
 1. Wenn ${PERSONA.name} erzählt, was er gegessen, getrunken, trainiert, geschlafen oder eingenommen hat, trägst du es strukturiert ein (Arrays foods, water, supplements, sessions, steps, sleep, knee, reha, weight). Nur Dinge, die passiert sind – keine Pläne oder Fragen. Bei Fragen bleiben die Arrays leer.
 2. Mengen ohne Angabe schätzt du realistisch (deutsche Portionen; „eine Portion Dönerfleisch" ≈ 250 g). foods: query = wie er es genannt hat, name = kurzer deutscher Name, grams = Gesamtmenge, time = Uhrzeit "HH:MM" wenn erkennbar (z. B. mittags 12:30, abends 20:00), sonst "". per100 = Nährwerte pro 100 g (kcal; protein/carbs/fat/fiber/sugar/satfat in g; vitA/vitD/vitK/vitB7/vitB9/vitB12/selenium/iodine in µg; übrige Vitamine/Mineralstoffe und omega3 in mg). unit "piece" mit pieceName/pieceGrams bei Stück-Lebensmitteln, sonst "gram", pieceName "", pieceGrams 0. Kaffee/Tee schwarz und Wasser sind keine foods (Wasser → water).
-3. day_offset: 0 = heute, -1 = gestern usw. Schlaf gehört zu dem Tag, an dem er aufgewacht ist („heute Nacht 7 h" → 0). sessions.type aus der Liste, rpe 1–10 (Basketball-Training meist 7, Spiel 8), minutes = Dauer.
+3. day_offset: 0 = heute, -1 = gestern usw. Sein Tag geht von 4:00 bis 4:00 Uhr: Was er zwischen Mitternacht und 4 Uhr erzählt („heute Mittag", „heute Abend", der Snack eben um 1 Uhr) gehört zum laufenden Tag, also day_offset 0 – auch wenn das Kalenderdatum schon weiter ist; „gestern" ist dann der Tag davor. Ab 4:00 Uhr beginnt ein neuer Tag (Frühstück um 6 → day_offset 0 = neues Datum). Erzählt er kurz nach 4 Uhr offensichtlich noch vom Abend davor, ohne geschlafen zu haben, nimm day_offset -1. time immer als Uhrzeit, also z. B. "00:45" oder "01:30" für die Nacht. Schlaf gehört zu dem Tag, an dem er aufgewacht ist („heute Nacht 7 h" → 0). sessions.type aus der Liste, rpe 1–10 (Basketball-Training meist 7, Spiel 8), minutes = Dauer.
 4. reply: ${mode === 'log'
     ? 'eine kurze Bestätigung in einem Satz, was du einträgst, plus höchstens ein konkreter Hinweis (z. B. was ihm heute noch fehlt).'
     : 'deine Antwort als Coach. Konkret, mit Zahlen aus seinen Daten, max. ca. 120 Wörter, außer er will mehr. Empfiehl Essen, das zu ihm passt (Bowls, Dönerfleisch-Teller, Lidl/Rewe, seine Gerichte). Kein Markdown außer kurzen Aufzählungen mit „–".'}
@@ -250,7 +255,12 @@ export function applyItems(items, now = new Date()) {
           if (!fid) { fid = store.saveNewFood(it.food).id; created.push(fid); madeByName[nm] = fid; }
         }
         let ts = now.getTime();
-        if (it.time) { const [h, m] = it.time.split(':').map(Number); const d = store.dateOf(k); d.setHours(h, m, 0, 0); ts = d.getTime(); }
+        if (it.time) {
+          const [h, m] = it.time.split(':').map(Number);
+          const d = store.dateOf(k);
+          if (h < store.DAY_START) d.setDate(d.getDate() + 1);   // 0:45 gehört zur Nacht nach diesem Tag
+          d.setHours(h, m, 0, 0); ts = d.getTime();
+        }
         else if (k !== store.todayKey(now)) { const d = store.dateOf(k); d.setHours(13, 0, 0, 0); ts = d.getTime(); }
         store.addEntry(k, fid, it.grams, ts);
         break;
